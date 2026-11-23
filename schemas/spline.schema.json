@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spline asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "content path of a material asset (no extension)"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "material slots: road, tube, custom one; rail rails and sleepers; fence posts and rails; wire poles and wires"
+    },
+    "closed": {
+      "type": "boolean",
+      "description": "join the last point back to the first (a loop road, a fence around something)",
+      "default": false
+    },
+    "resolution": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "one cross-section every this many meters along the path: smaller is rounder and heavier; unit: m",
+      "default": 2
+    },
+    "profile": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "road"
+              ]
+            },
+            "width": {
+              "type": "number",
+              "minimum": 0,
+              "description": "width of the road surface (m)"
+            },
+            "thickness": {
+              "type": "number",
+              "minimum": 0,
+              "description": "depth of the road body under the surface; unit: m",
+              "default": 0.3
+            },
+            "shoulder": {
+              "type": "number",
+              "minimum": 0,
+              "description": "how far the sloped sides reach out beyond the surface; unit: m",
+              "default": 0.5
+            },
+            "cornerRadius": {
+              "type": "number",
+              "minimum": 0,
+              "description": "radius of the rounded corners at junctions; unset is half the road width; unit: m"
+            },
+            "lanes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8,
+              "description": "lanes in each direction (all of them along the path when one-way); unset is one per 3.5 m of width"
+            },
+            "oneWay": {
+              "type": "boolean",
+              "description": "all lanes run along the path direction (from the first control point on)",
+              "default": false
+            }
+          },
+          "required": [
+            "type",
+            "width"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "tube"
+              ]
+            },
+            "radius": {
+              "type": "number",
+              "minimum": 0,
+              "description": "radius (m)"
+            },
+            "sides": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 64,
+              "description": "sides around the tube",
+              "default": 12
+            }
+          },
+          "required": [
+            "type",
+            "radius"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "custom"
+              ]
+            },
+            "shape": {
+              "description": "cross-section as [right, up] pairs in meters, counterclockwise"
+            },
+            "closed": {
+              "type": "boolean",
+              "description": "join the last shape point back to the first",
+              "default": false
+            }
+          },
+          "required": [
+            "type",
+            "shape"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "rail"
+              ]
+            },
+            "gauge": {
+              "type": "number",
+              "minimum": 0.3,
+              "description": "distance between the inner sides of the rails (standard gauge 1.435 m); unit: m",
+              "default": 1.435
+            },
+            "sleeperSpacing": {
+              "type": "number",
+              "minimum": 0.1,
+              "description": "distance between sleepers; unit: m",
+              "default": 0.6
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "fence"
+              ]
+            },
+            "height": {
+              "type": "number",
+              "minimum": 0.1,
+              "description": "height of the posts; unit: m",
+              "default": 1.2
+            },
+            "postSpacing": {
+              "type": "number",
+              "minimum": 0.1,
+              "description": "distance between posts; unit: m",
+              "default": 2.5
+            },
+            "rails": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "horizontal rails between the posts",
+              "default": 2
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "river"
+              ]
+            },
+            "width": {
+              "type": "number",
+              "minimum": 0,
+              "description": "width of the water surface (m); the water body (.water.json river) draws it, the terrain (carve) digs the bed"
+            }
+          },
+          "required": [
+            "type",
+            "width"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "wire"
+              ]
+            },
+            "poleHeight": {
+              "type": "number",
+              "minimum": 1,
+              "description": "height of the poles; unit: m",
+              "default": 10
+            },
+            "poleSpacing": {
+              "type": "number",
+              "minimum": 1,
+              "description": "distance between poles; unit: m",
+              "default": 40
+            },
+            "sag": {
+              "type": "number",
+              "minimum": 0,
+              "description": "how far the wires hang down midway between two poles; unit: m",
+              "default": 1.5
+            },
+            "wires": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12,
+              "description": "wires on the crossarm",
+              "default": 3
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "what is built along the path"
+    },
+    "points": {
+      "description": "control points the path passes through: position [x, y, z], optional tilt (degrees, banks to the right) and width (multiplies the profile width)"
+    },
+    "branches": {
+      "description": "more paths of a network ({ points, closed }); points at the same position are welded, and roads get a junction where three or more meet"
+    }
+  },
+  "required": [
+    "name",
+    "materials",
+    "profile",
+    "points"
+  ],
+  "additionalProperties": false
+}

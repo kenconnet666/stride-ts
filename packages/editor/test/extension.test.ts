@@ -62,10 +62,10 @@ describe('工程的编辑器扩展：自定义的资源种类', () => {
     await backend.saveAsset('lamp' as never, 'Lamps/Floor', { name: 'Floor', material: 'Materials/Brass', height: 1.6 }, { create: true });
     expect(JSON.parse(await readFile(path.join(directory, 'public', 'content', 'Lamps', 'Floor.model'), 'utf8'))).toMatchObject({ procedural: { size: [0.2, 1.6, 0.2] } });
     await expect(backend.saveAsset('lamp' as never, 'Lamps/Bad', { name: 'Bad', material: null, height: 0 })).rejects.toThrow(/height must be positive/);
-    expect(existsSync(path.join(directory, 'public', 'content', 'Lamps', 'Bad.lamp.json'))).toBe(false);
+    expect(existsSync(path.join(directory, 'public', 'content', 'Lamps', 'Bad.lamp.jsonc'))).toBe(false);
 
     await backend.moveAssets({ assets: [{ kind: 'lamp' as never, from: 'Lamps/Floor', to: 'Lamps/Tall' }] });
-    expect(existsSync(path.join(directory, 'public', 'content', 'Lamps', 'Tall.lamp.json'))).toBe(true);
+    expect(existsSync(path.join(directory, 'public', 'content', 'Lamps', 'Tall.lamp.jsonc'))).toBe(true);
     expect(existsSync(path.join(directory, 'public', 'content', 'Lamps', 'Tall.model'))).toBe(true);
     expect(existsSync(path.join(directory, 'public', 'content', 'Lamps', 'Floor.model'))).toBe(false);
     // 挪材质：台灯文件里的引用跟着改写

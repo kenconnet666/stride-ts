@@ -1,0 +1,456 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "material asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "baseColor": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 4,
+      "maxItems": 4,
+      "description": "linear base color; multiplied with (or added to) the texture; linear color with alpha, 0..1"
+    },
+    "baseColorTexture": {
+      "type": "object",
+      "properties": {
+        "texture": {
+          "type": "string",
+          "description": "content path of a image asset (no extension)"
+        },
+        "encoding": {
+          "enum": [
+            "ktx2",
+            "svg",
+            "png",
+            "jpeg",
+            "webp",
+            "mp4",
+            "webm"
+          ],
+          "default": "ktx2"
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "unit: px"
+        },
+        "srgb": {
+          "type": "boolean"
+        },
+        "invertY": {
+          "type": "boolean",
+          "default": false
+        },
+        "filter": {
+          "enum": [
+            "point",
+            "anisotropic"
+          ]
+        },
+        "addressU": {
+          "enum": [
+            "clamp",
+            "mirror"
+          ]
+        },
+        "addressV": {
+          "enum": [
+            "clamp",
+            "mirror"
+          ]
+        },
+        "scale": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "default": [
+            1,
+            1
+          ]
+        },
+        "offset": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "default": [
+            0,
+            0
+          ]
+        }
+      },
+      "required": [
+        "texture"
+      ],
+      "additionalProperties": false
+    },
+    "baseColorOperator": {
+      "enum": [
+        "multiply",
+        "add"
+      ],
+      "default": "multiply"
+    },
+    "metalness": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "metalness workflow; leave unset for the specular workflow"
+    },
+    "roughness": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 1
+    },
+    "specular": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "specular workflow (instead of metalness); linear color, 0..1"
+    },
+    "specularEnergyConservative": {},
+    "specularShading": {},
+    "diffuseShading": {},
+    "glossinessTexture": {},
+    "emissive": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "linear color times intensity (can exceed 1 for bloom); linear color, 0..1"
+    },
+    "emissiveTexture": {
+      "type": "object",
+      "properties": {
+        "texture": {
+          "type": "string",
+          "description": "content path of a image asset (no extension)"
+        },
+        "encoding": {
+          "enum": [
+            "ktx2",
+            "svg",
+            "png",
+            "jpeg",
+            "webp",
+            "mp4",
+            "webm"
+          ],
+          "default": "ktx2"
+        },
+        "size": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "unit: px"
+        },
+        "srgb": {
+          "type": "boolean"
+        },
+        "invertY": {
+          "type": "boolean",
+          "default": false
+        },
+        "filter": {
+          "enum": [
+            "point",
+            "anisotropic"
+          ]
+        },
+        "addressU": {
+          "enum": [
+            "clamp",
+            "mirror"
+          ]
+        },
+        "addressV": {
+          "enum": [
+            "clamp",
+            "mirror"
+          ]
+        },
+        "scale": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "default": [
+            1,
+            1
+          ]
+        },
+        "offset": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "default": [
+            0,
+            0
+          ]
+        }
+      },
+      "required": [
+        "texture"
+      ],
+      "additionalProperties": false
+    },
+    "emissiveTree": {},
+    "normalMap": {},
+    "normalTree": {},
+    "displacementTree": {},
+    "ambientOcclusion": {},
+    "cavity": {
+      "type": "object",
+      "properties": {
+        "diffuse": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "specular": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "diffuse",
+        "specular"
+      ],
+      "additionalProperties": false
+    },
+    "doubleSided": {
+      "type": "boolean",
+      "default": false
+    },
+    "credit": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "description": "where the sampled data comes from (URL)"
+        },
+        "license": {
+          "type": "string",
+          "description": "license, e.g. CC0 1.0 or CC BY 4.0"
+        },
+        "author": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "license"
+      ],
+      "additionalProperties": false,
+      "description": "source and attribution of scanned or sampled data"
+    },
+    "alphaCutoff": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "pixels with a base color alpha below it are discarded"
+    },
+    "transparency": {},
+    "microfacet": {},
+    "celShading": {},
+    "glass": {
+      "type": "object",
+      "properties": {
+        "refractiveIndex": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3
+        }
+      },
+      "required": [
+        "refractiveIndex"
+      ],
+      "additionalProperties": false
+    },
+    "clearCoat": {},
+    "subsurfaceScattering": {},
+    "sheen": {
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "linear color, 0..1"
+        },
+        "roughness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "color",
+        "roughness"
+      ],
+      "additionalProperties": false
+    },
+    "wind": {
+      "type": "object",
+      "properties": {
+        "bend": {
+          "type": "number",
+          "minimum": 0,
+          "description": "how far a point 10 m up sways in a 10 m/s wind (grows with the height squared); unit: m"
+        },
+        "flutter": {
+          "type": "number",
+          "minimum": 0,
+          "description": "how far leaves away from the trunk shake along their normal in a 10 m/s wind; unit: m",
+          "default": 0
+        },
+        "mode": {
+          "enum": [
+            "tree",
+            "grass"
+          ],
+          "description": "tree bends by the height above the entity; grass (merged blades) by the blade height (uv v: 1 root, 0 tip), bend is the tip sway",
+          "default": "tree"
+        }
+      },
+      "required": [
+        "bend"
+      ],
+      "additionalProperties": false,
+      "description": "vegetation wind: the mesh sways and its leaves flutter in the global wind (WindZone, weather)"
+    },
+    "interior": {
+      "type": "object",
+      "properties": {
+        "room": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "room width, height (usually the floor height) and depth behind the glass; unit: m"
+        },
+        "lit": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "fraction of rooms with the lights on",
+          "default": 0.35
+        },
+        "brightness": {
+          "type": "number",
+          "minimum": 0,
+          "description": "light of a lit room (linear, like emissive)",
+          "default": 0.5
+        }
+      },
+      "required": [
+        "room"
+      ],
+      "additionalProperties": false,
+      "description": "interior mapping: rooms behind vertical glass (walls, floor, ceiling, furniture, lights on or off), no extra geometry"
+    },
+    "anisotropy": {
+      "type": "object",
+      "properties": {
+        "strength": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "rotation": {
+          "type": "number",
+          "description": "unit: rad",
+          "default": 0
+        }
+      },
+      "required": [
+        "strength"
+      ],
+      "additionalProperties": false
+    },
+    "transmission": {
+      "type": "object",
+      "properties": {
+        "factor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ior": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3,
+          "default": 1.5
+        },
+        "thickness": {
+          "type": "number",
+          "minimum": 0,
+          "description": "0 is a thin surface (a window pane); above 0 the object is solid and bends what is behind it more; unit: m",
+          "default": 0
+        },
+        "attenuationColor": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "linear color, 0..1"
+        },
+        "attenuationDistance": {
+          "type": "number",
+          "minimum": 0,
+          "description": "light keeps the attenuation color after traveling this far inside; unit: m"
+        }
+      },
+      "required": [
+        "factor"
+      ],
+      "additionalProperties": false,
+      "description": "light passes through (glass, water, ice): what is behind shows through, bent by the index of refraction"
+    },
+    "layers": {},
+    "graph": {
+      "description": "material node graph (edited in the node graph panel); its outputs override the values above"
+    }
+  },
+  "required": [
+    "name",
+    "baseColor"
+  ],
+  "additionalProperties": false
+}

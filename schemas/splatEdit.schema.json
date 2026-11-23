@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "splatEdit asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "description": "the scanned splats this is made from (left unchanged); content path of a splats asset (no extension)"
+    },
+    "merge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "another scan merged in; content path of a splats asset (no extension)"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "where it goes in the source splats' coordinates; unit: m",
+            "default": [
+              0,
+              0,
+              0
+            ]
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "its rotation (quaternion xyzw)",
+            "default": [
+              0,
+              0,
+              0,
+              1
+            ]
+          },
+          "scale": {
+            "type": "number",
+            "minimum": 0.0001,
+            "description": "its uniform scale (phone scans often differ in scale)",
+            "default": 1
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "description": "other scans merged in first (place them roughly, then auto-align); crop, erase and floaters apply to the merged result"
+    },
+    "keep": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "center": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "center of the box in the source splats' own coordinates; unit: m"
+          },
+          "size": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "edge lengths of the box; unit: m"
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "rotation of the box (quaternion xyzw)"
+          }
+        },
+        "required": [
+          "center",
+          "size"
+        ],
+        "additionalProperties": false
+      },
+      "description": "crop boxes: only splats inside one of them are kept; nothing is cropped when missing"
+    },
+    "remove": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "center": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "center of the box in the source splats' own coordinates; unit: m"
+          },
+          "size": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "edge lengths of the box; unit: m"
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "rotation of the box (quaternion xyzw)"
+          }
+        },
+        "required": [
+          "center",
+          "size"
+        ],
+        "additionalProperties": false
+      },
+      "description": "splats inside these boxes are removed"
+    },
+    "erase": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "center": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "center of the sphere in the source splats' own coordinates; unit: m"
+          },
+          "radius": {
+            "type": "number",
+            "minimum": 0,
+            "description": "radius of the sphere; unit: m"
+          }
+        },
+        "required": [
+          "center",
+          "radius"
+        ],
+        "additionalProperties": false
+      },
+      "description": "brush strokes: splats whose centers fall in these spheres are removed"
+    },
+    "floaters": {
+      "type": "object",
+      "properties": {
+        "cell": {
+          "type": "number",
+          "minimum": 0.01,
+          "description": "grid cell size for counting neighbors; unit: m",
+          "default": 0.25
+        },
+        "neighbors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000,
+          "description": "splats with fewer than this many others in their own and the 26 surrounding cells float alone and are removed",
+          "default": 4
+        },
+        "minOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "splats more transparent than this are removed (off by default: many faint ones together are the soft light on floors and walls)",
+          "default": 0
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "remove floaters: lone splats hanging in the air and nearly invisible ones; off when missing"
+    },
+    "color": {
+      "type": "object",
+      "properties": {
+        "exposure": {
+          "type": "number",
+          "description": "exposure compensation in stops; unit: EV",
+          "default": 0
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 2000,
+          "maximum": 25000,
+          "description": "color temperature of the light in the scan: that white becomes white; unit: K",
+          "default": 6500
+        },
+        "tint": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "magenta (+) or green (-) shift of that white",
+          "default": 0
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": 0,
+          "description": "saturation (0 is grey)",
+          "default": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "color adjustment of the scan (scans differ in exposure and white balance), in linear light"
+    },
+    "proxy": {
+      "type": "object",
+      "properties": {
+        "cell": {
+          "type": "number",
+          "minimum": 0.01,
+          "description": "voxel size; grows automatically for very large scans; unit: m",
+          "default": 0.1
+        },
+        "minOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "splats more transparent than this are left out",
+          "default": 0.3
+        },
+        "density": {
+          "type": "number",
+          "minimum": 0,
+          "description": "opacity a voxel collects before it counts as solid (one lone opaque splat is not a wall)",
+          "default": 1.5
+        },
+        "minIsland": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000,
+          "description": "connected solid pieces with fewer voxels are dropped (floaters)",
+          "default": 8
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "also generate a simplified proxy mesh (<name>.proxy model) for collision, shadows, ray tracing and sky occlusion: give it a model component with visibleInCamera off and a static mesh collider; not generated when missing"
+    }
+  },
+  "required": [
+    "name",
+    "source"
+  ],
+  "additionalProperties": false
+}

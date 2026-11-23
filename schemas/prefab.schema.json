@@ -1,0 +1,3417 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "prefab",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "unit: m"
+          },
+          "rotation": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "quaternion [x, y, z, w]"
+          },
+          "scale": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "id": {
+            "type": "string"
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "id of the parent entity; null at the root"
+          },
+          "prefab": {
+            "type": "object",
+            "description": "this entity is an instance of a prefab (reference and overrides)"
+          },
+          "components": {
+            "type": "object",
+            "properties": {
+              "model": {
+                "title": "Model",
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "description": "content path of a model asset (no extension)"
+                  },
+                  "materials": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "description": "content path of a material asset (no extension)"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "description": "one per material slot of the model; null keeps the model's own material; omitted keeps all of them",
+                    "default": []
+                  },
+                  "isShadowCaster": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "visibleInRayTracing": {
+                    "type": "boolean",
+                    "description": "part of the ray-traced scene (indirect light, ray-traced reflections, path tracing); turn off for small clutter like debris on the ground",
+                    "default": true
+                  },
+                  "visibleInCamera": {
+                    "type": "boolean",
+                    "description": "drawn in camera views; turn off to only cast shadows and be part of ray tracing and sky occlusion (the proxy mesh of a scan, whose picture is the splats)",
+                    "default": true
+                  },
+                  "renderGroup": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31,
+                    "default": 0
+                  }
+                },
+                "required": [
+                  "model"
+                ],
+                "additionalProperties": false
+              },
+              "camera": {
+                "title": "Camera",
+                "type": "object",
+                "properties": {
+                  "verticalFieldOfView": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 179,
+                    "description": "unit: deg"
+                  },
+                  "nearClipPlane": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m"
+                  },
+                  "farClipPlane": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m"
+                  },
+                  "slot": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0
+                  },
+                  "projection": {
+                    "enum": [
+                      "orthographic"
+                    ]
+                  },
+                  "orthographicSize": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m",
+                    "default": 10
+                  },
+                  "aspectRatio": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "frame width / height (2.39, 1.778, 0.5625); bars outside it; 0 fills the canvas",
+                    "default": 0
+                  },
+                  "physical": {
+                    "type": "object",
+                    "properties": {
+                      "sensor": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "sensor width and height; 36x24 is full frame; unit: mm",
+                        "default": [
+                          36,
+                          24
+                        ]
+                      },
+                      "focalLength": {
+                        "type": "number",
+                        "minimum": 1,
+                        "description": "replaces verticalFieldOfView; unit: mm",
+                        "default": 50
+                      },
+                      "aperture": {
+                        "type": "number",
+                        "minimum": 0.5,
+                        "description": "f-number; smaller is a shallower depth of field",
+                        "default": 2.8
+                      },
+                      "focusDistance": {
+                        "type": "number",
+                        "minimum": 0.01,
+                        "description": "unit: m",
+                        "default": 10
+                      },
+                      "shutterAngle": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 360,
+                        "description": "motion blur: 180 exposes half a frame; unit: deg",
+                        "default": 180
+                      },
+                      "exposureCompensation": {
+                        "type": "number",
+                        "description": "unit: EV",
+                        "default": 0
+                      },
+                      "depthOfField": {
+                        "type": "boolean",
+                        "description": "blur by aperture, focal length and focus distance (needs post effects)",
+                        "default": false
+                      }
+                    },
+                    "required": [],
+                    "additionalProperties": false,
+                    "description": "physical camera: focal length, aperture, focus, shutter, exposure (main view only)"
+                  }
+                },
+                "required": [
+                  "verticalFieldOfView",
+                  "nearClipPlane",
+                  "farClipPlane"
+                ],
+                "additionalProperties": false
+              },
+              "light": {
+                "title": "Light",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "directional"
+                        ]
+                      },
+                      "color": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "sRGB color, 0..1"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "shadow": {
+                        "type": "object",
+                        "properties": {
+                          "size": {
+                            "enum": [
+                              "xsmall",
+                              "small",
+                              "medium",
+                              "large",
+                              "xlarge"
+                            ]
+                          },
+                          "filter": {
+                            "enum": [
+                              "none",
+                              "pcf3x3",
+                              "pcf5x5",
+                              "pcf7x7",
+                              "pcss"
+                            ]
+                          },
+                          "cascadeCount": {
+                            "enum": [
+                              "one",
+                              "two",
+                              "four"
+                            ]
+                          },
+                          "depthBias": {
+                            "type": "number"
+                          },
+                          "normalOffsetScale": {
+                            "type": "number"
+                          },
+                          "stabilization": {
+                            "enum": [
+                              "none",
+                              "viewSnapping",
+                              "projectionSnapping"
+                            ]
+                          },
+                          "pssmFactor": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "depthRange": {
+                            "enum": [
+                              "automatic",
+                              "manual"
+                            ]
+                          },
+                          "minDistance": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "unit: m"
+                          },
+                          "maxDistance": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "unit: m"
+                          },
+                          "blendCascades": {
+                            "type": "boolean"
+                          },
+                          "lightAngle": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 20,
+                            "description": "unit: deg",
+                            "default": 0.53
+                          }
+                        },
+                        "required": [
+                          "size",
+                          "filter",
+                          "cascadeCount",
+                          "depthBias",
+                          "normalOffsetScale",
+                          "stabilization",
+                          "pssmFactor",
+                          "depthRange",
+                          "minDistance",
+                          "maxDistance",
+                          "blendCascades"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color",
+                      "intensity"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "ambient"
+                        ]
+                      },
+                      "color": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "sRGB color, 0..1"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "shadow": {
+                        "type": "object",
+                        "properties": {
+                          "size": {
+                            "enum": [
+                              "xsmall",
+                              "small",
+                              "medium",
+                              "large",
+                              "xlarge"
+                            ]
+                          },
+                          "filter": {
+                            "enum": [
+                              "none",
+                              "pcf3x3",
+                              "pcf5x5",
+                              "pcf7x7",
+                              "pcss"
+                            ]
+                          },
+                          "cascadeCount": {
+                            "enum": [
+                              "one",
+                              "two",
+                              "four"
+                            ]
+                          },
+                          "depthBias": {
+                            "type": "number"
+                          },
+                          "normalOffsetScale": {
+                            "type": "number"
+                          },
+                          "stabilization": {
+                            "enum": [
+                              "none",
+                              "viewSnapping",
+                              "projectionSnapping"
+                            ]
+                          },
+                          "pssmFactor": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                          },
+                          "depthRange": {
+                            "enum": [
+                              "automatic",
+                              "manual"
+                            ]
+                          },
+                          "minDistance": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "unit: m"
+                          },
+                          "maxDistance": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "unit: m"
+                          },
+                          "blendCascades": {
+                            "type": "boolean"
+                          },
+                          "lightAngle": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 20,
+                            "description": "unit: deg",
+                            "default": 0.53
+                          }
+                        },
+                        "required": [
+                          "size",
+                          "filter",
+                          "cascadeCount",
+                          "depthBias",
+                          "normalOffsetScale",
+                          "stabilization",
+                          "pssmFactor",
+                          "depthRange",
+                          "minDistance",
+                          "maxDistance",
+                          "blendCascades"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color",
+                      "intensity"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "skybox"
+                        ]
+                      },
+                      "skybox": {
+                        "type": "string",
+                        "description": "content path of a skybox asset (no extension)"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "skybox",
+                      "intensity"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "point"
+                        ]
+                      },
+                      "color": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "sRGB color, 0..1"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "radius": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "unit: m"
+                      },
+                      "shadow": {
+                        "type": "object",
+                        "properties": {
+                          "size": {
+                            "enum": [
+                              "xsmall",
+                              "small",
+                              "medium",
+                              "large",
+                              "xlarge"
+                            ]
+                          },
+                          "filter": {
+                            "enum": [
+                              "none",
+                              "pcf3x3",
+                              "pcf5x5",
+                              "pcf7x7",
+                              "pcss"
+                            ]
+                          },
+                          "depthBias": {
+                            "type": "number"
+                          },
+                          "normalOffsetScale": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "size",
+                          "filter",
+                          "depthBias",
+                          "normalOffsetScale"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "profile": {
+                        "type": "string",
+                        "description": "IES light profile: how strongly the fixture shines in each direction; 0° points along local -Z; content path of a lightProfile asset (no extension)"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color",
+                      "intensity",
+                      "radius"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "spot"
+                        ]
+                      },
+                      "color": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "sRGB color, 0..1"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "range": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "unit: m"
+                      },
+                      "angleInner": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 180,
+                        "description": "unit: deg"
+                      },
+                      "angleOuter": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 180,
+                        "description": "unit: deg"
+                      },
+                      "shadow": {
+                        "type": "object",
+                        "properties": {
+                          "size": {
+                            "enum": [
+                              "xsmall",
+                              "small",
+                              "medium",
+                              "large",
+                              "xlarge"
+                            ]
+                          },
+                          "filter": {
+                            "enum": [
+                              "none",
+                              "pcf3x3",
+                              "pcf5x5",
+                              "pcf7x7",
+                              "pcss"
+                            ]
+                          },
+                          "depthBias": {
+                            "type": "number"
+                          },
+                          "normalOffsetScale": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "size",
+                          "filter",
+                          "depthBias",
+                          "normalOffsetScale"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "profile": {
+                        "type": "string",
+                        "description": "IES light profile: how strongly the fixture shines in each direction; 0° points along local -Z; content path of a lightProfile asset (no extension)"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color",
+                      "intensity",
+                      "range",
+                      "angleInner",
+                      "angleOuter"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "rect"
+                        ]
+                      },
+                      "color": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "sRGB color, 0..1"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter"
+                      },
+                      "width": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "size along the local X axis; unit: m"
+                      },
+                      "height": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "size along the local Y axis; the light shines toward local -Z; unit: m"
+                      },
+                      "range": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "unit: m"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color",
+                      "intensity",
+                      "width",
+                      "height",
+                      "range"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "disc"
+                        ]
+                      },
+                      "color": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "sRGB color, 0..1"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter"
+                      },
+                      "diameter": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "the disc lies in the local XY plane and shines toward local -Z; unit: m"
+                      },
+                      "range": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "unit: m"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color",
+                      "intensity",
+                      "diameter",
+                      "range"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "tube"
+                        ]
+                      },
+                      "color": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "sRGB color, 0..1"
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter"
+                      },
+                      "length": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "along the local X axis; the tube shines all around; unit: m"
+                      },
+                      "range": {
+                        "type": "number",
+                        "minimum": 0,
+                        "description": "unit: m"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "color",
+                      "intensity",
+                      "length",
+                      "range"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "background": {
+                "title": "Background",
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "cubemap"
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "renderGroup": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 31,
+                        "default": 0
+                      },
+                      "texture": {
+                        "type": "string",
+                        "description": "content path of a cubemap asset (no extension)"
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "intensity",
+                      "texture"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "2d"
+                        ]
+                      },
+                      "intensity": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "renderGroup": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 31,
+                        "default": 0
+                      },
+                      "image": {
+                        "type": "object",
+                        "properties": {
+                          "texture": {
+                            "type": "string",
+                            "description": "content path of a image asset (no extension)"
+                          },
+                          "encoding": {
+                            "enum": [
+                              "ktx2",
+                              "svg",
+                              "png",
+                              "jpeg",
+                              "webp",
+                              "mp4",
+                              "webm"
+                            ],
+                            "default": "ktx2"
+                          },
+                          "size": {
+                            "type": "array",
+                            "items": {
+                              "type": "number"
+                            },
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "description": "unit: px"
+                          },
+                          "srgb": {
+                            "type": "boolean"
+                          },
+                          "invertY": {
+                            "type": "boolean",
+                            "default": false
+                          }
+                        },
+                        "required": [
+                          "texture"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "intensity",
+                      "image"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "reflectionProbe": {
+                "title": "Reflection probe",
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "unit: m"
+                  },
+                  "blendDistance": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m",
+                    "default": 1
+                  },
+                  "boxProjection": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "intensity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "refresh": {
+                    "enum": [
+                      "once",
+                      "everyFrame"
+                    ],
+                    "default": "once"
+                  }
+                },
+                "required": [
+                  "size"
+                ],
+                "additionalProperties": false
+              },
+              "planarReflection": {
+                "title": "Planar reflection",
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "box (around the entity, turning with it) whose surfaces facing the plane normal (local +Y) reflect; unit: m"
+                  },
+                  "resolution": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "maximum": 1,
+                    "description": "resolution of the mirrored image relative to the main view",
+                    "default": 0.5
+                  },
+                  "distortion": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "how much normals that tilt away from the plane bend the reflection",
+                    "default": 0.02
+                  },
+                  "intensity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  }
+                },
+                "required": [
+                  "size"
+                ],
+                "additionalProperties": false
+              },
+              "irradianceVolume": {
+                "title": "Irradiance volume",
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "box (around the entity, along the world axes) filled with ray traced probes; surfaces inside get their diffuse ambient light from them; unit: m"
+                  },
+                  "spacing": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "description": "distance between probes; unit: m",
+                    "default": 1
+                  },
+                  "rays": {
+                    "type": "integer",
+                    "minimum": 16,
+                    "maximum": 256,
+                    "description": "rays per probe per update",
+                    "default": 128
+                  },
+                  "hysteresis": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 0.999,
+                    "description": "share of the old value kept per update (higher is steadier, slower to follow changes)",
+                    "default": 0.97
+                  },
+                  "intensity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "budget": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "description": "GPU time per frame for the probes; rays per frame follow the measured time; unit: ms",
+                    "default": 1.5
+                  },
+                  "followCamera": {
+                    "type": "boolean",
+                    "description": "the box follows the main camera (large worlds) instead of staying at the entity",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "size"
+                ],
+                "additionalProperties": false
+              },
+              "gaussianSplat": {
+                "title": "Gaussian splats",
+                "type": "object",
+                "properties": {
+                  "splats": {
+                    "type": "string",
+                    "description": "splat asset (.splat, imported from a 3D Gaussian Splatting .ply, .spz or .sog); content path of a splats asset (no extension)"
+                  }
+                },
+                "required": [
+                  "splats"
+                ],
+                "additionalProperties": false
+              },
+              "terrain": {
+                "title": "Terrain",
+                "type": "object",
+                "properties": {
+                  "terrain": {
+                    "type": "string",
+                    "description": "vector terrain asset (.terrain.json): noise base, flatten features and sculpt strokes, evaluated at run time; content path of a terrain asset (no extension)"
+                  },
+                  "size": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "edge length of the square the terrain covers, centered on the entity; unit: m",
+                    "default": 4096
+                  },
+                  "detail": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "edge of the finest tile (32 × 32 cells): 32 is one vertex per meter near the camera; unit: m",
+                    "default": 32
+                  },
+                  "lodFactor": {
+                    "type": "number",
+                    "minimum": 0.5,
+                    "description": "tiles closer than this many tile edges split into finer ones: larger is finer and more triangles",
+                    "default": 2
+                  },
+                  "isShadowCaster": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "renderGroup": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31,
+                    "default": 0
+                  }
+                },
+                "required": [
+                  "terrain"
+                ],
+                "additionalProperties": false
+              },
+              "scatter": {
+                "title": "Scatter",
+                "type": "object",
+                "properties": {
+                  "scatter": {
+                    "type": "string",
+                    "description": "placement rules (.scatter.json): models scattered on the terrain of this entity by density, slope, height and clumps, around the camera; content path of a scatter asset (no extension)"
+                  }
+                },
+                "required": [
+                  "scatter"
+                ],
+                "additionalProperties": false
+              },
+              "city": {
+                "title": "City",
+                "type": "object",
+                "properties": {
+                  "city": {
+                    "type": "string",
+                    "description": "city rules (.city.json): buildings placed along its roads, as children of this entity; content path of a city asset (no extension)"
+                  }
+                },
+                "required": [
+                  "city"
+                ],
+                "additionalProperties": false
+              },
+              "water": {
+                "title": "Water",
+                "type": "object",
+                "properties": {
+                  "water": {
+                    "type": "string",
+                    "description": "water body (.water.json): a lake inside its shoreline or the open sea; the entity position is the water surface; content path of a water asset (no extension)"
+                  }
+                },
+                "required": [
+                  "water"
+                ],
+                "additionalProperties": false
+              },
+              "buoyancy": {
+                "title": "Buoyancy",
+                "type": "object",
+                "properties": {
+                  "buoyancy": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "buoyancy factor: 1 is as heavy as water (hovers), above 1 floats",
+                    "default": 1.2
+                  },
+                  "linearDrag": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "water drag on the motion",
+                    "default": 0.5
+                  },
+                  "angularDrag": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "water drag on the rotation",
+                    "default": 0.05
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "cameraRig": {
+                "title": "Camera rig",
+                "type": "object",
+                "properties": {
+                  "follow": {
+                    "type": "string",
+                    "description": "entity to follow; unset keeps the position; id of an entity in the same scene"
+                  },
+                  "offset": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "unit: m",
+                    "default": [
+                      0,
+                      2,
+                      6
+                    ]
+                  },
+                  "followDamping": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "half-life of the smoothing; 0 snaps; unit: s",
+                    "default": 0.2
+                  },
+                  "lookAt": {
+                    "type": "string",
+                    "description": "entity to look at; unset keeps the rotation; id of an entity in the same scene"
+                  },
+                  "lookOffset": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "unit: m",
+                    "default": [
+                      0,
+                      1,
+                      0
+                    ]
+                  },
+                  "lookDamping": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "half-life of the smoothing; 0 snaps; unit: s",
+                    "default": 0.05
+                  },
+                  "shakeRotation": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "handheld shake; unit: deg",
+                    "default": 0
+                  },
+                  "shakePosition": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m",
+                    "default": 0
+                  },
+                  "shakeFrequency": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: Hz",
+                    "default": 1
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "skyAtmosphere": {
+                "title": "Sky atmosphere",
+                "type": "object",
+                "properties": {
+                  "planetRadius": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "unit: km",
+                    "default": 6360
+                  },
+                  "atmosphereHeight": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "description": "unit: km",
+                    "default": 100
+                  },
+                  "rayleighScattering": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "unit: 1/km",
+                    "default": [
+                      0.005802,
+                      0.013558,
+                      0.0331
+                    ]
+                  },
+                  "mieScattering": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: 1/km",
+                    "default": 0.003996
+                  },
+                  "mieAbsorption": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: 1/km",
+                    "default": 0.000444
+                  },
+                  "miePhaseG": {
+                    "type": "number",
+                    "minimum": -0.99,
+                    "maximum": 0.99,
+                    "default": 0.8
+                  },
+                  "ozoneAbsorption": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "unit: 1/km",
+                    "default": [
+                      0.00065,
+                      0.001881,
+                      0.000085
+                    ]
+                  },
+                  "groundAlbedo": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "default": [
+                      0.3,
+                      0.3,
+                      0.3
+                    ]
+                  },
+                  "skyIntensity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "aerialPerspectiveScale": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "sun": {
+                    "type": "string",
+                    "description": "entity with the directional light of the sun; unset uses the shadow-casting directional light; id of an entity in the same scene"
+                  },
+                  "moon": {
+                    "type": "string",
+                    "description": "entity with the directional light of the moon (its color and intensity are those of the full moon); id of an entity in the same scene"
+                  },
+                  "moonDiskIntensity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "starsIntensity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "volumetricClouds": {
+                "title": "Volumetric clouds",
+                "type": "object",
+                "properties": {
+                  "coverage": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5
+                  },
+                  "density": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "bottom": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m",
+                    "default": 1500
+                  },
+                  "thickness": {
+                    "type": "number",
+                    "minimum": 10,
+                    "description": "unit: m",
+                    "default": 2500
+                  },
+                  "cloudType": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "0 stratus, 0.5 stratocumulus, 1 cumulus",
+                    "default": 0.7
+                  },
+                  "scale": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "default": 1
+                  },
+                  "windSpeed": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m/s",
+                    "default": 10
+                  },
+                  "windDirection": {
+                    "type": "number",
+                    "description": "where the wind blows to, around Y: 0 is +Z, 90 is +X; unit: deg",
+                    "default": 0
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "volumetricFog": {
+                "title": "Volumetric fog",
+                "type": "object",
+                "properties": {
+                  "density": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "extinction per meter at the base height; unit: 1/m",
+                    "default": 0.02
+                  },
+                  "heightFalloff": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: 1/m",
+                    "default": 0.1
+                  },
+                  "baseHeight": {
+                    "type": "number",
+                    "description": "unit: m",
+                    "default": 0
+                  },
+                  "color": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "default": [
+                      1,
+                      1,
+                      1
+                    ]
+                  },
+                  "anisotropy": {
+                    "type": "number",
+                    "minimum": -0.9,
+                    "maximum": 0.9,
+                    "default": 0.6
+                  },
+                  "distance": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "unit: m",
+                    "default": 120
+                  },
+                  "ambient": {
+                    "type": "number",
+                    "minimum": 0,
+                    "default": 1
+                  },
+                  "noise": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "clumps that drift with the wind",
+                    "default": 0
+                  },
+                  "noiseScale": {
+                    "type": "number",
+                    "minimum": 0.1,
+                    "description": "unit: m",
+                    "default": 8
+                  },
+                  "farFog": {
+                    "type": "boolean",
+                    "description": "analytic height fog beyond distance",
+                    "default": true
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "dayNightCycle": {
+                "title": "Day-night cycle",
+                "type": "object",
+                "properties": {
+                  "timeOfDay": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 24,
+                    "description": "unit: h",
+                    "default": 12
+                  },
+                  "dayLength": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "game seconds per day; 0 keeps the time still; unit: s",
+                    "default": 0
+                  },
+                  "dayOfYear": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 365,
+                    "default": 80
+                  },
+                  "latitude": {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90,
+                    "description": "unit: deg",
+                    "default": 35
+                  },
+                  "north": {
+                    "type": "number",
+                    "description": "unit: deg",
+                    "default": 0
+                  },
+                  "moonPhase": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "0 new moon, 0.5 full moon",
+                    "default": 0.5
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "windZone": {
+                "title": "Wind zone",
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "directional",
+                      "spherical"
+                    ],
+                    "description": "directional blows everywhere along the entity's -Z; spherical blows outward within the radius",
+                    "default": "directional"
+                  },
+                  "strength": {
+                    "type": "number",
+                    "description": "unit: m/s",
+                    "default": 3
+                  },
+                  "turbulence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m/s",
+                    "default": 0.5
+                  },
+                  "pulseMagnitude": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "gusts swing the strength by 1 ± this",
+                    "default": 0.5
+                  },
+                  "pulseFrequency": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: Hz",
+                    "default": 0.2
+                  },
+                  "radius": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m",
+                    "default": 10
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "precipitation": {
+                "title": "Precipitation",
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "rain",
+                      "snow"
+                    ],
+                    "default": "rain"
+                  },
+                  "intensity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "set by the weather; 0 stops it",
+                    "default": 1
+                  },
+                  "radius": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "half size of the volume around the camera; unit: m",
+                    "default": 20
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "how far above the camera it starts falling; unit: m",
+                    "default": 12
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "decal": {
+                "title": "Decal",
+                "type": "object",
+                "properties": {
+                  "size": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "box size in meters; projects along the entity's -Y",
+                    "default": [
+                      2,
+                      2,
+                      2
+                    ]
+                  },
+                  "albedo": {
+                    "type": "object",
+                    "properties": {
+                      "texture": {
+                        "type": "string",
+                        "description": "content path of a image asset (no extension)"
+                      },
+                      "encoding": {
+                        "enum": [
+                          "ktx2",
+                          "svg",
+                          "png",
+                          "jpeg",
+                          "webp",
+                          "mp4",
+                          "webm"
+                        ],
+                        "default": "ktx2"
+                      },
+                      "size": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "unit: px"
+                      },
+                      "srgb": {
+                        "type": "boolean"
+                      },
+                      "invertY": {
+                        "type": "boolean",
+                        "default": false
+                      }
+                    },
+                    "required": [
+                      "texture"
+                    ],
+                    "additionalProperties": false,
+                    "description": "color texture (sRGB); its alpha masks the decal"
+                  },
+                  "normal": {
+                    "type": "object",
+                    "properties": {
+                      "texture": {
+                        "type": "string",
+                        "description": "content path of a image asset (no extension)"
+                      },
+                      "encoding": {
+                        "enum": [
+                          "ktx2",
+                          "svg",
+                          "png",
+                          "jpeg",
+                          "webp",
+                          "mp4",
+                          "webm"
+                        ],
+                        "default": "ktx2"
+                      },
+                      "size": {
+                        "type": "array",
+                        "items": {
+                          "type": "number"
+                        },
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "unit: px"
+                      },
+                      "srgb": {
+                        "type": "boolean"
+                      },
+                      "invertY": {
+                        "type": "boolean",
+                        "default": false
+                      }
+                    },
+                    "required": [
+                      "texture"
+                    ],
+                    "additionalProperties": false,
+                    "description": "tangent-space normal map (green up)"
+                  },
+                  "color": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "default": [
+                      1,
+                      1,
+                      1
+                    ]
+                  },
+                  "opacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 1
+                  },
+                  "albedoMix": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "how much of the color is replaced; 0 keeps only the normal",
+                    "default": 1
+                  },
+                  "normalFade": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "fade surfaces that face away from the projection",
+                    "default": 0.3
+                  },
+                  "upperFade": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.3
+                  },
+                  "lowerFade": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.3
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "weather": {
+                "title": "Weather",
+                "type": "object",
+                "properties": {
+                  "cloudCoverage": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.3
+                  },
+                  "cloudType": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "0 layered stratus, 1 towering cumulonimbus",
+                    "default": 0.7
+                  },
+                  "precipitation": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "rain or snow (by temperature); 1 is a downpour",
+                    "default": 0
+                  },
+                  "temperature": {
+                    "type": "number",
+                    "description": "below 1 °C it snows; unit: °C",
+                    "default": 15
+                  },
+                  "fog": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0
+                  },
+                  "windSpeed": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "unit: m/s",
+                    "default": 3
+                  },
+                  "windDirection": {
+                    "type": "number",
+                    "description": "where the wind blows to, around Y: 0 is +Z, 90 is +X; unit: deg",
+                    "default": 0
+                  },
+                  "gustiness": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.3
+                  },
+                  "transitionTime": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "how fast the current weather follows; 0 changes at once; unit: s",
+                    "default": 30
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "streamingSource": {
+                "title": "Streaming Source",
+                "type": "object",
+                "properties": {
+                  "radiusScale": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "world cells load within each layer's radius times this (the main camera always streams with 1)",
+                    "default": 1
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
+              "sprite": {
+                "title": "Sprite",
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "renderGroup": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31,
+                    "default": 0
+                  },
+                  "type": {
+                    "enum": [
+                      "sprite",
+                      "billboard"
+                    ]
+                  },
+                  "color": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "description": "linear color with alpha, 0..1"
+                  },
+                  "intensity": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "isTransparent": {
+                    "type": "boolean"
+                  },
+                  "premultipliedAlpha": {
+                    "type": "boolean"
+                  },
+                  "ignoreDepth": {
+                    "type": "boolean"
+                  },
+                  "isAlphaCutoff": {
+                    "type": "boolean"
+                  },
+                  "blendMode": {
+                    "enum": [
+                      "auto",
+                      "none",
+                      "alphaBlend",
+                      "additiveBlend",
+                      "noColor"
+                    ]
+                  },
+                  "sampler": {
+                    "enum": [
+                      "linearClamp",
+                      "pointClamp",
+                      "anisotropicClamp"
+                    ]
+                  },
+                  "sheet": {
+                    "type": "string",
+                    "description": "content path of a spriteSheet asset (no extension)"
+                  },
+                  "frame": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "texture": {
+                    "description": "a texture file ({ texture, encoding }) or a render texture ({ renderTexture, width, height, hdr, srgb })"
+                  },
+                  "pixelsPerUnit": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "center": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "unit: px"
+                  },
+                  "centerFromMiddle": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "type",
+                  "color",
+                  "intensity",
+                  "isTransparent",
+                  "premultipliedAlpha",
+                  "ignoreDepth",
+                  "isAlphaCutoff",
+                  "blendMode",
+                  "sampler"
+                ],
+                "additionalProperties": false
+              },
+              "animation": {
+                "title": "Animation",
+                "type": "object",
+                "properties": {
+                  "animations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "clip": {
+                          "type": "string",
+                          "description": "content path of a animation asset (no extension)"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "clip"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "animations"
+                ],
+                "additionalProperties": false
+              },
+              "static": {
+                "title": "Static collider",
+                "type": "object",
+                "properties": {
+                  "shapes": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "box"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "size": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "size"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "empty"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "sphere"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "capsule"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            },
+                            "length": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius",
+                            "length"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "cylinder"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            },
+                            "length": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius",
+                            "length"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "mesh"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "model": {
+                              "type": "string",
+                              "description": "content path of a model asset (no extension)"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "model"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "convexHull"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "model": {
+                              "type": "string",
+                              "description": "content path of a model asset (no extension)"
+                            },
+                            "hull": {
+                              "type": "object",
+                              "properties": {
+                                "scale": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 3,
+                                  "maxItems": 3
+                                },
+                                "rotation": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 4,
+                                  "maxItems": 4,
+                                  "description": "quaternion [x, y, z, w]"
+                                },
+                                "offset": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 3,
+                                  "maxItems": 3,
+                                  "description": "unit: m"
+                                }
+                              },
+                              "required": [
+                                "scale",
+                                "rotation",
+                                "offset"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "model",
+                            "hull"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "absoluteSize": {
+                    "type": "boolean",
+                    "description": "shape sizes are world units and ignore the entity scale (Stride rule, imported content); off: shapes scale with the entity",
+                    "default": false
+                  },
+                  "layer": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31
+                  },
+                  "friction": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "trigger": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "shapes",
+                  "layer",
+                  "friction"
+                ],
+                "additionalProperties": false
+              },
+              "body": {
+                "title": "Body",
+                "type": "object",
+                "properties": {
+                  "shapes": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "box"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "size": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "size"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "empty"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "sphere"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "capsule"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            },
+                            "length": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius",
+                            "length"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "cylinder"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            },
+                            "length": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius",
+                            "length"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "mesh"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "model": {
+                              "type": "string",
+                              "description": "content path of a model asset (no extension)"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "model"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "convexHull"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "model": {
+                              "type": "string",
+                              "description": "content path of a model asset (no extension)"
+                            },
+                            "hull": {
+                              "type": "object",
+                              "properties": {
+                                "scale": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 3,
+                                  "maxItems": 3
+                                },
+                                "rotation": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 4,
+                                  "maxItems": 4,
+                                  "description": "quaternion [x, y, z, w]"
+                                },
+                                "offset": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 3,
+                                  "maxItems": 3,
+                                  "description": "unit: m"
+                                }
+                              },
+                              "required": [
+                                "scale",
+                                "rotation",
+                                "offset"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "model",
+                            "hull"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "absoluteSize": {
+                    "type": "boolean",
+                    "description": "shape sizes are world units and ignore the entity scale (Stride rule, imported content); off: shapes scale with the entity",
+                    "default": false
+                  },
+                  "layer": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31
+                  },
+                  "friction": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "trigger": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "kinematic": {
+                    "type": "boolean"
+                  },
+                  "gravity": {
+                    "type": "boolean"
+                  },
+                  "sleepThreshold": {
+                    "type": "number"
+                  },
+                  "interpolated": {
+                    "type": "boolean"
+                  },
+                  "continuous": {
+                    "type": "boolean",
+                    "description": "continuous collision detection: sweeps the motion of each step so fast small bodies (bullets, debris) do not pass through thin walls; costs more",
+                    "default": false
+                  }
+                },
+                "required": [
+                  "shapes",
+                  "layer",
+                  "friction",
+                  "kinematic",
+                  "gravity",
+                  "sleepThreshold",
+                  "interpolated"
+                ],
+                "additionalProperties": false
+              },
+              "character": {
+                "title": "Character",
+                "type": "object",
+                "properties": {
+                  "shapes": {
+                    "type": "array",
+                    "items": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "box"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "size": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "size"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "empty"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "sphere"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "capsule"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            },
+                            "length": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius",
+                            "length"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "cylinder"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            },
+                            "length": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: m"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "radius",
+                            "length"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "mesh"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "model": {
+                              "type": "string",
+                              "description": "content path of a model asset (no extension)"
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "model"
+                          ],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "enum": [
+                                "convexHull"
+                              ]
+                            },
+                            "position": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "description": "unit: m"
+                            },
+                            "rotation": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "minItems": 4,
+                              "maxItems": 4,
+                              "description": "quaternion [x, y, z, w]"
+                            },
+                            "mass": {
+                              "type": "number",
+                              "minimum": 0,
+                              "description": "unit: kg"
+                            },
+                            "model": {
+                              "type": "string",
+                              "description": "content path of a model asset (no extension)"
+                            },
+                            "hull": {
+                              "type": "object",
+                              "properties": {
+                                "scale": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 3,
+                                  "maxItems": 3
+                                },
+                                "rotation": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 4,
+                                  "maxItems": 4,
+                                  "description": "quaternion [x, y, z, w]"
+                                },
+                                "offset": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "minItems": 3,
+                                  "maxItems": 3,
+                                  "description": "unit: m"
+                                }
+                              },
+                              "required": [
+                                "scale",
+                                "rotation",
+                                "offset"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "type",
+                            "position",
+                            "rotation",
+                            "mass",
+                            "model",
+                            "hull"
+                          ],
+                          "additionalProperties": false
+                        }
+                      ]
+                    }
+                  },
+                  "absoluteSize": {
+                    "type": "boolean",
+                    "description": "shape sizes are world units and ignore the entity scale (Stride rule, imported content); off: shapes scale with the entity",
+                    "default": false
+                  },
+                  "layer": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31
+                  },
+                  "friction": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "trigger": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "speed": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "jumpForce": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "maximumHorizontalForce": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "maximumVerticalForce": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "slopeAngle": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 90,
+                    "description": "unit: deg"
+                  },
+                  "airControlForceScale": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "airControlScale": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "gravity": {
+                    "type": "boolean"
+                  },
+                  "interpolated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "shapes",
+                  "layer",
+                  "friction",
+                  "speed",
+                  "jumpForce",
+                  "maximumHorizontalForce",
+                  "maximumVerticalForce",
+                  "slopeAngle",
+                  "airControlForceScale",
+                  "airControlScale",
+                  "gravity",
+                  "interpolated"
+                ],
+                "additionalProperties": false
+              },
+              "constraints": {
+                "type": "array"
+              },
+              "particleSystem": {
+                "title": "Particle system"
+              },
+              "ui": {
+                "title": "UI",
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "content path of a ui asset (no extension)"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "content path of a ui asset (no extension)"
+                  },
+                  "resolution": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "unit: px"
+                  },
+                  "size": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "unit: m"
+                  },
+                  "resolutionStretch": {
+                    "enum": [
+                      "fixedWidthFixedHeight",
+                      "fixedWidthAdaptableHeight",
+                      "fixedHeightAdaptableWidth"
+                    ]
+                  },
+                  "renderGroup": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 31,
+                    "default": 0
+                  },
+                  "isFullScreen": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "isBillboard": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "isFixedSize": {
+                    "type": "boolean",
+                    "default": false
+                  },
+                  "snapText": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "sampler": {
+                    "enum": [
+                      "linearClamp",
+                      "pointClamp",
+                      "anisotropicClamp"
+                    ],
+                    "default": "linearClamp"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "default": true
+                  }
+                },
+                "required": [
+                  "page",
+                  "resolution",
+                  "size",
+                  "resolutionStretch"
+                ],
+                "additionalProperties": false
+              },
+              "instancing": {
+                "title": "Instancing",
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              },
+              "instance": {
+                "title": "Instance",
+                "type": "object",
+                "properties": {
+                  "master": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "id of an entity in the same scene"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "id of an entity in the same scene"
+                  }
+                },
+                "required": [
+                  "master"
+                ],
+                "additionalProperties": false
+              },
+              "nodeLink": {
+                "title": "Model node link",
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "id of an entity in the same scene"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "null links to the parent entity; id of an entity in the same scene"
+                  },
+                  "nodeName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target",
+                  "nodeName"
+                ],
+                "additionalProperties": false
+              },
+              "uiElementLink": {
+                "title": "UI element link",
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "id of an entity in the same scene"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "id of an entity in the same scene"
+                  },
+                  "camera": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "description": "id of an entity in the same scene"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "id of an entity in the same scene"
+                  },
+                  "nodeName": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target",
+                  "camera",
+                  "nodeName"
+                ],
+                "additionalProperties": false
+              },
+              "scripts": {
+                "type": "array"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "parent",
+          "position",
+          "rotation",
+          "scale",
+          "components"
+        ],
+        "additionalProperties": false
+      },
+      "description": "parents come before their children"
+    }
+  },
+  "required": [
+    "name",
+    "entities"
+  ],
+  "additionalProperties": false
+}

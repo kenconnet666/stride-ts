@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sign asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string",
+      "description": "the text on the face; line breaks start new lines"
+    },
+    "font": {
+      "type": "string",
+      "description": "font of the text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese); content path of a font asset (no extension)"
+    },
+    "size": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "width, height, depth (floor stickers: width and length, the length along the top of the texture); unit: m"
+    },
+    "style": {
+      "enum": [
+        "lightbox",
+        "panel",
+        "floor",
+        "banner",
+        "stand"
+      ],
+      "description": "lightbox: the face glows (lit from inside); panel: it does not; floor: a floor sticker, only a transparent SVG of the same name, put on the floor with a decal; banner: a promo flag hanging from the ceiling (printed on both sides, a rod and two cords on top); stand: a price card on a pole with a round base by a floor stack (origin on the floor)",
+      "default": "lightbox"
+    },
+    "hang": {
+      "type": "number",
+      "minimum": 0,
+      "description": "length of the cords of a banner (m)",
+      "default": 0.5
+    },
+    "standHeight": {
+      "type": "number",
+      "minimum": 0.2,
+      "description": "height from the floor to the top of a stand card (m)",
+      "default": 1.2
+    },
+    "shape": {
+      "enum": [
+        "rect",
+        "round",
+        "arrow"
+      ],
+      "description": "floor sticker shape: rounded rectangle, round badge, arrow (pointing to the top of the texture; turn the entity to aim it)",
+      "default": "rect"
+    },
+    "wear": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "how worn a floor sticker is (0..1): scratches and scuffed patches from the seed",
+      "default": 0
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed of the wear",
+      "default": 1
+    },
+    "doubleSided": {
+      "type": "boolean",
+      "description": "a face on the back too (signs hanging over an aisle)",
+      "default": false
+    },
+    "colors": {
+      "type": "object",
+      "properties": {
+        "background": {
+          "type": "string",
+          "description": "face color (sRGB #rrggbb, green when missing)"
+        },
+        "text": {
+          "type": "string",
+          "description": "text color (sRGB #rrggbb, white when missing)"
+        },
+        "frame": {
+          "type": "string",
+          "description": "frame color (sRGB #rrggbb, brushed grey when missing; the outline of a floor sticker, white when missing)"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "colors of the face, the text and the frame"
+    },
+    "brightness": {
+      "type": "number",
+      "minimum": 0,
+      "description": "emissive strength of a lightbox face",
+      "default": 3
+    }
+  },
+  "required": [
+    "name",
+    "text",
+    "font",
+    "size"
+  ],
+  "additionalProperties": false
+}

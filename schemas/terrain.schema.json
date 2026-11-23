@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "terrain asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "noise": {
+      "type": "object",
+      "properties": {
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295,
+          "description": "random seed: another number is another landscape",
+          "default": 0
+        },
+        "octaves": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "description": "noise layers: more is finer detail and slower",
+          "default": 6
+        },
+        "scale": {
+          "type": "number",
+          "minimum": 1,
+          "description": "wavelength of the largest hills; unit: m",
+          "default": 1000
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "description": "how high the hills go (amplitude); unit: m",
+          "default": 200
+        },
+        "offset": {
+          "type": "number",
+          "description": "raises the whole terrain; unit: m",
+          "default": 0
+        },
+        "lacunarity": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 4,
+          "description": "frequency multiplier from one layer to the next",
+          "default": 2
+        },
+        "gain": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "amplitude multiplier from one layer to the next",
+          "default": 0.5
+        },
+        "ridged": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "how much of sharp ridges to mix in",
+          "default": 0
+        },
+        "warp": {
+          "type": "number",
+          "minimum": 0,
+          "description": "domain warp: bends the noise so hills look less regular; unit: m",
+          "default": 0
+        },
+        "erosion": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "damps detail on steep slopes (smooth slopes, detailed valleys), like erosion",
+          "default": 0
+        },
+        "gullies": {
+          "type": "object",
+          "properties": {
+            "strength": {
+              "type": "number",
+              "minimum": 0,
+              "description": "how deep the gullies are; unit: m",
+              "default": 20
+            },
+            "scale": {
+              "type": "number",
+              "minimum": 1,
+              "description": "spacing of the coarsest gullies; each layer halves it; unit: m",
+              "default": 400
+            },
+            "octaves": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 8,
+              "description": "gully layers: finer gullies branch off the coarser ones",
+              "default": 4
+            },
+            "detail": {
+              "type": "number",
+              "minimum": 0.05,
+              "maximum": 8,
+              "description": "lower keeps fine gullies to steep slopes only",
+              "default": 1.5
+            },
+            "valley": {
+              "type": "number",
+              "description": "height of the valley floors: below it gentle slopes fade into valleys; unit: m",
+              "default": 0
+            },
+            "peak": {
+              "type": "number",
+              "description": "height of the peaks: above it gentle slopes fade into sharp tops; unit: m",
+              "default": 300
+            }
+          },
+          "required": [],
+          "additionalProperties": false,
+          "description": "erosion gullies carved into the noise (branching, evaluated per point without simulation); unset has none"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "splines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "spline": {
+            "type": "string",
+            "description": "the spline the ground follows (its coordinates are the terrain's local ones); content path of a spline asset (no extension)"
+          },
+          "position": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "moves the spline by this much first; unit: m",
+            "default": [
+              0,
+              0,
+              0
+            ]
+          },
+          "width": {
+            "type": "number",
+            "minimum": 0.1,
+            "description": "width flattened along the path; unset follows the cross-section (a road is its surface plus shoulders); unit: m"
+          },
+          "offset": {
+            "type": "number",
+            "description": "ground height relative to the path (slightly below a road surface); unit: m",
+            "default": -0.1
+          },
+          "falloff": {
+            "type": "number",
+            "minimum": 0,
+            "description": "blends back to the ground over this many meters beyond the width; unit: m",
+            "default": 10
+          },
+          "strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "0..1: how fully the ground follows",
+            "default": 1
+          },
+          "mode": {
+            "enum": [
+              "conform",
+              "carve",
+              "fill"
+            ],
+            "description": "conform cuts and fills, carve only cuts (cuttings, river beds), fill only raises (embankments)",
+            "default": "conform"
+          }
+        },
+        "required": [
+          "spline"
+        ],
+        "additionalProperties": false
+      },
+      "description": "roads, rail beds and rivers the ground follows: flattened along each spline after the features, before the strokes"
+    },
+    "material": {
+      "anyOf": [
+        {
+          "type": "string",
+          "description": "content path of a material asset (no extension)"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "material of the ground; unset uses the default material; content path of a material asset (no extension)"
+    },
+    "uvScale": {
+      "type": "number",
+      "minimum": 0.01,
+      "description": "automatic UVs: one texture repeat per this many meters; unit: m",
+      "default": 4
+    },
+    "features": {
+      "description": "vector features: { type: 'flatten', points: [[x, z], …], height, falloff, strength } flattens a polygon (roads, plazas, foundations)"
+    },
+    "strokes": {
+      "description": "sculpt strokes in order: { op: 'raise' | 'lower' | 'flatten' | 'smooth', x, z, radius, strength, height }"
+    }
+  },
+  "required": [
+    "name",
+    "noise"
+  ],
+  "additionalProperties": false
+}

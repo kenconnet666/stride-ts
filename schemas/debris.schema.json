@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "debris asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "area": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "width (X) and depth (Z) of the patch of ground, centered on the origin; unit: m"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "what lies around (pebbles: nut or tuber in grey, leaves, cigarette butts: small cans); content path of a product asset (no extension)"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5000,
+            "description": "how many"
+          },
+          "variants": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "description": "color or brand variants of it",
+            "default": 3
+          }
+        },
+        "required": [
+          "product",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "description": "items dropped on the ground; physics lays them down and the result is baked into one model"
+    },
+    "edges": {
+      "type": "object",
+      "properties": {
+        "sides": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "back",
+              "front",
+              "left",
+              "right"
+            ]
+          },
+          "description": "edges where debris gathers (back is -Z, left is -X)"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0,
+          "description": "how far in from those edges it gathers; unit: m",
+          "default": 0.4
+        },
+        "share": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "share of the items that gather by the edges (denser closer in); the rest is spread over the whole patch",
+          "default": 0.7
+        }
+      },
+      "required": [
+        "sides"
+      ],
+      "additionalProperties": false,
+      "description": "debris piles up along walls and railings; spread evenly when missing"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed of the layout",
+      "default": 1
+    }
+  },
+  "required": [
+    "name",
+    "area",
+    "items"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tree asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "content path of a material asset (no extension)"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "material slots: bark, leaves (leaves use a leaf-cluster texture with alpha cutoff, double-sided)"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed: another number grows another tree of the same kind",
+      "default": 1
+    },
+    "shape": {
+      "enum": [
+        "deciduous",
+        "conifer"
+      ],
+      "description": "conifer: the trunk runs to the top and side branches get shorter upward",
+      "default": "deciduous"
+    },
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "length": {
+            "type": "number",
+            "minimum": 0.01,
+            "description": "length of the branches of this level; unit: m"
+          },
+          "radius": {
+            "type": "number",
+            "minimum": 0.001,
+            "description": "trunk: radius in meters; branches: times the radius of the parent where they grow"
+          },
+          "children": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 64,
+            "description": "branches of the next level growing on each branch of this level"
+          },
+          "angle": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 180,
+            "description": "angle to the parent branch; unit: °",
+            "default": 45
+          },
+          "start": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "where along the parent they start growing (0..1)",
+            "default": 0.3
+          },
+          "gnarliness": {
+            "type": "number",
+            "minimum": 0,
+            "description": "random bending at each section; thinner branches bend more",
+            "default": 0.1
+          },
+          "taper": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "how much thinner the tip is than the base (0..1)",
+            "default": 0.7
+          },
+          "twist": {
+            "type": "number",
+            "description": "twist per section around the branch axis (radians)",
+            "default": 0
+          },
+          "sections": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64,
+            "description": "sections along the length",
+            "default": 8
+          },
+          "segments": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 32,
+            "description": "segments around the branch",
+            "default": 6
+          }
+        },
+        "required": [
+          "length",
+          "radius"
+        ],
+        "additionalProperties": false
+      },
+      "description": "branch levels: the first is the trunk, each grows the next one (at most 4)"
+    },
+    "leaves": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 200,
+          "description": "leaf cards on each branch of the last level"
+        },
+        "size": {
+          "type": "number",
+          "minimum": 0.01,
+          "description": "size of a leaf card; unit: m"
+        },
+        "sizeVariance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "random variation of the size (0..1)",
+          "default": 0.3
+        },
+        "angle": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180,
+          "description": "angle to the branch; unit: °",
+          "default": 40
+        },
+        "start": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "where along the branch the leaves start (0..1)",
+          "default": 0
+        }
+      },
+      "required": [
+        "count",
+        "size"
+      ],
+      "additionalProperties": false,
+      "description": "leaf cards (two crossed quads each) on the branches of the last level"
+    },
+    "growth": {
+      "type": "object",
+      "properties": {
+        "direction": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "direction the branches turn toward (up toward the light, down for drooping)"
+        },
+        "strength": {
+          "type": "number",
+          "description": "turn per section, divided by the branch radius (thin branches turn more)"
+        }
+      },
+      "required": [
+        "direction",
+        "strength"
+      ],
+      "additionalProperties": false,
+      "description": "a pull on the branches toward a direction"
+    }
+  },
+  "required": [
+    "name",
+    "materials",
+    "levels"
+  ],
+  "additionalProperties": false
+}

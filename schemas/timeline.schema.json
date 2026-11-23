@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "timeline asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "duration": {
+      "type": "number",
+      "minimum": 0,
+      "description": "unit: s"
+    },
+    "frameRate": {
+      "type": "number",
+      "minimum": 1,
+      "description": "frames per second for snapping and display in the editor",
+      "default": 30
+    },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "property"
+                ]
+              },
+              "entity": {
+                "type": "string",
+                "description": "id of the entity in the scene file; id of an entity in the same scene"
+              },
+              "component": {
+                "type": "string",
+                "description": "runtime component name (Transform, Light, or a game component registered by module path)"
+              },
+              "property": {
+                "type": "string"
+              },
+              "interpolation": {
+                "enum": [
+                  "constant",
+                  "linear",
+                  "cubic"
+                ],
+                "default": "linear"
+              },
+              "keys": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "time": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s"
+                    },
+                    "value": {
+                      "description": "a number, or the components (xyz, xyzw, rgba)"
+                    },
+                    "in": {
+                      "description": "cubic only: slope (per second) arriving at the key, per component; unset is automatic"
+                    },
+                    "out": {
+                      "description": "cubic only: slope (per second) leaving the key, per component; unset is automatic"
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "entity",
+              "component",
+              "property",
+              "keys"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "camera"
+                ]
+              },
+              "cuts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "time": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s"
+                    },
+                    "camera": {
+                      "type": "string",
+                      "description": "id of the camera entity in the scene file; id of an entity in the same scene"
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "camera"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "cuts"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "animation"
+                ]
+              },
+              "entity": {
+                "type": "string",
+                "description": "id of the entity in the scene file; id of an entity in the same scene"
+              },
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "start": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s"
+                    },
+                    "clip": {
+                      "type": "string",
+                      "description": "name of the clip in the AnimationComponent"
+                    },
+                    "speed": {
+                      "type": "number",
+                      "default": 1
+                    },
+                    "blend": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "seconds of crossfade from the previous clip; unit: s"
+                    }
+                  },
+                  "required": [
+                    "start",
+                    "clip"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "entity",
+              "clips"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "sound"
+                ]
+              },
+              "clips": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "start": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s"
+                    },
+                    "sound": {
+                      "type": "string",
+                      "description": "content path of a sound asset (no extension)"
+                    },
+                    "volume": {
+                      "type": "number",
+                      "minimum": 0,
+                      "default": 1
+                    }
+                  },
+                  "required": [
+                    "start",
+                    "sound"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "clips"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "subtitle"
+                ]
+              },
+              "cues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "start": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s"
+                    },
+                    "end": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s"
+                    },
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "start",
+                    "end",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "cues"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "event"
+                ]
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "time": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "type",
+              "events"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "name",
+    "duration",
+    "tracks"
+  ],
+  "additionalProperties": false
+}

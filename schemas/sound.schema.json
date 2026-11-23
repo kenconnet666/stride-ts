@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sound asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "encoding": {
+      "enum": [
+        "wav",
+        "mp3",
+        "ogg",
+        "flac",
+        "aac",
+        "synth"
+      ],
+      "description": "format of the audio file next to it; 'synth' is a generated sound effect with no audio file"
+    },
+    "streamFromDisk": {
+      "type": "boolean",
+      "description": "play while downloading (music) instead of decoding it whole first; generated sounds are never streamed"
+    },
+    "spatialized": {
+      "type": "boolean",
+      "description": "can be positioned in 3D by an audio emitter"
+    },
+    "synth": {
+      "type": "object",
+      "properties": {
+        "wave": {
+          "enum": [
+            "square",
+            "sawtooth",
+            "sine",
+            "triangle",
+            "noise"
+          ],
+          "description": "waveform",
+          "default": "square"
+        },
+        "attack": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "rise time (squared: 1 is about 2.3 seconds)",
+          "default": 0
+        },
+        "sustain": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "hold time (squared, like attack)",
+          "default": 0.3
+        },
+        "punch": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "extra loudness at the start of the hold, falling off",
+          "default": 0
+        },
+        "decay": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "fade-out time (squared, like attack)",
+          "default": 0.4
+        },
+        "frequency": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "start pitch (squared: 0.3 is about 330 Hz, 0.5 about 880 Hz)",
+          "default": 0.3
+        },
+        "minFrequency": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "the sound ends when a falling pitch reaches this (0: never)",
+          "default": 0
+        },
+        "slide": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "pitch slide: positive goes up, negative goes down",
+          "default": 0
+        },
+        "deltaSlide": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "change of the slide over time",
+          "default": 0
+        },
+        "vibratoDepth": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "vibrato depth",
+          "default": 0
+        },
+        "vibratoSpeed": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "vibrato speed",
+          "default": 0
+        },
+        "arpeggio": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "pitch jump after a while: positive up, negative down",
+          "default": 0
+        },
+        "arpeggioSpeed": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "how soon the pitch jumps (1: never)",
+          "default": 0
+        },
+        "repeatSpeed": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "restart the pitch (not the envelope) this often (0: never)",
+          "default": 0
+        },
+        "duty": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "square wave: 0 is half and half, higher is thinner",
+          "default": 0
+        },
+        "dutySweep": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "change of the duty over time",
+          "default": 0
+        },
+        "phaserOffset": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "phaser: delay of the copy mixed in",
+          "default": 0
+        },
+        "phaserSweep": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "change of the phaser delay over time",
+          "default": 0
+        },
+        "lowPassCutoff": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "low-pass cutoff (1: no filtering)",
+          "default": 1
+        },
+        "lowPassSweep": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "change of the low-pass cutoff over time",
+          "default": 0
+        },
+        "lowPassResonance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "low-pass resonance",
+          "default": 0
+        },
+        "highPassCutoff": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "high-pass cutoff (0: no filtering)",
+          "default": 0
+        },
+        "highPassSweep": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "change of the high-pass cutoff over time",
+          "default": 0
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "peak level",
+          "default": 0.5
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "random seed of the noise (the same parameters always give the same sound)",
+          "default": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "sound effect generator parameters (sfxr's), used when the encoding is 'synth'"
+    }
+  },
+  "required": [
+    "name",
+    "encoding",
+    "streamFromDisk",
+    "spatialized"
+  ],
+  "additionalProperties": false
+}

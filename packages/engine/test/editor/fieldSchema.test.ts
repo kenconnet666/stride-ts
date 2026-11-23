@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { COMPONENT_FIELDS } from '../../src/editor/fields';
 import { assetSchemas, componentSchemas, fieldTypeSchema, sceneSettingSchemas } from '../../src/editor/fields/jsonSchema';
@@ -27,5 +29,12 @@ describe('字段描述换成 JSON Schema', () => {
     expect(light.oneOf.map((variant) => variant.properties.type.enum[0])).toContain('directional');
     expect(Object.keys(sceneSettingSchemas())).toContain('compositor');
     expect(Object.keys(assetSchemas())).toEqual(['material', 'terrain', 'model', 'timeline', 'brush', 'sdf', 'poly', 'modelImport', 'imageImport', 'spriteSheet', 'text', 'product', 'shelf', 'pile', 'debris', 'splatEdit', 'sign', 'ceiling', 'fixture', 'spline', 'tree', 'building', 'city', 'water', 'scatter', 'sound', 'gameSettings']);
+  });
+});
+
+describe('导出给 IDE 的内容文件 schema（schemas/、tools/json-schemas.ts）', () => {
+  test('和现在的字段描述一致：改了字段描述要重跑 node tools/json-schemas.ts', () => {
+    const root = path.resolve(import.meta.dirname, '../../../..');
+    expect(() => execFileSync(process.execPath, [path.join(root, 'tools/json-schemas.ts'), '--check'], { cwd: root, encoding: 'utf8', stdio: 'pipe' })).not.toThrow();
   });
 });

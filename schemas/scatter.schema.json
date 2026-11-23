@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "scatter asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed: another number is another arrangement with the same rules",
+      "default": 1
+    },
+    "cellSize": {
+      "type": "number",
+      "minimum": 4,
+      "description": "edge of the streamed cells: cells near the camera are scattered, far ones dropped; unit: m",
+      "default": 64
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string",
+            "description": "the model scattered (not for grass); content path of a model asset (no extension)"
+          },
+          "grass": {
+            "type": "object",
+            "properties": {
+              "height": {
+                "type": "number",
+                "minimum": 0.01,
+                "description": "blade height (times the scale); unit: m"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0.001,
+                "description": "blade width at the root (times the scale); unit: m"
+              },
+              "lean": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 2,
+                "description": "how far the tip leans, in blade heights",
+                "default": 0.3
+              }
+            },
+            "required": [
+              "height",
+              "width"
+            ],
+            "additionalProperties": false,
+            "description": "scatter grass blades instead of a model: one triangle each, merged into one mesh per cell"
+          },
+          "material": {
+            "type": "string",
+            "description": "material of the grass blades (double-sided, wind mode grass); content path of a material asset (no extension)"
+          },
+          "cellSize": {
+            "type": "number",
+            "minimum": 4,
+            "description": "edge of this layer's cells; unset uses the file's (grass: 16); unit: m"
+          },
+          "density": {
+            "type": "number",
+            "minimum": 0.01,
+            "description": "at most this many per hectare (100 × 100 m)"
+          },
+          "slope": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "only where the ground slope is in this range; unit: °",
+            "default": [
+              0,
+              90
+            ]
+          },
+          "height": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "only where the ground height is in this range; unset is anywhere; unit: m"
+          },
+          "clump": {
+            "type": "object",
+            "properties": {
+              "scale": {
+                "type": "number",
+                "minimum": 1,
+                "description": "size of the patches; unit: m"
+              },
+              "coverage": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "0..1: how much of the ground the patches cover"
+              }
+            },
+            "required": [
+              "scale",
+              "coverage"
+            ],
+            "additionalProperties": false,
+            "description": "scatter in patches instead of everywhere"
+          },
+          "avoidPaths": {
+            "type": "number",
+            "minimum": 0,
+            "description": "keeps this far off the roads and rails the terrain follows (and out of its flatten features); unit: m",
+            "default": 3
+          },
+          "scale": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "random uniform scale in this range",
+            "default": [
+              0.8,
+              1.2
+            ]
+          },
+          "alignToSlope": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "0 stands upright (trees), 1 lies along the slope (rocks)",
+            "default": 0
+          },
+          "sink": {
+            "type": "number",
+            "description": "pushed this far into the ground (times the scale); unit: m",
+            "default": 0
+          },
+          "viewDistance": {
+            "type": "number",
+            "minimum": 1,
+            "description": "scattered only this close to the camera; unit: m",
+            "default": 400
+          },
+          "lods": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "distance": {
+                  "type": "number",
+                  "minimum": 1,
+                  "description": "cells farther than this from the camera use this level; unit: m"
+                },
+                "model": {
+                  "type": "string",
+                  "description": "a simpler model (e.g. the same tree without its finest level); unset keeps the nearer one; content path of a model asset (no extension)"
+                },
+                "keep": {
+                  "type": "number",
+                  "minimum": 0.01,
+                  "maximum": 1,
+                  "description": "keeps this fraction of the points (thinner grass far away); unset keeps the nearer level's"
+                },
+                "impostor": {
+                  "type": "boolean",
+                  "description": "draws the nearer level's model as a camera-facing card baked at runtime (far trees)",
+                  "default": false
+                }
+              },
+              "required": [
+                "distance"
+              ],
+              "additionalProperties": false
+            },
+            "description": "levels of detail by distance, nearest first"
+          },
+          "castShadows": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name",
+          "density"
+        ],
+        "additionalProperties": false
+      },
+      "description": "layers of placement rules, each scattering one model"
+    }
+  },
+  "required": [
+    "name",
+    "layers"
+  ],
+  "additionalProperties": false
+}

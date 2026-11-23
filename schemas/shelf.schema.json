@@ -1,0 +1,232 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "shelf asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "sides": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "description": "1: against a wall, front facing +Z; 2: an island with a second face toward -Z"
+    },
+    "length": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "length along X; unit: m"
+    },
+    "height": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "total height; unit: m"
+    },
+    "depth": {
+      "type": "number",
+      "minimum": 0.05,
+      "description": "depth of the shelf boards on each face; unit: m"
+    },
+    "levels": {
+      "type": "array",
+      "items": {
+        "type": "number",
+        "minimum": 0,
+        "description": "unit: m"
+      },
+      "description": "height of the top of each shelf board from the floor, bottom up; the first is the base"
+    },
+    "bay": {
+      "type": "number",
+      "minimum": 0.2,
+      "description": "spacing of the uprights (shelves, 1 when missing), the doors (fridges, 0.75) or the heat lamps (deli, 0.6); unit: m"
+    },
+    "frameColor": {
+      "type": "string",
+      "description": "color of the frame and boards (sRGB #rrggbb)",
+      "default": "#d9dadc"
+    },
+    "stripColor": {
+      "type": "string",
+      "description": "color of the price strips (sRGB #rrggbb)",
+      "default": "#f4f4f2"
+    },
+    "boardThickness": {
+      "type": "number",
+      "minimum": 0.005,
+      "maximum": 0.1,
+      "description": "thickness of the boards (wooden boards often have a 4 cm thick front); unit: m",
+      "default": 0.02
+    },
+    "boardColor": {
+      "type": "string",
+      "description": "color of the boards (sRGB #rrggbb): wood-grain boards of this color; plain boards of the frame color when missing"
+    },
+    "font": {
+      "type": "string",
+      "description": "font of the prices on the tags; plain tags without one; content path of a font asset (no extension)"
+    },
+    "stock": {
+      "type": "object",
+      "properties": {
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "content path of a product asset (no extension)"
+          },
+          "description": "products to stock; each level only takes those that fit under the next board"
+        },
+        "variants": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32,
+          "description": "brands of each product (product variants: the colors and brand the product file leaves out)",
+          "default": 3
+        },
+        "facings": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "how many of one item stand side by side (min, max); [2, 5] on shelves, [3, 6] on stacks when missing"
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16,
+          "description": "at most this many rows deep (fewer when the board is shallower)",
+          "default": 4
+        },
+        "gaps": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "share of empty spots (sold out)",
+          "default": 0.05
+        },
+        "messiness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "how messy the stock is: round bottles and jars turned (labels facing different ways), boxes tilted a little, some columns pushed back, small shifts within the gaps; 0 is factory tidy",
+          "default": 0.5
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "description": "content path of a product asset (no extension)"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": "products per level (from the bottom, like levels): a level only takes these (stores often keep one kind per level); missing or null levels use products"
+        }
+      },
+      "required": [
+        "products"
+      ],
+      "additionalProperties": false,
+      "description": "what goes on the shelf; empty shelves without it"
+    },
+    "type": {
+      "enum": [
+        "gondola",
+        "fridge",
+        "freezer",
+        "pegboard",
+        "stack",
+        "deli"
+      ],
+      "description": "gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered); deli: a black counter with a white quartz front ledge and rows of bowls and plates in a sunken black tray, gold heat lamps every bay above (only the first level is used: the tray top; height is the bottom of the lamp shades; depth is the whole counter)",
+      "default": "gondola"
+    },
+    "header": {
+      "type": "string",
+      "description": "text on the lit header of a fridge (needs the font)"
+    },
+    "doorColor": {
+      "type": "string",
+      "description": "fridge: color of the door frames, the front below the doors, the top and the header box (sRGB #rrggbb; branded drink fridges are yellow, red...); dark frames and a blue header when missing"
+    },
+    "doorSticker": {
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": "string",
+          "description": "sticker color (sRGB #rrggbb)"
+        },
+        "title": {
+          "type": "string",
+          "description": "text on the banner at the top of the sticker (\"frozen zone\"); needs font"
+        },
+        "slogan": {
+          "type": "string",
+          "description": "text on the strip at the bottom of the sticker; needs font"
+        },
+        "textColor": {
+          "type": "string",
+          "description": "color of the sticker text (sRGB #rrggbb)",
+          "default": "#ffffff"
+        },
+        "border": {
+          "type": "number",
+          "minimum": 0,
+          "description": "width of the side borders; unit: m",
+          "default": 0.05
+        }
+      },
+      "required": [
+        "color"
+      ],
+      "additionalProperties": false,
+      "description": "fridge: an advertising sticker on the outside of every door glass, around the lower two thirds: a banner with a title, side borders and a strip with a slogan, the middle left clear"
+    },
+    "tagHolder": {
+      "enum": [
+        "strip",
+        "rail"
+      ],
+      "description": "where the tags sit: on a strip below the board front (strip) or slid behind a clear plastic rail standing on the board front, leaning back a little (rail; no strip under the board)",
+      "default": "strip"
+    },
+    "tagAccent": {
+      "type": "string",
+      "description": "color of a block on the right of paper tags (sRGB #rrggbb, the store color): all tags white with dark grey prices then; white or yellow with red prices when missing"
+    },
+    "priceTags": {
+      "enum": [
+        "paper",
+        "electronic"
+      ],
+      "description": "paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)",
+      "default": "paper"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed of the stocking and the prices",
+      "default": 1
+    }
+  },
+  "required": [
+    "name",
+    "sides",
+    "length",
+    "height",
+    "depth",
+    "levels"
+  ],
+  "additionalProperties": false
+}

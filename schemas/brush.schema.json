@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "brush asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "content path of a material asset (no extension)"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "material slots; a brush picks one by index"
+    },
+    "uvScale": {
+      "type": "number",
+      "minimum": 0.01,
+      "description": "automatic UVs: one texture repeat per this many meters; unit: m",
+      "default": 1
+    },
+    "brushes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "box"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "size": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "size"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "prism"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "points": {
+                "description": "polygon in the XZ plane as [x, z] pairs (may be concave), extruded up from the position"
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "points",
+              "height"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cylinder"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0
+              },
+              "topRadius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "unset: same as radius; 0 makes a cone"
+              },
+              "segments": {
+                "type": "integer",
+                "minimum": 3,
+                "maximum": 256,
+                "default": 32
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "height",
+              "radius"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "sphere"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0
+              },
+              "segments": {
+                "type": "integer",
+                "minimum": 3,
+                "maximum": 256,
+                "default": 32
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "radius"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "name",
+    "materials",
+    "brushes"
+  ],
+  "additionalProperties": false
+}

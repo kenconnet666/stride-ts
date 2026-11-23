@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "imageImport asset",
+  "type": "object",
+  "properties": {
+    "source": {
+      "enum": [
+        "png",
+        "jpeg",
+        "webp"
+      ],
+      "description": "format of the source image next to these settings (same name)"
+    },
+    "compress": {
+      "enum": [
+        "none",
+        "uastc",
+        "etc1s"
+      ],
+      "description": "none: use the source image; uastc: KTX2, high quality; etc1s: KTX2, smallest file"
+    },
+    "mipmaps": {
+      "type": "boolean",
+      "description": "generate mipmaps when compressing"
+    },
+    "maxSize": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16384,
+      "description": "when compressing, scale down so the longer side is at most this many pixels; 0: no limit"
+    },
+    "srgb": {
+      "type": "boolean",
+      "description": "color image (stored as sRGB); turn off for normal, roughness and other data maps"
+    },
+    "alpha": {
+      "type": "string",
+      "description": "when compressing, replace the alpha with the brightness of this image (a height map packed into a normal map for parallax); content path of a image asset (no extension)"
+    }
+  },
+  "required": [
+    "source",
+    "compress",
+    "mipmaps",
+    "maxSize",
+    "srgb"
+  ],
+  "additionalProperties": false
+}

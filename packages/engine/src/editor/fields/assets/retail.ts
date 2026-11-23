@@ -1,5 +1,6 @@
 /** 店里的资源的字段：商品包装、货架、堆放、招牌、天花板、器具。 */
-import type { ProductFile, ShelfFile, PileFile, DebrisFile, SignFile, CeilingFile, FixtureFile } from '../../../content/formats/format';
+import { SHELF, type ProductFile, type PileFile, type DebrisFile, type SignFile, type CeilingFile, type FixtureFile } from '../../../content/formats/format.ts';
+import { schemaFields } from '../../../content/schema/schema.ts';
 import { fields, number, integer, bool, string, oneOf, vector, asset, list, object, type FieldSpec } from '../../../content/schema/builders.ts';
 
 /** 颜色写成 sRGB 的 #rrggbb。 */
@@ -51,52 +52,8 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of everything not written: another number is another brand of the same product' },
 });
 
-/** 货架（ShelfFile）：后端生成同名的模型、标签图集和材质。 */
-export const SHELF_FIELDS = fields<ShelfFile>({
-  name: string,
-  sides: { type: integer(1, 2), description: '1: against a wall, front facing +Z; 2: an island with a second face toward -Z' },
-  length: { type: number({ min: 0.1, step: 0.25, unit: 'm' }), description: 'length along X' },
-  height: { type: number({ min: 0.1, step: 0.1, unit: 'm' }), description: 'total height' },
-  depth: { type: number({ min: 0.05, step: 0.05, unit: 'm' }), description: 'depth of the shelf boards on each face' },
-  levels: { type: list(number({ min: 0, step: 0.05, unit: 'm' })), description: 'height of the top of each shelf board from the floor, bottom up; the first is the base' },
-  bay: { type: number({ min: 0.2, step: 0.25, unit: 'm' }), optional: true, default: 1, description: 'spacing of the uprights' },
-  frameColor: { type: string, optional: true, description: 'color of the frame and boards (sRGB #rrggbb, light grey when missing)' },
-  stripColor: { type: string, optional: true, description: 'color of the price strips (sRGB #rrggbb, white when missing)' },
-  boardThickness: { type: number({ min: 0.005, max: 0.1, step: 0.005, unit: 'm' }), optional: true, default: 0.02, description: 'thickness of the boards (wooden boards often have a 4 cm thick front)' },
-  boardColor: { type: string, optional: true, description: 'color of the boards (sRGB #rrggbb, matte like wood-grain boards; the frame color when missing)' },
-  font: { type: asset('font'), optional: true, description: 'font of the prices on the tags; plain tags without one' },
-  stock: {
-    type: object(fields<NonNullable<ShelfFile['stock']>>({
-      products: { type: list(asset('product')), description: 'products to stock; each level only takes those that fit under the next board' },
-      variants: { type: integer(1, 32), optional: true, default: 3, description: 'brands of each product (product variants: the colors and brand the product file leaves out)' },
-      facings: { type: vector(2), optional: true, default: [2, 5], description: 'how many of one item stand side by side (min, max)' },
-      rows: { type: integer(1, 16), optional: true, default: 4, description: 'at most this many rows deep (fewer when the board is shallower)' },
-      gaps: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.05, description: 'share of empty spots (sold out)' },
-      messiness: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.5, description: 'how messy the stock is: round bottles and jars turned (labels facing different ways), boxes tilted a little, some columns pushed back, small shifts within the gaps; 0 is factory tidy' },
-      levels: { type: { kind: 'list', item: list(asset('product')), nullableItems: true }, optional: true, description: 'products per level (from the bottom, like levels): a level only takes these (stores often keep one kind per level); missing or null levels use products' },
-    })),
-    optional: true,
-    description: 'what goes on the shelf; empty shelves without it',
-  },
-  type: { type: oneOf('gondola', 'fridge', 'freezer', 'pegboard', 'stack', 'deli'), optional: true, default: 'gondola', description: 'gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered); deli: a black counter with a white quartz front ledge and rows of bowls and plates in a sunken black tray, gold heat lamps every bay above (only the first level is used: the tray top; height is the bottom of the lamp shades; depth is the whole counter)' },
-  header: { type: string, optional: true, description: 'text on the lit header of a fridge (needs the font)' },
-  doorColor: { type: string, optional: true, description: 'fridge: color of the door frames, the front below the doors, the top and the header box (sRGB #rrggbb; branded drink fridges are yellow, red...); dark frames and a blue header when missing' },
-  doorSticker: {
-    type: object(fields<NonNullable<ShelfFile['doorSticker']>>({
-      color: { type: string, description: 'sticker color (sRGB #rrggbb)' },
-      title: { type: string, optional: true, description: 'text on the banner at the top of the sticker ("frozen zone"); needs font' },
-      slogan: { type: string, optional: true, description: 'text on the strip at the bottom of the sticker; needs font' },
-      textColor: { type: string, optional: true, default: '#ffffff', description: 'color of the sticker text (sRGB #rrggbb)' },
-      border: { type: number({ min: 0, step: 0.005, unit: 'm' }), optional: true, default: 0.05, description: 'width of the side borders' },
-    })),
-    optional: true,
-    description: 'fridge: an advertising sticker on the outside of every door glass, around the lower two thirds: a banner with a title, side borders and a strip with a slogan, the middle left clear',
-  },
-  tagHolder: { type: oneOf('strip', 'rail'), optional: true, default: 'strip', description: 'where the tags sit: on a strip below the board front (strip) or slid behind a clear plastic rail standing on the board front, leaning back a little (rail; no strip under the board)' },
-  tagAccent: { type: string, optional: true, description: 'color of a block on the right of paper tags (sRGB #rrggbb, the store color): all tags white with dark grey prices then; white or yellow with red prices when missing' },
-  priceTags: { type: oneOf('paper', 'electronic'), optional: true, default: 'paper', description: 'paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)' },
-  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the stocking and the prices' },
-});
+/** 货架（ShelfFile）：后端生成同名的模型、标签图集和材质。字段由格式的模式给出（content/formats/shelfFormat.ts）。 */
+export const SHELF_FIELDS = schemaFields(SHELF);
 
 /** 地上的碎石杂物（DebrisFile）：后端跑物理、生成同名的模型、图集和材质。 */
 export const DEBRIS_FIELDS = fields<DebrisFile>({

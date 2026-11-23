@@ -72,6 +72,14 @@ export class Schema<Out, In = Out> {
     return new Schema(this.type, { ...this.meta, nullable: true });
   }
 
+  /**
+   * 只改 TS 的类型、不改运行时的检查（同 easy-query-ts 的 `$type`）：`s.integer(1, 2).$type<1 | 2>()`。U 要是原来类型的子类型；
+   * 可选、可空照旧。
+   */
+  $type<U extends Exclude<Out, undefined | null>>(): Schema<U | Extract<Out, undefined | null>, U | Extract<In, undefined | null>> {
+    return new Schema(this.type, this.meta);
+  }
+
   /** 说明（属性面板的提示、给 agent 的 JSON Schema 的 description）：用英文写，中文在编辑器的 fieldMessages 里。 */
   describe(description: string): Schema<Out, In> {
     return new Schema(this.type, { ...this.meta, description });
@@ -164,6 +172,8 @@ export const s = {
   /** 场景里一个实体的 id。 */
   entity: () => new Schema<string>({ kind: 'entity', form: 'id' }),
   list: <S extends Schema<unknown, unknown>>(item: S) => new Schema<readonly Infer<S>[], readonly InputOf<S>[]>({ kind: 'list', item: item.type }),
+  /** 列表里可以有 null（没指定的那几项：按层摆货里用默认的层）。 */
+  nullableList: <S extends Schema<unknown, unknown>>(item: S) => new Schema<readonly (Infer<S> | null)[], readonly (InputOf<S> | null)[]>({ kind: 'list', item: item.type, nullableItems: true }),
   object: <S extends Shape>(shape: S) => new Schema<ObjectOf<S, 'out'>, ObjectOf<S, 'in'>>({ kind: 'object', fields: fieldsOf(shape) }),
   /** 形状由代码定的一组值（游戏的根渲染器的属性）：只查是对象。 */
   record: () => new Schema<Readonly<Record<string, unknown>>>({ kind: 'record' }),

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "gameSettings asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "defaultScene": {
+      "anyOf": [
+        {
+          "type": "string",
+          "description": "content path of a scene asset (no extension)"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "the scene the game opens with; null when the root renderer draws everything (no scene); content path of a scene asset (no extension)"
+    },
+    "renderer": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "the name the game registered its renderer under (loadGameSettings renderers)"
+            },
+            "props": {
+              "type": "object",
+              "description": "values keyed by name; the keys and value kinds the file already has"
+            }
+          },
+          "required": [
+            "type",
+            "props"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "the compositor root when the game draws with its own renderer: its registered type name and properties"
+    },
+    "defaultBackBufferSize": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "the design resolution (desktop Stride opens its window this size); unit: px",
+      "default": [
+        1280,
+        720
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "defaultScene",
+    "renderer"
+  ],
+  "additionalProperties": false
+}

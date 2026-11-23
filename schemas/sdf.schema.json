@@ -1,0 +1,731 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sdf asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "content path of a material asset (no extension)"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "material slots; a shape picks one by index"
+    },
+    "resolution": {
+      "type": "number",
+      "minimum": 0.005,
+      "description": "mesh edge length: smaller is finer and slower to bake; unit: m",
+      "default": 0.05
+    },
+    "uvScale": {
+      "type": "number",
+      "minimum": 0.01,
+      "description": "automatic UVs: one texture repeat per this many meters; unit: m",
+      "default": 1
+    },
+    "shapes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "sphere"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "radius"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "box"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "size": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "cornerRadius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "unit: m",
+                "default": 0
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "size"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "capsule"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "distance between the two end centers, along Y; unit: m"
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "height",
+              "radius"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cylinder"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0
+              },
+              "edgeRadius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "unit: m",
+                "default": 0
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "height",
+              "radius"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "torus"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "ringRadius": {
+                "type": "number",
+                "minimum": 0
+              },
+              "tubeRadius": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "ringRadius",
+              "tubeRadius"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "ellipsoid"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "radii": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "radii"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cone"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              },
+              "bottomRadius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "unit: m"
+              },
+              "topRadius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "0 is a pointed cone; unit: m",
+                "default": 0
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "height",
+              "bottomRadius"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "roundCone"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0,
+                "description": "distance between the two sphere centers, along Y (more than the difference of the radii)"
+              },
+              "bottomRadius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "unit: m"
+              },
+              "topRadius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "unit: m"
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "height",
+              "bottomRadius",
+              "topRadius"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "hexPrism"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "operation": {
+                "enum": [
+                  "add",
+                  "subtract",
+                  "intersect"
+                ]
+              },
+              "smoothness": {
+                "type": "number",
+                "minimum": 0,
+                "description": "how wide the blend into the shapes before it is (0 is a sharp seam); unit: m",
+                "default": 0
+              },
+              "position": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 3,
+                "maxItems": 3,
+                "description": "unit: m"
+              },
+              "rotation": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "quaternion [x, y, z, w]",
+                "default": [
+                  0,
+                  0,
+                  0,
+                  1
+                ]
+              },
+              "material": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255,
+                "description": "index into materials",
+                "default": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              },
+              "radius": {
+                "type": "number",
+                "minimum": 0,
+                "description": "from the center to the middle of a side"
+              }
+            },
+            "required": [
+              "kind",
+              "operation",
+              "position",
+              "height",
+              "radius"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "name",
+    "materials",
+    "shapes"
+  ],
+  "additionalProperties": false
+}

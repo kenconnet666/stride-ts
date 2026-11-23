@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "pile asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "container": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "inside width, wall height and depth; unit: m"
+        },
+        "wall": {
+          "type": "number",
+          "minimum": 0.001,
+          "description": "wall thickness; unit: m",
+          "default": 0.015
+        },
+        "color": {
+          "type": "string",
+          "description": "color of the container (sRGB #rrggbb, dark grey plastic when missing)"
+        },
+        "cells": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "split into compartments (columns, rows), numbered from back left to front right",
+          "default": [
+            1,
+            1
+          ]
+        },
+        "lids": {
+          "type": "boolean",
+          "description": "a clear lid on each compartment, hinged at the back and lifted open",
+          "default": false
+        }
+      },
+      "required": [
+        "size"
+      ],
+      "additionalProperties": false,
+      "description": "the bin the items are poured into"
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product": {
+            "type": "string",
+            "description": "what to pour in (produce or packaged goods); content path of a product asset (no extension)"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5000,
+            "description": "how many"
+          },
+          "variants": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "description": "color or brand variants of it",
+            "default": 3
+          },
+          "cell": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "compartment to pour into; the whole container when missing"
+          }
+        },
+        "required": [
+          "product",
+          "count"
+        ],
+        "additionalProperties": false
+      },
+      "description": "items dropped into the container; physics settles them and the result is baked into one model"
+    },
+    "heaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cell": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 255,
+            "description": "compartment of the heap"
+          },
+          "color": {
+            "type": "string",
+            "description": "grain color (sRGB #rrggbb)"
+          },
+          "level": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "fill height as a share of the wall (the middle rises a bit more)",
+            "default": 0.8
+          },
+          "grain": {
+            "type": "number",
+            "minimum": 0.001,
+            "description": "grain size; unit: m",
+            "default": 0.006
+          },
+          "speckle": {
+            "type": "string",
+            "description": "darker color between the grains (sRGB #rrggbb, black when missing)"
+          }
+        },
+        "required": [
+          "cell",
+          "color"
+        ],
+        "additionalProperties": false
+      },
+      "description": "fine grains (rice, beans, seeds) drawn as a heap instead of single bodies"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed of the drop positions and variants",
+      "default": 1
+    }
+  },
+  "required": [
+    "name",
+    "container",
+    "items"
+  ],
+  "additionalProperties": false
+}

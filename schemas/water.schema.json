@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "water asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "outline": {
+      "description": "lake shoreline [[x, z], …] in the entity space (at most 64 points); unset is the open sea. It need not follow the ground: the terrain hides what is below it"
+    },
+    "extent": {
+      "type": "number",
+      "minimum": 10,
+      "description": "how far from the camera the sea reaches; unit: m",
+      "default": 6000
+    },
+    "color": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "color of deep water (linear)",
+      "default": [
+        0.015,
+        0.06,
+        0.07
+      ]
+    },
+    "clarity": {
+      "type": "number",
+      "minimum": 0.05,
+      "description": "how far light travels in the water before 1/e of it is left (clear lakes 10+, muddy rivers below 1); unit: m",
+      "default": 4
+    },
+    "waves": {
+      "type": "object",
+      "properties": {
+        "height": {
+          "type": "number",
+          "minimum": 0,
+          "description": "height of the largest waves; unit: m",
+          "default": 0.3
+        },
+        "length": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "wavelength of the longest waves; unit: m",
+          "default": 12
+        },
+        "direction": {
+          "type": "number",
+          "description": "where the waves travel (0 is local +X, counterclockwise); unit: °",
+          "default": 0
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0,
+          "description": "time scale of the waves",
+          "default": 1
+        },
+        "choppiness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "how much the crests bunch up (0 round, 1 sharp)",
+          "default": 0.5
+        },
+        "spectrum": {
+          "type": "object",
+          "properties": {
+            "wind": {
+              "type": "number",
+              "minimum": 0.5,
+              "description": "wind speed driving the waves; unit: m/s",
+              "default": 10
+            },
+            "patch": {
+              "type": "number",
+              "minimum": 10,
+              "description": "size of the largest wave tile (two finer tiles are 1/6 and 1/36 of it); unit: m",
+              "default": 400
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "description": "another seed gives other waves",
+              "default": 0
+            }
+          },
+          "required": [],
+          "additionalProperties": false,
+          "description": "FFT ocean waves from a wind spectrum instead of the Gerstner waves (unset height follows the wind)"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "Gerstner waves (or an FFT wind spectrum), flattened far from the camera"
+    },
+    "rise": {
+      "type": "number",
+      "minimum": 0,
+      "description": "how far the water rises after long heavy rain (unset: lakes 0.5, rivers 0.6, the sea 0); unit: m"
+    },
+    "caustics": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "how strong the light patterns the waves focus onto the bottom are (0 none; rivers have none)",
+      "default": 1
+    },
+    "foam": {
+      "type": "object",
+      "properties": {
+        "shore": {
+          "type": "number",
+          "minimum": 0,
+          "description": "foam where the water is shallower than this; unit: m",
+          "default": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "foam along the shore"
+    },
+    "river": {
+      "type": "object",
+      "properties": {
+        "spline": {
+          "type": "string",
+          "description": "the river spline (profile river; its width is the water width); content path of a spline asset (no extension)"
+        },
+        "level": {
+          "type": "number",
+          "description": "how far the water surface is below the spline; unit: m",
+          "default": 0.3
+        },
+        "speed": {
+          "type": "number",
+          "minimum": 0,
+          "description": "how fast the ripples flow along the spline; unit: m/s",
+          "default": 1.5
+        }
+      },
+      "required": [
+        "spline"
+      ],
+      "additionalProperties": false,
+      "description": "a river along a spline instead of a lake or sea"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": false
+}

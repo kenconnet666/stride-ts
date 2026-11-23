@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "city asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed: another number picks other buildings along the same roads",
+      "default": 1
+    },
+    "roads": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "content path of a spline asset (no extension)"
+      },
+      "description": "roads the buildings line (both sides of every path of each spline)"
+    },
+    "buildings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "the building (usually the model generated from a .building.json); its +Z side faces the road; content path of a model asset (no extension)"
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0.01,
+            "description": "how often it is picked compared to the others",
+            "default": 1
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "description": "buildings picked at random by weight along the roads"
+    },
+    "setback": {
+      "type": "number",
+      "minimum": 0,
+      "description": "distance from the road edge to the building front (sidewalk); unit: m",
+      "default": 3
+    },
+    "gap": {
+      "type": "number",
+      "minimum": 0,
+      "description": "space between neighboring buildings; unit: m",
+      "default": 2
+    },
+    "area": {
+      "description": "only build inside this polygon [[x, z], …]; unset builds along the whole network"
+    },
+    "fill": {
+      "type": "object",
+      "properties": {
+        "spacing": {
+          "type": "number",
+          "minimum": 1,
+          "description": "grid step of the points tried inside the blocks (jittered); unit: m",
+          "default": 12
+        },
+        "maxDistance": {
+          "type": "number",
+          "minimum": 1,
+          "description": "only this far from the nearest road; unit: m",
+          "default": 100
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "after the street front, fill the blocks: points nearest the roads first, each building facing the nearest road"
+    }
+  },
+  "required": [
+    "name",
+    "roads",
+    "buildings"
+  ],
+  "additionalProperties": false
+}

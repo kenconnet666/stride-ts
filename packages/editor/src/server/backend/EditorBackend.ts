@@ -537,13 +537,17 @@ export class EditorBackend {
   }
 
   /**
-   * 一个 JSON 资源的主文件（绝对路径）：已有的是 `.json` 还是 `.jsonc` 就用哪个（存回 `.jsonc` 时注释不保留），没有的是 `.json`；
+   * 一个 JSON 资源的主文件（绝对路径）：已有的是 `.json` 还是 `.jsonc` 就用哪个（存回 `.jsonc` 时注释不保留）；新建的人写的资源
+   * 默认是 `.jsonc`（用户 2026-11-23 定：以后默认带注释的 JSON 加有类型的模式；烘焙、导入生成的照旧是 `.json`，不走这里）。
    * 种类不对、路径想跑出内容目录时报错。
    */
   #jsonFile(kind: AssetKind, assetPath: string): string {
     if (!isJsonAssetKind(kind)) throw new HttpError(400, `${kind} assets cannot be read or saved through the editor API (not a JSON asset)`);
     const checked = checkContentPath(assetPath);
-    return path.join(this.project.contentDir, this.database.mainFile(kind, checked) ?? assetFileName(kind as Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, checked));
+    const existing = this.database.mainFile(kind, checked);
+    if (existing) return path.join(this.project.contentDir, existing);
+    const name = assetFileName(kind as Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, checked);
+    return path.join(this.project.contentDir, name.endsWith('.json') ? `${name}c` : name);
   }
 
   /** 读一个 JSON 资源（`.json` 或带注释的 `.jsonc`）。 */

@@ -323,7 +323,7 @@ describe('后端（EditorBackend）', () => {
     expect((await compress('uastc')).status).toBe(200);
     const ktx2 = await readFile(contentFile('Game/Textures/Coin.ktx2'));
     expect([...ktx2.subarray(1, 7)].map((c) => String.fromCharCode(c)).join('')).toBe('KTX 20');
-    const materialEncoding = async () => (JSON.parse(await readFile(contentFile('Game/Materials/Coin.material.json'), 'utf8')) as MaterialFile).baseColorTexture?.encoding;
+    const materialEncoding = async () => (JSON.parse(await readFile(contentFile('Game/Materials/Coin.material.jsonc'), 'utf8')) as MaterialFile).baseColorTexture?.encoding;
     expect(await materialEncoding()).toBe('ktx2');
     expect(JSON.parse(await readFile(contentFile('Game/Textures/Coin.texture.json'), 'utf8')).encoding).toBe('ktx2');
     expect((await compress('none')).status).toBe(200);
@@ -512,7 +512,7 @@ describe('关卡白盒：存下就烘成同名的模型', () => {
     const fieldError = await backend.saveAsset('brush', 'Game/Level/Room', missing).then(() => undefined, (e: Error & { status?: number }) => e);
     expect(fieldError?.status).toBe(400);
     expect(fieldError?.message).toMatch(/position/);
-    expect((JSON.parse(await readFile(path.join(contentDir, 'Game/Level/Room.brush.json'), 'utf8')) as BrushFile).brushes).toHaveLength(3);
+    expect((JSON.parse(await readFile(path.join(contentDir, 'Game/Level/Room.brush.jsonc'), 'utf8')) as BrushFile).brushes).toHaveLength(3);
     const moved = await backend.moveAssets({ assets: [{ kind: 'brush', from: 'Game/Level/Room', to: 'Game/Level/Hall' }] });
     expect(moved.moved.map((asset) => `${asset.kind} ${asset.path}`)).toEqual(['brush Game/Level/Hall', 'model Game/Level/Hall']);
   });

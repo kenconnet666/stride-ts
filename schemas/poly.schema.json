@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "poly asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "content path of a material asset (no extension)"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "material slots; a face picks one by index"
+    },
+    "smoothAngle": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 180,
+      "description": "neighboring faces closer than this angle share smooth normals; 0 makes every edge hard; unit: °",
+      "default": 30
+    },
+    "uvScale": {
+      "type": "number",
+      "minimum": 0.01,
+      "description": "automatic UVs: one texture repeat per this many meters; unit: m",
+      "default": 1
+    },
+    "mirror": {
+      "enum": [
+        "x",
+        "y",
+        "z"
+      ],
+      "description": "mirror a copy across the x = 0, y = 0 or z = 0 plane (edit one half, both change)"
+    },
+    "vertices": {
+      "description": "vertex positions; edit them in the viewport (poly edit mode) or with edit_poly"
+    },
+    "faces": {
+      "description": "faces as vertex index loops, counterclockwise seen from outside, each with an optional material slot"
+    }
+  },
+  "required": [
+    "name",
+    "materials",
+    "vertices",
+    "faces"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fixture asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "checkout",
+        "cart",
+        "basket",
+        "locker",
+        "gate",
+        "track",
+        "selfCheckout"
+      ],
+      "description": "checkout counter (belt, scanner, register screens, a lit number sign above), shopping cart, hand basket, coin locker, entrance gate, ceiling track with spotlight heads (origin at the top of the rail; the lights that light things are placed by the scene at trackSpots), self-checkout kiosk (customer at +Z: scanner glass, lit touch screen, receipt printer with a strip of paper, card reader, bagging scale with a bag rack holding an open bag, a numbered status light pole)"
+    },
+    "color": {
+      "type": "string",
+      "description": "main color (sRGB #rrggbb; by type when missing)"
+    },
+    "number": {
+      "type": "string",
+      "description": "number on the checkout sign (needs the font)"
+    },
+    "font": {
+      "type": "string",
+      "description": "font of the checkout sign; content path of a font asset (no extension)"
+    },
+    "columns": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "description": "locker columns",
+      "default": 6
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "locker rows",
+      "default": 4
+    },
+    "length": {
+      "type": "number",
+      "minimum": 0.2,
+      "description": "track length (m)",
+      "default": 3
+    },
+    "heads": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32,
+      "description": "spotlight heads on the track",
+      "default": 4
+    },
+    "tilt": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 90,
+      "description": "how far the heads tilt from straight down toward the front (+Z), degrees",
+      "default": 30
+    }
+  },
+  "required": [
+    "name",
+    "type"
+  ],
+  "additionalProperties": false
+}

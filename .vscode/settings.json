@@ -1,0 +1,200 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "*.material.json",
+        "*.material.jsonc"
+      ],
+      "url": "./schemas/material.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.terrain.json",
+        "*.terrain.jsonc"
+      ],
+      "url": "./schemas/terrain.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.timeline.json",
+        "*.timeline.jsonc"
+      ],
+      "url": "./schemas/timeline.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.brush.json",
+        "*.brush.jsonc"
+      ],
+      "url": "./schemas/brush.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.sdf.json",
+        "*.sdf.jsonc"
+      ],
+      "url": "./schemas/sdf.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.poly.json",
+        "*.poly.jsonc"
+      ],
+      "url": "./schemas/poly.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.import.json",
+        "*.import.jsonc"
+      ],
+      "url": "./schemas/modelImport.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.image.json",
+        "*.image.jsonc"
+      ],
+      "url": "./schemas/imageImport.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.sheet.json",
+        "*.sheet.jsonc"
+      ],
+      "url": "./schemas/spriteSheet.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.text.json",
+        "*.text.jsonc"
+      ],
+      "url": "./schemas/text.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.product.json",
+        "*.product.jsonc"
+      ],
+      "url": "./schemas/product.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.shelf.json",
+        "*.shelf.jsonc"
+      ],
+      "url": "./schemas/shelf.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.pile.json",
+        "*.pile.jsonc"
+      ],
+      "url": "./schemas/pile.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.debris.json",
+        "*.debris.jsonc"
+      ],
+      "url": "./schemas/debris.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.splatedit.json",
+        "*.splatedit.jsonc"
+      ],
+      "url": "./schemas/splatEdit.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.sign.json",
+        "*.sign.jsonc"
+      ],
+      "url": "./schemas/sign.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.ceiling.json",
+        "*.ceiling.jsonc"
+      ],
+      "url": "./schemas/ceiling.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.fixture.json",
+        "*.fixture.jsonc"
+      ],
+      "url": "./schemas/fixture.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.spline.json",
+        "*.spline.jsonc"
+      ],
+      "url": "./schemas/spline.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.tree.json",
+        "*.tree.jsonc"
+      ],
+      "url": "./schemas/tree.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.building.json",
+        "*.building.jsonc"
+      ],
+      "url": "./schemas/building.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.city.json",
+        "*.city.jsonc"
+      ],
+      "url": "./schemas/city.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.water.json",
+        "*.water.jsonc"
+      ],
+      "url": "./schemas/water.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.scatter.json",
+        "*.scatter.jsonc"
+      ],
+      "url": "./schemas/scatter.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.sound.json",
+        "*.sound.jsonc"
+      ],
+      "url": "./schemas/sound.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.game.json",
+        "*.game.jsonc"
+      ],
+      "url": "./schemas/gameSettings.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.scene.json",
+        "*.scene.jsonc"
+      ],
+      "url": "./schemas/scene.schema.json"
+    },
+    {
+      "fileMatch": [
+        "*.prefab.json",
+        "*.prefab.jsonc"
+      ],
+      "url": "./schemas/prefab.schema.json"
+    }
+  ]
+}

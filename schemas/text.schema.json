@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "text asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "text": {
+      "type": "string",
+      "description": "the text; line breaks start new lines"
+    },
+    "font": {
+      "type": "string",
+      "description": "font asset whose outlines are extruded; content path of a font asset (no extension)"
+    },
+    "size": {
+      "type": "number",
+      "minimum": 0.001,
+      "description": "height of a line (ascent plus descent); unit: m"
+    },
+    "depth": {
+      "type": "number",
+      "minimum": 0,
+      "description": "extrusion depth; a few millimetres for signs on a wall; unit: m"
+    },
+    "align": {
+      "enum": [
+        "left",
+        "center",
+        "right"
+      ],
+      "default": "center"
+    },
+    "lineSpacing": {
+      "type": "number",
+      "minimum": 0,
+      "description": "line spacing as a multiple of the line height",
+      "default": 1.2
+    },
+    "letterSpacing": {
+      "type": "number",
+      "description": "extra space between letters as a multiple of the line height",
+      "default": 0
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "description": "content path of a material asset (no extension)"
+      },
+      "description": "slot 0: the front faces, slot 1: the sides and the back (the front material when missing)"
+    }
+  },
+  "required": [
+    "name",
+    "text",
+    "font",
+    "size",
+    "depth",
+    "materials"
+  ],
+  "additionalProperties": false
+}

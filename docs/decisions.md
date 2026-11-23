@@ -2,6 +2,16 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+### 有类型的内容文件：模式、货架试点、给 IDE 的 JSON Schema、新建默认 `.jsonc`（2026-11-23）
+
+- 用户 2026-11-23 定：以后默认首选 `.jsonc` 加有类型的模式；已有的 `.json` 资源不批量改（类型检查对两种一样，改扩展名本身没有收益；搭建脚本写出来的资源重搭就覆盖，注释该写在脚本里）。
+- **模式**（`content/schema/schema.ts`，照 easy-query-ts：不可变的 builder、幻影类型参数推导、实现 Standard Schema 的 `~standard`）：一份声明给出文件的类型（`InputOf`：文件里的样子）、解析以后的类型（`Infer`：默认值补齐）、读文件时的检查和默认值（`parse`、`safeParse`）、编辑器的字段描述（`schemaFields`：属性面板、`checkFields`、JSON Schema）。检查不另写一套：模式就是带类型的字段描述，校验用同一个 `checkFields`，补默认值是 `withDefaults`。`$type<U>()` 只收窄类型（`sides` 是 `1 | 2`），`nullableList` 是能有 null 的列表。
+- 放的位置：字段描述的构造器、按描述查值和补默认值、模式挪进 `content/schema/`（内容格式要在运行时用模式声明，不从 `content/formats` 反过来依赖 `editor/`），`editor/fields` 照旧从那里导出。
+- **货架试点**：`shelfFormat.ts` 的接口和 `retail.ts` 里的 `fields<ShelfFile>` 换成一份模式 `SHELF`（`ShelfFile`、`Shelf`、`ShelfStock`……都是推导的；字段的中文说明还在模式的字段上），`SHELF_FIELDS = schemaFields(SHELF)`。`planShelf`、`shelfModel`、`deliLamps` 收文件的样子、开头 `SHELF.parse` 一次，后面的代码不再写 `?? 默认值`（删了 12 处和 `BOARD` 常量）。按种类不同的默认值留在代码里、模式里只写说明：`bay`（货架 1、冷柜 0.75、熟食柜 0.6——原来字段描述写着默认 1，和冷柜、熟食柜的代码对不上）、`facings`（货架 [2, 5]、堆头 [3, 6]，同样对不上）。仓库里 18 个货架文件都过了新模式。
+- **给 IDE 的 JSON Schema**：`tools/json-schemas.ts` 把每种内容文件（28 种：资源、场景、预制体）的 schema 导出到 `schemas/`，VS Code 的 `.vscode/settings.json`（`json.schemas`）、JetBrains 的 `.idea/jsonSchemas.xml`（本机有 `.idea` 才写，不进仓库）按 `*.<种类>.json`、`*.<种类>.jsonc` 关联：手写时补全字段名和枚举、写错标红、悬停看说明和默认值。用 ajv 拿现有的场景、货架、材质校验过都通过。单测里跑 `--check`，字段描述改了没重新导出就失败。
+- **新建默认 `.jsonc`**：编辑器后端、MCP 新建人写的资源（数据库里还没有的）存成 `.jsonc`；已有的照它原来的文件；烘焙、导入生成的照旧是 `.json`（不走这条路）。运行时照旧只读 `.json`（开发服务器、构建转换）。
+- 下一步：其余格式一种种换成模式（商品、堆放、招牌、器具、天花板……材质、场景最后），每换一种删掉那边代码里的 `?? 默认值`；格式的版本和迁移函数。
+
 ### 内容文件可以是带注释的 `.jsonc`（2026-11-23）
 
 - 用户 2026-11-23 定：内容文件里人随时能写注释（只给人看，工具存回去时丢了也没关系），很多地方支持 `.jsonc`，`.json` 照旧支持，已有的资源不改、不加注释。有类型的序列化、反序列化一起升级（下一步，见下面"有类型的内容文件"）。

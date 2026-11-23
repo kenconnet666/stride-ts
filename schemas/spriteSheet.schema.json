@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "spriteSheet asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "sprites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "texture": {
+            "type": "object",
+            "properties": {
+              "texture": {
+                "type": "string",
+                "description": "content path of a image asset (no extension)"
+              },
+              "encoding": {
+                "enum": [
+                  "ktx2",
+                  "svg",
+                  "png",
+                  "jpeg",
+                  "webp",
+                  "mp4",
+                  "webm"
+                ],
+                "default": "ktx2"
+              },
+              "size": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "unit: px"
+              },
+              "srgb": {
+                "type": "boolean"
+              },
+              "invertY": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "texture"
+            ],
+            "additionalProperties": false
+          },
+          "region": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "area on the texture in pixels: x, y (top left), width, height"
+          },
+          "pixelsPerUnit": {
+            "type": "number",
+            "minimum": 0.001,
+            "description": "texture pixels per world unit (meter)"
+          },
+          "center": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "origin in pixels: from the region center when centerFromMiddle, otherwise from its top left"
+          },
+          "centerFromMiddle": {
+            "type": "boolean"
+          },
+          "borders": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "9-slice borders in pixels: left, top, right, bottom (0: the whole sprite stretches)",
+            "default": [
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "texture",
+          "region",
+          "pixelsPerUnit",
+          "center",
+          "centerFromMiddle"
+        ],
+        "additionalProperties": false
+      },
+      "description": "the sprites, in order (a sprite component picks one by index)"
+    }
+  },
+  "required": [
+    "name",
+    "sprites"
+  ],
+  "additionalProperties": false
+}

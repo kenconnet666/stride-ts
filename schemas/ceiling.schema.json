@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ceiling asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "size": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "width along X and depth along Z; unit: m"
+    },
+    "height": {
+      "type": "number",
+      "minimum": 0.5,
+      "description": "height of the slab underside (open) or of the suspended ceiling (grid); unit: m"
+    },
+    "style": {
+      "enum": [
+        "open",
+        "grid"
+      ],
+      "description": "open: a dark slab with exposed ducts, cable trays, sprinkler pipes and hanging tube lights; grid: a suspended tile ceiling with recessed light panels",
+      "default": "open"
+    },
+    "color": {
+      "type": "string",
+      "description": "slab or tile color (sRGB #rrggbb; dark grey for open, white for grid when missing)"
+    },
+    "ducts": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20,
+      "description": "air ducts running along X (open)",
+      "default": 2
+    },
+    "trays": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20,
+      "description": "cable trays running along X (open)",
+      "default": 2
+    },
+    "pipes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20,
+      "description": "sprinkler pipes running along X (open)",
+      "default": 3
+    },
+    "lights": {
+      "type": "object",
+      "properties": {
+        "rows": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 50,
+          "description": "rows of lights across the depth",
+          "default": 2
+        },
+        "spacing": {
+          "type": "number",
+          "minimum": 0.5,
+          "description": "spacing of lights along X; unit: m",
+          "default": 2.2
+        },
+        "length": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "length of one tube light (open); unit: m",
+          "default": 1.4
+        },
+        "drop": {
+          "type": "number",
+          "minimum": 0,
+          "description": "how far the lights hang below the slab (open); unit: m",
+          "default": 0.6
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "light fixtures (they glow; place area lights at the same spots to light the scene)"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed",
+      "default": 1
+    }
+  },
+  "required": [
+    "name",
+    "size",
+    "height"
+  ],
+  "additionalProperties": false
+}

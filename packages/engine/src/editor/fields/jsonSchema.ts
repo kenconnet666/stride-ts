@@ -84,6 +84,34 @@ export function entitySchema(): JsonSchema {
   return objectSchema(ENTITY_FIELDS);
 }
 
+/**
+ * 每种内容文件整个文件的 schema（资源种类 → schema），导出给 IDE 按文件名关联（tools/json-schemas.ts）：人在 VS Code、JetBrains 里
+ * 手写 `.json`、`.jsonc` 时补全、标错、看说明。资源是 assetSchemas；场景、预制体按实体（id、父、预制体实例、变换、组件）拼——
+ * 脚本、约束、预制体实例这几块没有字段描述，不细查。
+ */
+export function contentFileSchemas(): Record<string, JsonSchema> {
+  const components = componentSchemas();
+  const entity: JsonSchema = {
+    type: 'object',
+    properties: {
+      ...(objectSchema(ENTITY_FIELDS)['properties'] as Record<string, JsonSchema>),
+      id: { type: 'string' },
+      parent: { type: ['string', 'null'], description: 'id of the parent entity; null at the root' },
+      prefab: { type: 'object', description: 'this entity is an instance of a prefab (reference and overrides)' },
+      components: { type: 'object', properties: { ...components, scripts: { type: 'array' }, constraints: { type: 'array' } }, additionalProperties: false },
+    },
+    required: ['id', 'name', 'parent', 'position', 'rotation', 'scale', 'components'],
+    additionalProperties: false,
+  };
+  const entities = { type: 'array', items: entity, description: 'parents come before their children' };
+  const file = (title: string, schema: JsonSchema): JsonSchema => ({ $schema: 'https://json-schema.org/draft/2020-12/schema', title, ...schema });
+  return {
+    ...Object.fromEntries(Object.entries(assetSchemas()).map(([kind, schema]) => [kind, file(`${kind} asset`, schema)])),
+    scene: file('scene', { type: 'object', properties: { name: { type: 'string' }, ...sceneSettingSchemas(), entities }, required: ['name', 'entities'], additionalProperties: false }),
+    prefab: file('prefab', { type: 'object', properties: { name: { type: 'string' }, entities }, required: ['name', 'entities'], additionalProperties: false }),
+  };
+}
+
 function fieldSchema(field: Field): JsonSchema {
   const type = fieldTypeSchema(field.type);
   const description = [field.description, type['description']].filter(Boolean).join('; ');

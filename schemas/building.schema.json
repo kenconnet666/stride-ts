@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "building asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "materials": {
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string",
+            "description": "content path of a material asset (no extension)"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "description": "material slots: wall, glass, frame, roof (modules and roofs can use more slots)"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed for the A|B choices in the patterns: another number is another building of the same kind",
+      "default": 1
+    },
+    "masses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "footprint": {
+            "description": "outline: points [[x, z], …], { rect: [width, depth], center } or { circle: radius, segments, center }; unset is the mass below moved in by inset"
+          },
+          "inset": {
+            "type": "number",
+            "minimum": 0,
+            "description": "moves every edge of the outline inward (setbacks); unit: m",
+            "default": 0
+          },
+          "base": {
+            "type": "number",
+            "minimum": 0,
+            "description": "height of the bottom of this mass; unset stacks it on the one below (side-by-side towers, sky bridges); unit: m"
+          },
+          "floors": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300,
+            "description": "floors in this mass"
+          },
+          "floorHeight": {
+            "type": "number",
+            "minimum": 0.5,
+            "description": "height of one floor; unit: m"
+          },
+          "facade": {
+            "type": "string",
+            "description": "name of the facade rule; unset is plain wall"
+          },
+          "roof": {
+            "description": "{ kind: 'flat', parapet }, { kind: 'dome', height, rings } or { kind: 'pyramid', height }; material is a slot (default 3); default flat"
+          }
+        },
+        "required": [
+          "floors",
+          "floorHeight"
+        ],
+        "additionalProperties": false
+      },
+      "description": "masses stacked bottom up; every edge of the outline is a facade"
+    },
+    "facades": {
+      "description": "facade rules by name: { floors: [{ where: 'ground' | 'top' (unset: any floor), pattern: 'Pillar [Window Window]* Pillar', ledge: { height, depth } }] }; the first matching rule is used, * repeats to fill the edge, A|B picks one per column by the seed"
+    },
+    "modules": {
+      "description": "facade modules by name, one floor high: { kind: 'wall' | 'window' (sill, head, margin, depth, frame, mullions, balcony) | 'pillar' (depth) | 'curtain' (frame) | 'panel' (margin, sill, head, depth, material: signs, light strips), width, slots: { wall, glass, frame } (other material slots) }"
+    }
+  },
+  "required": [
+    "name",
+    "materials",
+    "masses"
+  ],
+  "additionalProperties": false
+}

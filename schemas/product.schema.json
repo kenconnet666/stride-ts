@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "product asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "shape": {
+      "enum": [
+        "box",
+        "bottle",
+        "can",
+        "jar",
+        "tub",
+        "pouch",
+        "jug",
+        "round",
+        "onion",
+        "garlic",
+        "nut",
+        "tuber",
+        "leaf",
+        "bowl",
+        "plate"
+      ],
+      "description": "box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends; jug: 5 l oil jug (rounded square body, spout moved to the front, a handle at the back); produce without a label (round: tomato, orange; onion; garlic; nut: walnut; tuber: potato; leaf: a fallen leaf lying flat, width × curl height × length); ware for cooked food: bowl (foot ring, wall thickness), plate (shallow rounded square)"
+    },
+    "size": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "width (diameter for bottles, cans, jars, tubs and bowls), height, depth (cartons, pouches and plates; produce: elongated when given); unit: m"
+    },
+    "font": {
+      "type": "string",
+      "description": "font of the label text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese); no text without one; content path of a font asset (no extension)"
+    },
+    "brand": {
+      "type": "string",
+      "description": "brand name in big letters; two or three common characters picked from the seed when missing"
+    },
+    "text": {
+      "type": "string",
+      "description": "product kind under the brand (e.g. 生抽, 矿泉水); none when missing"
+    },
+    "colors": {
+      "type": "object",
+      "properties": {
+        "background": {
+          "type": "string",
+          "description": "label background (sRGB #rrggbb; picked from the seed when missing)"
+        },
+        "accent": {
+          "type": "string",
+          "description": "pattern color (sRGB #rrggbb; picked from the seed when missing)"
+        },
+        "text": {
+          "type": "string",
+          "description": "text color (black or white by contrast when missing) (sRGB #rrggbb; picked from the seed when missing)"
+        },
+        "cap": {
+          "type": "string",
+          "description": "cap or lid color (sRGB #rrggbb; picked from the seed when missing)"
+        },
+        "trim": {
+          "type": "string",
+          "description": "trim lines and emblem color (gold, white or off-white) (sRGB #rrggbb; picked from the seed when missing)"
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "label colors; the missing ones come from the seed, so variants of one file differ in them"
+    },
+    "pattern": {
+      "enum": [
+        "plain",
+        "band",
+        "stripes",
+        "split",
+        "wave",
+        "dots",
+        "floral"
+      ],
+      "description": "label pattern (floral: blue-and-white porcelain bands for ware); picked from the seed when missing, ware: bowls floral, plates plain"
+    },
+    "surface": {
+      "enum": [
+        "paper",
+        "plastic",
+        "metal",
+        "glass",
+        "skin",
+        "ceramic"
+      ],
+      "description": "material (roughness, metalness); by shape when missing: cartons paper, cans metal, jars glass, produce skin, ware ceramic, others plastic"
+    },
+    "food": {
+      "type": "object",
+      "properties": {
+        "color": {
+          "type": "string",
+          "description": "main ingredient color (sRGB #rrggbb)"
+        },
+        "accent": {
+          "type": "string",
+          "description": "side ingredient color (red pepper, scallion; sRGB #rrggbb); a darker main color when missing"
+        },
+        "sauce": {
+          "type": "string",
+          "description": "sauce under the food (sRGB #rrggbb); the main color darkened when missing"
+        },
+        "level": {
+          "type": "number",
+          "description": "how high the food reaches the wall (0..1 of the inner depth)",
+          "default": 0.7
+        },
+        "mound": {
+          "type": "number",
+          "description": "how much the middle heaps up (fraction of the ware height)",
+          "default": 0.15
+        },
+        "pieces": {
+          "enum": [
+            "chunks",
+            "strands",
+            "beans",
+            "smooth"
+          ],
+          "description": "what the food looks like: chunks (braised pork, fried chicken), strands (shredded potato, bean sprouts), beans (peanuts, soybeans), smooth (mashed, custard)",
+          "default": "chunks"
+        },
+        "dropped": {
+          "type": "number",
+          "description": "how many real pieces (by pieces: chunks, strands, beans; not smooth) are dropped on top and settled with physics when baking; 0 draws the food only on the surface texture",
+          "default": 0
+        },
+        "pieceSize": {
+          "type": "number",
+          "description": "size of one dropped piece in meters: chunk edge, strand thickness (strands are 10..16 times as long), bean length; 0.02, 0.004, 0.009 when missing"
+        }
+      },
+      "required": [
+        "color"
+      ],
+      "additionalProperties": false,
+      "description": "a dish of food in a bowl or plate; empty ware when missing"
+    },
+    "motif": {
+      "enum": [
+        "leaf",
+        "drop",
+        "peanut",
+        "corn",
+        "sunflower",
+        "wheat",
+        "sesame",
+        "none"
+      ],
+      "description": "small picture of the ingredient on both sides of the brand (on a white disc); picked from the seed when missing (leaf, drop, wheat, sunflower or none)"
+    },
+    "badge": {
+      "type": "string",
+      "description": "text of the starburst in the lower right corner (\"5L\", \"non-GMO\"); none when missing"
+    },
+    "detail": {
+      "type": "boolean",
+      "description": "print details: emblem, ingredient pictures, fine print, badge, trim lines and shading of the band; false draws only the color blocks, pattern and text (a cartoon look)",
+      "default": true
+    },
+    "wear": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "how handled the package looks (0..1): each variant fades a little and gets a few grimy smudges and scuffs near the edges, from the seed; 0 is fresh from the factory; produce and ware ignore it",
+      "default": 0.5
+    },
+    "transmission": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "how much light passes through the body (0..1: oil and drink bottles show what is inside); the label background is the body, printed parts (cap, pattern, text) stay opaque; produce and ware ignore it",
+      "default": 0
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed of everything not written: another number is another brand of the same product",
+      "default": 1
+    }
+  },
+  "required": [
+    "name",
+    "shape",
+    "size"
+  ],
+  "additionalProperties": false
+}

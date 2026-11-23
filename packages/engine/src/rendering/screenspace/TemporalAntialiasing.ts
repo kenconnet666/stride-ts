@@ -205,6 +205,7 @@ export class TemporalAntialiasing {
   /** 这一帧和上一帧没挪过的视图投影矩阵。 */
   readonly #viewProjection = Matrix.identity();
   readonly #previousViewProjection = Matrix.identity();
+  readonly #inverseUnjittered = Matrix.identity();
   /** 挪之前的投影：场景画完以后放回去（之后画的调试线、场景里的 UI 不抖）。 */
   readonly #projection = Matrix.identity();
 
@@ -258,7 +259,9 @@ export class TemporalAntialiasing {
     const read = this.#history[this.#current]!, write = this.#history[1 - this.#current]!;
     this.#current = 1 - this.#current;
     const parameters = new Float32Array(40);
-    parameters.set(view.inverseViewProjection, 0);
+    // 深度重投影用不带抖动的逆：这一帧的抖动不能算进运动，否则静止的画面每帧历史错开一个抖动量、发糊
+    if (!Matrix.invert(this.#inverseUnjittered, view.unjitteredViewProjection)) Matrix.setIdentity(this.#inverseUnjittered);
+    parameters.set(this.#inverseUnjittered, 0);
     parameters.set(this.#previousViewProjection, 16);
     parameters.set([1 / width, 1 / height, this.feedback, this.#reset ? 1 : 0, this.clipSigma, 0, 0, 0], 32);
     this.#reset = false;

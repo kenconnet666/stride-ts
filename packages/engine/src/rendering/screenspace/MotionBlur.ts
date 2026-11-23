@@ -163,6 +163,7 @@ export class MotionBlur {
   readonly #arena: UniformArena;
   readonly #uniforms = new Float32Array(56);
   readonly #inverseProjection = Matrix.identity();
+  readonly #inverseUnjittered = Matrix.identity();
   #frame = 0;
 
   constructor(device: GPUDevice) {
@@ -181,7 +182,9 @@ export class MotionBlur {
     const { width, height } = color;
     if (!Matrix.invert(this.#inverseProjection, view.projection)) Matrix.setIdentity(this.#inverseProjection);
     const u = this.#uniforms;
-    u.set(view.inverseViewProjection, 0);
+    // 深度重投影用不带抖动的逆（同 TAA：抖动不算运动）
+    if (!Matrix.invert(this.#inverseUnjittered, view.unjitteredViewProjection)) Matrix.setIdentity(this.#inverseUnjittered);
+    u.set(this.#inverseUnjittered, 0);
     u.set(view.previousViewProjection, 16);
     u.set(this.#inverseProjection, 32);
     u.set([width, height, this.shutter, this.maxPixels], 48);

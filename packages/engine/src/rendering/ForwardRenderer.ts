@@ -896,8 +896,9 @@ export class ForwardRenderer {
   }
 
   /**
-   * 主画面的运动向量：会画运动向量的特性（网格）按深度相等再画一遍不透明的；没画到的像素（天空、精灵、粒子）是
-   * NO_VELOCITY，TAA 在那里按深度重投影。
+   * 主画面的运动向量：会画运动向量的特性（网格）按深度相等再画一遍不透明的里面动过的（静止的网格跳过）；没画到的像素（静止的
+   * 网格、天空、精灵、粒子）是 NO_VELOCITY，TAA、SSR、运动模糊在那里按深度和上一帧的视图投影重投影——只跟相机动的像素两种算法
+   * 结果一样。
    */
   #velocityPass(context: RenderContext, frame: EffectFrame, depth: GPUTexture): GraphTexture {
     const velocity = frame.graph.texture({ label: 'ForwardRenderer velocity', width: depth.width, height: depth.height, format: VELOCITY_FORMAT });

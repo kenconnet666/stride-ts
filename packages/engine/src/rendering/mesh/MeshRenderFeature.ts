@@ -57,6 +57,11 @@ export interface MeshBatch {
    * （#updateBatchBounds）。上一次算时的槽位列表留着比较。
    */
   readonly bounds: { readonly min: Float64Array; readonly max: Float64Array; dirty: boolean; slots: Uint32Array };
+  /**
+   * @internal 这批最近一次有实例动了、加进来或换了槽位是第几次更新（GameTime.frameCount）：运动向量那一遍只画这两次更新里动过的
+   * 批，静止的像素按深度重投影，结果一样。
+   */
+  movedAt: number;
   /** @internal 各阶段上次用的管线（材质改了、输出格式或网格效果换了才重新查，不用每次画都拼管线的键）。 */
   readonly pipelines: Map<RenderStage, CachedPipeline>;
 }
@@ -190,10 +195,10 @@ export class MeshRenderFeature extends RootRenderFeature {
   #batchOfSlotStale = true;
 
   /**
-   * 各批的世界包围盒跟上这一帧（GPU 剔除前调，一帧一次）：槽位列表变了的批、这次更新里有实例动了的批重算（只隔一次更新时按
-   * changedSlots 找，隔得多了全部重算）。静止的世界每帧几乎不花时间。
+   * 各批跟上这一帧（剔除前调，一帧一次）：槽位列表变了的批、这次更新里有实例动了的批记下动了（movedAt）、GPU 剔除时重算世界
+   * 包围盒（只隔一次更新时按 changedSlots 找，隔得多了全部算动了）。静止的世界每帧几乎不花时间。
    */
-  #updateBatchBounds(context: RenderContext): void {
+  #trackBatchChanges(context: RenderContext, bounds: boolean): void {
     const update = context.game.updateTime.frameCount;
     if (update === this.#boundsUpdate) return;
     const transforms = context.game.transforms;
@@ -221,6 +226,8 @@ export class MeshRenderFeature extends RootRenderFeature {
       }
     }
     this.#boundsUpdate = update;
+    for (const batch of this.batches) if (batch.bounds.dirty) batch.movedAt = update;
+    if (!bounds) return;
     const world = transforms.renderWorld;
     for (const batch of this.batches) {
       const { bounds } = batch;
@@ -292,7 +299,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     pass.slotCount = slotCount;
     pass.batchCount = batchCount;
     pass.gpuView = gpu ? this.#gpuViews.length : -1;
-    if (gpu) this.#updateBatchBounds(context);
+    this.#trackBatchChanges(context, gpu);
     views.forEach((view, i) => {
       this.#viewCulling.set(view, { pass, index: i });
       if (!gpu) return;
@@ -326,6 +333,15 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   /** 一次剔除里第 viewIndex 个视图、第 b 批 CPU 剔出来的个数；这批在 GPU 上剔时是 undefined。 */
+  /**
+   * 这批在运动向量里和"静止、只跟相机动"不一样：这两次更新里有实例动过（上一帧的世界矩阵和这一帧的不同），或者顶点自己在动
+   * （蒙皮、形变、风里摆的材质、朝着相机转的远处卡片）。
+   */
+  #moves(batch: MeshBatch, update: number): boolean {
+    const deform = deformOf(batch.mesh);
+    return batch.movedAt >= update - 1 || batch.skinned || deform === 'morph' || deform === 'impostor' || batch.material.wind !== undefined;
+  }
+
   #cpuCount(pass: CullPass, viewIndex: number, b: number): number | undefined {
     const j = pass.cpuIndexOf[b]!;
     return j < 0 ? undefined : pass.culler.counts[viewIndex * pass.cpuBatches.length + j]!;
@@ -454,6 +470,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       const first = runs ? runs[i * 3 + 1]! : 0;
       const count = runs ? runs[i * 3 + 2]! : this.#cpuCount(cullPass, index, b);
       if (!visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent)) continue;
+      if (stage.velocity && !this.#moves(batch, context.game.updateTime.frameCount)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
@@ -590,7 +607,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       if (!mesh) throw new Error(`Model refers to mesh ${meshId}, which does not exist`);
       if (!material) throw new Error(`Model refers to material ${materialId}, which does not exist`);
       if (skinned && !mesh.layout.joints) throw new Error(`mesh '${mesh.name}' is drawn skinned but has no joints and weights`);
-      batch = { mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) } };
+      batch = { mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) }, movedAt: Infinity };
       this.#batchByKey.set(key, batch);
       this.batches.push(batch);
     }

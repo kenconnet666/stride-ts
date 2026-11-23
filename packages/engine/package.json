@@ -26,7 +26,8 @@
     "./math": "./src/data/Matrix.ts",
     "./light-profile": "./src/rendering/lighting/LightProfile.ts",
     "./color-lut": "./src/rendering/postfx/tonemap/ColorLut.ts",
-    "./splats": "./src/content/splatFile.ts"
+    "./splats": "./src/content/splatFile.ts",
+    "./splat-edit": "./src/content/splatEdit.ts"
   },
   "scripts": {
     "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",

@@ -17,6 +17,8 @@ export { bakeBrushModel, brushToPoly } from './bakers/brushModel.ts';
 export { bakeSdfModel, DEFAULT_SDF_RESOLUTION } from './bakers/sdfModel.ts';
 export { bakeTextModel } from './bakers/textModel.ts';
 export { convertSplats, readPlySplats, readSpzSplats, SPLAT_SOURCE_EXTENSIONS } from './splats.ts';
+export { buildSplatLod } from './splatLod.ts';
+export { bakeSplatEdit } from './bakers/splatEditModel.ts';
 export { bakePolyModel } from './bakers/polyModel.ts';
 export { bakeSplineModel } from './bakers/splineModel.ts';
 export { bakeTreeModel } from './bakers/treeModel.ts';

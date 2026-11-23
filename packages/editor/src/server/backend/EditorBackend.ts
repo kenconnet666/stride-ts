@@ -96,7 +96,7 @@ export class EditorBackend {
         const content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
         const hash = this.#bakeHash(content), known = this.#bakeHashes[key];
         // 生成的模型不在（包装、货架这类生成的大文件不进 git，新检出里没有）：源文件没变也要烘
-        const exists = existsSync(path.join(this.project.contentDir, record.path + EXTENSIONS.model));
+        const exists = this.#generatedExists(kind, record.path);
         if (known === hash && exists) continue;
         if (known === undefined && exists) {
           this.#bakeHashes[key] = hash;
@@ -119,9 +119,12 @@ export class EditorBackend {
   /** 生成资源的代码的版本（generatorVersion.ts），烘焙记录的哈希带上它。 */
   #generatorVersion = '';
 
-  /** 烘焙记录用的哈希：内容加生成它的代码的版本（代码改了，同样的内容也要重烘）。 */
+  /**
+   * 烘焙记录：`生成代码的版本:内容的哈希`。打开工程时整条比（代码改了，同样的内容也要重烘）；开着的时候看别的进程烘没烘过只比
+   * 内容（#bakedElsewhere：一个前一天起的 MCP 服务的代码版本是旧的，不能因为版本不同就用旧代码再烘一遍、盖掉新烘的）。
+   */
   #bakeHash(content: unknown): string {
-    return contentHash([this.#generatorVersion, content]);
+    return `${this.#generatorVersion}:${contentHash(content)}`;
   }
 
   get #bakeCacheFile(): string {
@@ -155,9 +158,17 @@ export class EditorBackend {
   }
 
   /** 别的进程已经烘过这份内容：共用的表里是这个哈希、生成的模型在。 */
-  async #bakedElsewhere(key: string, assetPath: string, content: unknown): Promise<boolean> {
+  async #bakedElsewhere(key: string, kind: AssetKind, assetPath: string, content: unknown): Promise<boolean> {
     const shared = await this.#readSharedBakeHashes();
-    return shared[key] === this.#bakeHash(content) && existsSync(path.join(this.project.contentDir, assetPath + EXTENSIONS.model));
+    return shared[key]?.endsWith(`:${contentHash(content)}`) === true && this.#generatedExists(kind, assetPath);
+  }
+
+  /** 生成的主文件（生成器的第一个输出：模型、扫描编辑的泼溅……）在不在。 */
+  #generatedExists(kind: AssetKind, assetPath: string): boolean {
+    const [outputKind, suffix] = generatorFor(kind)?.outputs[0] ?? ['model', ''];
+    // 图片、音频这类的扩展名不固定：查资源库
+    if (outputKind === 'image' || outputKind === 'audio' || outputKind === 'modelSource') return this.database.get(outputKind, assetPath + suffix) !== undefined;
+    return existsSync(path.join(this.project.contentDir, assetFileName(outputKind, assetPath + suffix)));
   }
 
   #saveBakeHashes(): Promise<void> {
@@ -518,7 +529,7 @@ export class EditorBackend {
       try {
         const key = `${kind}:${record.path}`, content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
         if (JSON.stringify(content) === this.#bakes.get(key)) continue;
-        if (await this.#bakedElsewhere(key, record.path, content)) {
+        if (await this.#bakedElsewhere(key, kind, record.path, content)) {
           this.#bakes.set(key, JSON.stringify(content));
           this.#bakeHashes[key] = this.#bakeHash(content);
           continue;

@@ -53,6 +53,8 @@ export const EXTENSIONS = {
   lut: '.cube',
   /** 高斯泼溅（content/splatFile.ts 的二进制）：编辑器从 3DGS 的 .ply 导入成它。 */
   splats: '.splat',
+  /** 扫描场景的编辑（SplatEditFile，content/formats/splatEditFormat.ts）：源泼溅加裁剪、刷掉、删飞点，编辑器后端照它生成同名的泼溅（.splat）。 */
+  splatEdit: '.splatedit.json',
   /** 矢量地形（TerrainFile，content/formats/terrainFormat.ts）：噪声的底、矢量地物和雕刻的笔画，运行时求值，不存高度图。 */
   terrain: '.terrain.json',
   /** 样条（SplineFile，content/formats/splineFormat.ts）：控制点和横截面，编辑器后端把它烘成同名的模型（.model）。 */

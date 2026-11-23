@@ -3,9 +3,9 @@
  * 店里的器具）：每种怎么烘（pipeline 的 bake*），烘出哪些同名的资源（跟着源文件挪、删）。编辑器后端存下、磁盘上改了、打开工程时
  * 补烘都查这张表（generatorFor）；内置的加一种在这里加一行，工程自己的种类由编辑器扩展登记（shared/extension.ts 的 bake）。
  */
-import { EXTENSIONS, type BrushFile, type BuildingFile, type CeilingFile, type FixtureFile, type PileFile, type DebrisFile, type PolyMeshFile, type ProductFile, type SdfFile, type ShelfFile, type SignFile, type SplineFile, type TextModelFile, type TreeFile } from '@stride-ts/engine/content-format';
+import { EXTENSIONS, type BrushFile, type BuildingFile, type CeilingFile, type FixtureFile, type PileFile, type DebrisFile, type SplatEditFile, type PolyMeshFile, type ProductFile, type SdfFile, type ShelfFile, type SignFile, type SplineFile, type TextModelFile, type TreeFile } from '@stride-ts/engine/content-format';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakeBuildingModel, bakeCeiling, bakeDebris, bakeFixture, bakePile, bakePolyModel, bakeProduct, bakeSdfModel, bakeShelf, bakeSign, bakeSplineModel, bakeTextModel, bakeTreeModel } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakeBuildingModel, bakeCeiling, bakeDebris, bakeFixture, bakePile, bakeSplatEdit, bakePolyModel, bakeProduct, bakeSdfModel, bakeShelf, bakeSign, bakeSplineModel, bakeTextModel, bakeTreeModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '../../shared/protocol.ts';
 import { extensionAssetKinds, extensionAssetKind } from '../../shared/extension.ts';
 
@@ -60,6 +60,8 @@ export const GENERATORS = {
   shelf: merged<ShelfFile>(({ tools, read }, file, assetPath, where) => bakeShelf(tools, file, assetPath, read, where)),
   pile: merged<PileFile>(({ tools, read }, file, assetPath, where) => bakePile(tools, file, assetPath, read, where)),
   debris: merged<DebrisFile>(({ tools, read }, file, assetPath, where) => bakeDebris(tools, file, assetPath, read, where)),
+  // 扫描场景的编辑：从源泼溅生成同名的泼溅
+  splatEdit: { bake: async ({ read }, content, assetPath, where) => (await bakeSplatEdit(content as SplatEditFile, assetPath, read, where)).files, outputs: [['splats', '']] },
   sign: merged<SignFile>(({ tools, read }, file, assetPath, where) => bakeSign(tools, file, assetPath, read, where)),
   ceiling: merged<CeilingFile>(({ tools }, file, assetPath, where) => bakeCeiling(tools, file, assetPath, where)),
   fixture: merged<FixtureFile>(({ tools, read }, file, assetPath, where) => bakeFixture(tools, file, assetPath, read, where)),
@@ -82,4 +84,4 @@ export function generatedKinds(): AssetKind[] {
 export const isGenerated = (kind: string): boolean => generatorFor(kind) !== undefined;
 
 /** 生成的资源用着别的资源、那些变了要跟着重烘的：货架、堆放用着商品（标签、尺寸在它们的图集和网格里）。 */
-export const REBAKE_WITH: Readonly<Partial<Record<AssetKind, readonly AssetKind[]>>> = { product: ['shelf', 'pile', 'debris'] };
+export const REBAKE_WITH: Readonly<Partial<Record<AssetKind, readonly AssetKind[]>>> = { product: ['shelf', 'pile', 'debris'], splats: ['splatEdit'] };

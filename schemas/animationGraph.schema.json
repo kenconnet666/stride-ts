@@ -105,6 +105,57 @@
                   "points"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "blend2d"
+                    ]
+                  },
+                  "parameterX": {
+                    "type": "string",
+                    "description": "number parameter for x (strafe)"
+                  },
+                  "parameterY": {
+                    "type": "string",
+                    "description": "number parameter for y (forward)"
+                  },
+                  "points": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "at": {
+                          "type": "array",
+                          "items": {
+                            "type": "number"
+                          },
+                          "minItems": 2,
+                          "maxItems": 2
+                        },
+                        "clip": {
+                          "type": "string",
+                          "description": "content path of a animation asset (no extension)"
+                        }
+                      },
+                      "required": [
+                        "at",
+                        "clip"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "clips at positions in the parameter plane"
+                  }
+                },
+                "required": [
+                  "type",
+                  "parameterX",
+                  "parameterY",
+                  "points"
+                ],
+                "additionalProperties": false
               }
             ]
           },
@@ -194,6 +245,262 @@
         ],
         "additionalProperties": false
       },
+      "default": []
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "mask": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "joints this layer drives, each with all its children (spine for the upper body)"
+          },
+          "mode": {
+            "enum": [
+              "override",
+              "additive"
+            ],
+            "description": "override replaces the masked joints; additive adds on top",
+            "default": "override"
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 1
+          },
+          "weightParameter": {
+            "type": "string",
+            "description": "number parameter that multiplies weight (how far the gun is raised)"
+          },
+          "states": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "motion": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "clip"
+                          ]
+                        },
+                        "clip": {
+                          "type": "string",
+                          "description": "content path of a animation asset (no extension)"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "clip"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "blend1d"
+                          ]
+                        },
+                        "parameter": {
+                          "type": "string",
+                          "description": "number parameter that picks the position"
+                        },
+                        "points": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "at": {
+                                "type": "number"
+                              },
+                              "clip": {
+                                "type": "string",
+                                "description": "content path of a animation asset (no extension)"
+                              }
+                            },
+                            "required": [
+                              "at",
+                              "clip"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "description": "clips at parameter values, in increasing order"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "parameter",
+                        "points"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "enum": [
+                            "blend2d"
+                          ]
+                        },
+                        "parameterX": {
+                          "type": "string",
+                          "description": "number parameter for x (strafe)"
+                        },
+                        "parameterY": {
+                          "type": "string",
+                          "description": "number parameter for y (forward)"
+                        },
+                        "points": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "at": {
+                                "type": "array",
+                                "items": {
+                                  "type": "number"
+                                },
+                                "minItems": 2,
+                                "maxItems": 2
+                              },
+                              "clip": {
+                                "type": "string",
+                                "description": "content path of a animation asset (no extension)"
+                              }
+                            },
+                            "required": [
+                              "at",
+                              "clip"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "description": "clips at positions in the parameter plane"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "parameterX",
+                        "parameterY",
+                        "points"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "speed": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "playback speed",
+                  "default": 1
+                },
+                "loop": {
+                  "type": "boolean",
+                  "description": "loops; when off it holds the last pose and transitions without conditions fire at the end",
+                  "default": true
+                }
+              },
+              "required": [
+                "name",
+                "motion"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "initial": {
+            "type": "string",
+            "description": "state to start in"
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {
+                  "type": "string",
+                  "description": "source state, or * for any state"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "when": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "parameter": {
+                        "type": "string"
+                      },
+                      "test": {
+                        "enum": [
+                          ">",
+                          "<",
+                          "true",
+                          "false",
+                          "trigger"
+                        ],
+                        "description": "> and < compare with value; true and false test a bool; trigger waits for trigger()"
+                      },
+                      "value": {
+                        "type": "number",
+                        "default": 0
+                      }
+                    },
+                    "required": [
+                      "parameter",
+                      "test"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "all must hold",
+                  "default": []
+                },
+                "exitTime": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "only after the source state has played this much (0..1 of its length)"
+                },
+                "duration": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "crossfade time; unit: s",
+                  "default": 0.15
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "name",
+          "mask",
+          "states",
+          "initial"
+        ],
+        "additionalProperties": false
+      },
+      "description": "state machines on top of the base one, each masked to some joints",
       "default": []
     }
   },

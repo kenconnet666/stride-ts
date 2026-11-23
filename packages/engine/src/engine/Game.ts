@@ -802,9 +802,12 @@ export class Game {
   async takeOverFrames(): Promise<() => void> {
     if (this.framesTakenOver) throw new Error('Game.takeOverFrames: the frame loop is already taken over');
     this.framesTakenOver = true;
+    // 离线渲染每一帧都要完整：管线没编好也要当场编，不能先不画（网格特性的 deferPipelines）
+    this.meshes.deferPipelines = false;
     while (this.inFrame) await new Promise((resolve) => setTimeout(resolve, 0));
     return () => {
       this.framesTakenOver = false;
+      this.meshes.deferPipelines = true;
     };
   }
 

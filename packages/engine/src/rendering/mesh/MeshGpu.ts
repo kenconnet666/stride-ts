@@ -369,6 +369,11 @@ export class MeshGpu {
     return pipeline;
   }
 
+  /** 这条管线已经编好、放进缓存了（预热在后台编，没好的话这里是 false）。 */
+  hasPipeline(stage: RenderStage, layout: VertexLayout, skinned: boolean, deform: VertexDeform, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): boolean {
+    return this.#pipelines.has(this.#pipelineKey(stage, layout, skinned, deform, material, effect, materialPass));
+  }
+
   /**
    * 预热：这条管线还没有的话在后台编译（createRenderPipelineAsync，不卡帧），好了以后放进缓存。已经有了返回 undefined，
    * 否则返回编好时完成的 Promise。编译期间画到它的话照旧当场建一条（结果一样，只是白编了一次）。

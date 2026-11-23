@@ -28,13 +28,30 @@ import { Material } from './Material';
 import type { MeshEffect } from './meshEffect';
 import { Mesh } from './Mesh';
 import { HeightfieldTile, HeightPages } from './HeightPages';
-import { inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
+import { inRenderMask, RENDER_GROUP_BAKE, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 import { CULL_ALWAYS_VISIBLE, CULL_ON_CPU, GpuCulling, type CullBatchInput, type CullViewInput } from './GpuCulling';
 import { type CachedPipeline, type CullPass, deformOf, grow, type MaterialPass, MeshGpu, NO_PASSES, SlotTable, transparentPasses, VIEW_STRIDE } from './MeshGpu';
 
+/** 这个材质配这个网格在这些阶段里要哪些管线（阶段、材质的遍）：预热和"都好了没有"共用。 */
+function neededPipelines(material: Material, isShadowCaster: boolean, stages: readonly RenderStage[]): [RenderStage, MaterialPass | undefined][] {
+  const needed: [RenderStage, MaterialPass | undefined][] = [];
+  for (const stage of stages) {
+    if (stage.shadowCasters ? !isShadowCaster : stage.transparent ? !(material.isTransparent || material.hasClearCoat) : material.isTransparent && !stage.picking) continue;
+    const passes = stage.transparent ? transparentPasses(material) : NO_PASSES;
+    if (passes.length === 0) needed.push([stage, undefined]);
+    for (const materialPass of passes) needed.push([stage, materialPass]);
+  }
+  return needed;
+}
+
 /** 一次实例化绘制：同一个网格和材质的实体。 */
 export interface MeshBatch {
+  /**
+   * 这一批用的管线都编好了（false 时所有阶段都不画它，一起不画才不会深度预通道画了、颜色阶段没画出个洞）：新批的管线没编好时
+   * 后台编，好了置 true 再请求出帧，画面上是"过几帧出现"，不是当场编译堵住一帧（地形块、流式加载进来的格子第一次见到的材质）。
+   */
+  ready: boolean;
   readonly mesh: Mesh;
   readonly material: Material;
   /** 这批的实体投下阴影（Model.isShadowCaster）。 */
@@ -177,6 +194,7 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   override extract(context: RenderContext): void {
     for (const batch of this.batches) batch.count = 0;
+    this.#game = context.game;
     context.game.entities.run(this.#extractSystem, context.time);
     context.game.entities.run(this.#extractSkinnedSystem, context.time);
     context.game.entities.run(this.#extractMorphedSystem, context.time);
@@ -429,17 +447,49 @@ export class MeshRenderFeature extends RootRenderFeature {
   warm(mesh: Mesh, material: Material, skinned: boolean, isShadowCaster: boolean, stages: readonly RenderStage[]): Promise<void> {
     const gpu = this.#ensureGpu();
     const pending: Promise<void>[] = [];
-    const add = (stage: RenderStage, materialPass?: MaterialPass) => {
+    for (const [stage, materialPass] of neededPipelines(material, isShadowCaster, stages)) {
       const warming = gpu.warmPipeline(stage, mesh.layout, skinned, deformOf(mesh), material, this.effect, materialPass);
       if (warming) pending.push(warming);
-    };
-    for (const stage of stages) {
-      if (stage.shadowCasters ? !isShadowCaster : stage.transparent ? !(material.isTransparent || material.hasClearCoat) : material.isTransparent && !stage.picking) continue;
-      const passes = stage.transparent ? transparentPasses(material) : NO_PASSES;
-      if (passes.length === 0) add(stage);
-      for (const materialPass of passes) add(stage, materialPass);
     }
     return Promise.all(pending).then(() => undefined);
+  }
+
+  /**
+   * 画的时候管线没好就先不画：新批第一次出现时它的管线都编好了就直接画；没好的话后台编（warm），好了再画（见 MeshBatch.ready），
+   * 当场编译会堵住一帧（带节点图的材质要一两秒）。离线渲染、烘焙这些要这一帧就完整的路径把它关掉（照旧当场编）。
+   */
+  deferPipelines = true;
+  #game: RenderContext['game'] | undefined;
+
+  /** 新批：管线都好了就是 ready，没好的在后台编、好了置 ready。 */
+  #prepareBatch(batch: MeshBatch): void {
+    const game = this.#game;
+    // 烘焙用的渲染组（远处卡片）自己预热自己的阶段；离线渲染要这一帧就完整
+    if (!game || !this.attached || !this.deferPipelines || batch.renderGroup === RENDER_GROUP_BAKE) {
+      batch.ready = true;
+      return;
+    }
+    const gpu = this.#ensureGpu();
+    const stages = game.graphicsCompositor.warmStages();
+    const deform = deformOf(batch.mesh);
+    const missing = neededPipelines(batch.material, batch.isShadowCaster, stages).some(([stage, materialPass]) => !gpu.hasPipeline(stage, batch.mesh.layout, batch.skinned, deform, batch.material, this.effect, materialPass));
+    if (!missing) {
+      batch.ready = true;
+      return;
+    }
+    batch.ready = false;
+    this.warm(batch.mesh, batch.material, batch.skinned, batch.isShadowCaster, stages).then(
+      () => {
+        batch.ready = true;
+        game.requestFrames();
+      },
+      (error: unknown) => {
+        // 编不出来：置 ready，画的时候当场建、把错误报在那一帧（和没有预热时一样）
+        console.warn(`${batch.mesh.name}: warming its pipelines failed`, error);
+        batch.ready = true;
+        game.requestFrames();
+      },
+    );
   }
 
   #ensureGpu(): MeshGpu {
@@ -485,7 +535,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       const batch = this.batches[b]!;
       const first = runs ? runs[i * 3 + 1]! : 0;
       const count = runs ? runs[i * 3 + 2]! : this.#cpuCount(cullPass, index, b);
-      if (!visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent)) continue;
+      if (!batch.ready || !visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent)) continue;
       if (stage.velocity && !this.#moves(batch, context.game.updateTime.frameCount)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
@@ -556,6 +606,8 @@ export class MeshRenderFeature extends RootRenderFeature {
     for (const [key, batch] of this.#batchByKey) if (batch.mesh === mesh) this.#batchByKey.delete(key);
     const kept = this.batches.filter((batch) => batch.mesh !== mesh);
     this.batches.splice(0, this.batches.length, ...kept);
+    // 后面的批下标都挪了：槽位到批的表要重建（不然下一帧按旧下标取到 undefined）
+    this.#batchOfSlotStale = true;
     this.#gpu?.forget(mesh);
   });
 
@@ -623,9 +675,10 @@ export class MeshRenderFeature extends RootRenderFeature {
       if (!mesh) throw new Error(`Model refers to mesh ${meshId}, which does not exist`);
       if (!material) throw new Error(`Model refers to material ${materialId}, which does not exist`);
       if (skinned && !mesh.layout.joints) throw new Error(`mesh '${mesh.name}' is drawn skinned but has no joints and weights`);
-      batch = { mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) }, movedAt: Infinity };
+      batch = { ready: true, mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) }, movedAt: Infinity };
       this.#batchByKey.set(key, batch);
       this.batches.push(batch);
+      this.#prepareBatch(batch);
     }
     return batch;
   }

@@ -272,6 +272,11 @@ export abstract class RootRenderFeature {
     return this.#system;
   }
 
+  /** 已经加入渲染系统了（单元测试里单独用的特性没有，也就没有设备）。 */
+  get attached(): boolean {
+    return this.#system !== undefined;
+  }
+
   /** @internal 由 RenderSystem.addFeature 调用。 */
   attach(system: RenderSystem): void {
     this.#system = system;

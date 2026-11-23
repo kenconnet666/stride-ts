@@ -1,0 +1,4 @@
+{
+  "_comment": "tools/dev/streaming-bench.ts --check 比的预算（用户 2026-11-23 的加载与缓存阶段）：每个世界在空闲机器上按默认路线（20 秒，60 米每秒）飞的结果。管线没好先不画（deferPipelines）以后飞行中不该再有当场编译的管线。",
+  "Worlds/Valley": { "maxMs": 100, "over50ms": 3, "over100ms": 0, "syncDuringFlight": 0 }
+}

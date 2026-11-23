@@ -3,7 +3,8 @@
 //   卡顿：按固定路线飞一圈时的帧间隔（中位数、p95、p99、最长、超过 50 毫秒的帧数）；
 //   下载量：页面请求数、传输字节；
 //   流式加载：飞行中加载、卸载的格子数；当场建的管线数（着色器的编译堵住一帧，应该是 0）和后台预热的数。
-//   node tools/dev/streaming-bench.ts [--world Worlds/Valley] [--seconds 30] [--speed 60] [--port 5232] [--size 1280x720] [--out result.json]
+//   node tools/dev/streaming-bench.ts [--sync] [--check] [--world Worlds/Valley] [--seconds 30] [--speed 60] [--port 5232] [--size 1280x720] [--out result.json]
+// --sync：对照用，关掉"管线没好先不画"（MeshRenderFeature.deferPipelines），回到当场编译的老做法。
 // 借开放世界的开发服务器（没开就开一个，用完 pwsh tools/stop-dev.ps1 停）和自己的无头 Chrome（不限帧率、关垂直同步）。开发服务器
 // 上每个模块一个请求，下载量比构建出来的大得多：要量发布的样子用 preview 的地址（--url）。路线：相机从 (0, 40, 0) 出发往 +X
 // 飞 seconds 秒（速度 speed 米每秒），到一半时拐向 +Z。
@@ -28,6 +29,7 @@ const out = option('--out', '');
 const base = option('--url', `http://localhost:${port}/`);
 const url = `${base}${base.includes('?') ? '&' : '?'}world=${world}&debug`;
 
+let lastResult: unknown;
 const reachable = () => fetch(base).then(() => true, () => false);
 if (!(await reachable()) && !process.argv.includes('--url')) {
   spawn('pnpm -F @stride-ts/open-world dev', { cwd: path.resolve(import.meta.dirname, '..', '..'), shell: true, detached: true, stdio: 'ignore' }).unref();
@@ -40,9 +42,11 @@ const measure = `(async () => {
   const t0 = performance.now();
   const game = () => globalThis.strideGame;
   while (!game()?.rootScene) await wait(50);
+  ${process.argv.includes('--sync') ? "game().meshes.deferPipelines = false;  // 对照：管线没好就当场编（改动之前的做法）" : ''}
   const rootAt = performance.now() - t0;
-  while (!(game().world?.loaded.length > 0)) await wait(50);
-  const firstCellAt = performance.now() - t0;
+  // 有格子的世界等第一个格子；Valley 这样常驻场景里放着地形、摆放的世界没有格子，最多等 5 秒
+  while (!(game().world?.loaded.length > 0) && performance.now() - t0 < 5000) await wait(50);
+  const firstCellAt = game().world?.loaded.length > 0 ? performance.now() - t0 : null;
   // 近处的格子都加载完（没有在读的了），或者等了 60 秒
   let settleAt;
   for (;;) {
@@ -84,7 +88,7 @@ const measure = `(async () => {
   const at = (p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
   return {
     url: location.href,
-    startupMs: { ...marks, rootScene: Math.round(rootAt), firstCell: Math.round(firstCellAt), nearCellsReady: settleAt === null ? null : Math.round(settleAt) },
+    startupMs: { ...marks, rootScene: Math.round(rootAt), firstCell: firstCellAt === null ? null : Math.round(firstCellAt), nearCellsReady: settleAt === null ? null : Math.round(settleAt) },
     initialDownload: loadStats,
     flight: {
       frames: frames.length, medianMs: +at(0.5).toFixed(2), p95Ms: +at(0.95).toFixed(2), p99Ms: +at(0.99).toFixed(2), maxMs: +sorted[sorted.length - 1].toFixed(1),
@@ -104,9 +108,25 @@ try {
   const reply = (await cdp.send('Runtime.evaluate', { expression: measure, awaitPromise: true, returnByValue: true, timeout: (seconds + 120) * 1000 })) as { result: { value?: unknown }; exceptionDetails?: { exception?: { description?: string } } };
   if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'the measurement failed');
   const result = reply.result.value;
+  lastResult = result;
   console.log(JSON.stringify(result, null, 2));
   if (out) await writeFile(out, JSON.stringify(result, null, 2));
 } finally {
   await closeBrowser();
+}
+// --check：和 tools/streaming-budgets.json 里这个世界的预算比，超了退出码非 0（回归、验证用；要在空闲的机器上量）
+if (process.argv.includes('--check')) {
+  const { readFile } = await import('node:fs/promises');
+  const budgets = JSON.parse(await readFile(path.resolve(import.meta.dirname, '..', 'streaming-budgets.json'), 'utf8')) as Record<string, Record<string, number>>;
+  const budget = budgets[world];
+  if (!budget) {
+    console.error(`no budget for ${world} in tools/streaming-budgets.json`);
+    process.exit(2);
+  }
+  const result = lastResult as { flight: { maxMs: number; over50ms: number; over100ms: number }; pipelines: { syncDuringFlight: number } };
+  const actual: Record<string, number> = { maxMs: result.flight.maxMs, over50ms: result.flight.over50ms, over100ms: result.flight.over100ms, syncDuringFlight: result.pipelines.syncDuringFlight };
+  const failed = Object.entries(budget).filter(([name, limit]) => (actual[name] ?? 0) > limit);
+  for (const [name, limit] of Object.entries(budget)) console.error(`${(actual[name] ?? 0) > limit ? 'FAIL' : 'ok  '} ${name}: ${actual[name]} (budget ${limit})`);
+  process.exit(failed.length > 0 ? 1 : 0);
 }
 process.exit(0);

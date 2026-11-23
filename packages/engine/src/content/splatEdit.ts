@@ -4,6 +4,7 @@
  * bakers/splatEditModel.ts）、测试都用。
  */
 import type { SplatEditBox, SplatEditFile } from './formats/splatEditFormat.ts';
+import { whiteBalanceMatrix } from '../rendering/postfx/tonemap/whiteBalance.ts';
 import { decodeSplats, shCoefficients, shWords, SPLAT_WORDS, type SplatSource } from './splatFile.ts';
 
 // 几段扫描的合并、对齐也从这个入口（@stride-ts/engine/splat-edit）出去
@@ -97,19 +98,81 @@ export function applySplatEdit(source: SplatSource, edit: SplatEditFile): { read
       }
     }
   }
-  return { source: pickSplats(source, keep), stats: { kept: count - cropped - erased - floaters, cropped, erased, floaters } };
+  const picked = pickSplats(source, keep);
+  return { source: edit.color ? applySplatColor(picked, splatColorMatrix(edit.color)) : picked, stats: { kept: count - cropped - erased - floaters, cropped, erased, floaters } };
 }
 
 /**
- * 编辑的裁剪框、删掉的框、刷掉的球编成 GPU 上的遮罩（rendering/splats/SplatRenderer.ts 的 masked，编辑器里马上预览）：第一项是
- * 三种的个数，后面每个框 3 行——泼溅坐标换到框里 ±0.5 的单位坐标（第 k 行是框的第 k 根轴除以那条边长，w 是平移）——每个球一项
- * （球心、半径）。删飞点要数邻居，不在遮罩里。
+ * 调色的矩阵（线性 sRGB 里的 3×3，行主序）：曝光 2^exposure 乘饱和度（绕 Rec.709 的亮度插值）乘白平衡（rendering/postfx/tonemap
+ * 的 whiteBalanceMatrix：temperature 的光当成白）。
  */
-export function splatEditMask(edit: Pick<SplatEditFile, 'keep' | 'remove' | 'erase'>): Float32Array {
+export function splatColorMatrix(color: NonNullable<SplatEditFile['color']>): number[] {
+  const gain = 2 ** (color.exposure ?? 0), s = color.saturation ?? 1;
+  const luma = [0.2126, 0.7152, 0.0722];
+  const saturation = [0, 1, 2].flatMap((i) => [0, 1, 2].map((j) => (1 - s) * luma[j]! + (i === j ? s : 0)));
+  // whiteBalanceMatrix 是列主序：换成行主序
+  const wb = whiteBalanceMatrix(color.temperature ?? 6500, color.tint ?? 0);
+  const white = [0, 1, 2].flatMap((i) => [0, 1, 2].map((j) => wb[j * 3 + i]!));
+  return [0, 1, 2].flatMap((i) => [0, 1, 2].map((j) => gain * [0, 1, 2].reduce((sum, k) => sum + saturation[i * 3 + k]! * white[k * 3 + j]!, 0)));
+}
+
+/**
+ * 按调色的矩阵 m（线性 sRGB，行主序）改颜色：0 阶的颜色（显示空间的 sRGB）解码、乘 m、再编码（夹在 0..1）；高阶球谐是加在
+ * 显示空间颜色上的小偏移，按在这个泼溅的颜色处线性化的变换改（编码的导数 · m · 解码的导数），亮处、暗处跟着一起变。
+ */
+export function applySplatColor(source: SplatSource, m: readonly number[]): SplatSource {
+  const colors = new Float32Array(source.colors), n = shCoefficients(source.shBands ?? 0), sh = source.sh ? new Float32Array(source.sh) : undefined;
+  for (let i = 0; i < source.count; i++) {
+    const encoded = [colors[i * 4]!, colors[i * 4 + 1]!, colors[i * 4 + 2]!], linear = encoded.map(decodeSrgb);
+    const mapped = [0, 1, 2].map((r) => m[r * 3]! * linear[0]! + m[r * 3 + 1]! * linear[1]! + m[r * 3 + 2]! * linear[2]!);
+    for (let c = 0; c < 3; c++) colors[i * 4 + c] = encodeSrgb(Math.min(1, Math.max(0, mapped[c]!)));
+    if (sh && n > 0) {
+      const jacobian = [0, 1, 2].map((r) => [0, 1, 2].map((c) => encodeSlope(Math.max(0, mapped[r]!)) * m[r * 3 + c]! * decodeSlope(encoded[c]!)));
+      const base = i * n * 3;
+      for (let k = 0; k < n; k++) {
+        const v = [sh[base + k]!, sh[base + n + k]!, sh[base + 2 * n + k]!];
+        for (let r = 0; r < 3; r++) sh[base + r * n + k] = jacobian[r]![0]! * v[0]! + jacobian[r]![1]! * v[1]! + jacobian[r]![2]! * v[2]!;
+      }
+    }
+  }
+  return { ...source, colors, ...(sh ? { sh } : {}) };
+}
+
+/**
+ * 编辑器里调色的预览：画面上的泼溅已经按 baked 调过了，预览要的是从它到 next 的那一下——next 的矩阵乘 baked 的逆。两个一样
+ * 时是 undefined（不用调）。
+ */
+export function splatColorPreview(next: SplatEditFile['color'], baked: SplatEditFile['color']): number[] | undefined {
+  if (JSON.stringify(next ?? {}) === JSON.stringify(baked ?? {})) return undefined;
+  const to = splatColorMatrix(next ?? {}), from = invert3(splatColorMatrix(baked ?? {}));
+  return [0, 1, 2].flatMap((i) => [0, 1, 2].map((j) => to[i * 3]! * from[j]! + to[i * 3 + 1]! * from[3 + j]! + to[i * 3 + 2]! * from[6 + j]!));
+}
+
+/** 3×3（行主序）的逆；奇异的（饱和度 0）当成恒等。 */
+function invert3(m: readonly number[]): number[] {
+  const [a, b, c, d, e, f, g, h, i] = m as [number, number, number, number, number, number, number, number, number];
+  const A = e * i - f * h, B = f * g - d * i, C = d * h - e * g, det = a * A + b * B + c * C;
+  if (Math.abs(det) < 1e-9) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  return [A / det, (c * h - b * i) / det, (b * f - c * e) / det, B / det, (a * i - c * g) / det, (c * d - a * f) / det, C / det, (b * g - a * h) / det, (a * e - b * d) / det];
+}
+
+const decodeSrgb = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const encodeSrgb = (l: number) => (l <= 0.0031308 ? l * 12.92 : 1.055 * l ** (1 / 2.4) - 0.055);
+/** 解码、编码的导数（编码在 0 附近按线性段的斜率，免得除零）。 */
+const decodeSlope = (c: number) => (c <= 0.04045 ? 1 / 12.92 : (2.4 / 1.055) * ((c + 0.055) / 1.055) ** 1.4);
+const encodeSlope = (l: number) => (l <= 0.0031308 ? 12.92 : (1.055 / 2.4) * l ** (1 / 2.4 - 1));
+
+/**
+ * 编辑的裁剪框、删掉的框、刷掉的球和调色编成 GPU 上的遮罩（rendering/splats/SplatRenderer.ts 的 masked、project，编辑器里马上
+ * 预览）：第一项是三种的个数和有没有调色，接着 3 行调色的矩阵（线性 sRGB，color 给了才用），再是每个框 3 行——泼溅坐标换到
+ * 框里 ±0.5 的单位坐标（第 k 行是框的第 k 根轴除以那条边长，w 是平移）——每个球一项（球心、半径）。删飞点要数邻居，不在遮罩里。
+ */
+export function splatEditMask(edit: Pick<SplatEditFile, 'keep' | 'remove' | 'erase'>, color?: readonly number[]): Float32Array {
   const keep = edit.keep ?? [], remove = edit.remove ?? [], erase = edit.erase ?? [];
-  const data = new Float32Array(4 + (keep.length + remove.length) * 12 + erase.length * 4);
-  data.set([keep.length, remove.length, erase.length, 0]);
-  let at = 4;
+  const data = new Float32Array(16 + (keep.length + remove.length) * 12 + erase.length * 4);
+  data.set([keep.length, remove.length, erase.length, color ? 1 : 0]);
+  if (color) for (let r = 0; r < 3; r++) data.set([color[r * 3]!, color[r * 3 + 1]!, color[r * 3 + 2]!, 0], 4 + r * 4);
+  let at = 16;
   for (const box of [...keep, ...remove]) {
     const q = box.rotation ?? [0, 0, 0, 1];
     for (let k = 0; k < 3; k++) {

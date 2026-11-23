@@ -543,15 +543,13 @@ export class ViewportTools {
       if (!tool) return;
       tool.file = restored;
       tool.selection = undefined;
+      tool.saved();
       this.#showSplat();
     });
     const agent = session.agent.value;
     if (!file || !agent) return;
     const tool = this.#splat = agent.editSplats(entity, path, file);
-    tool.onChanged = (commit) => {
-      if (commit) this.#editing.value?.commit(tool.file);
-      this.#showSplat();
-    };
+    tool.onChanged = (commit) => (commit ? this.#commitSplat() : this.#showSplat());
     this.#showSplat();
     session.status.value = t.splatBoxesHint;
   }
@@ -602,8 +600,7 @@ export class ViewportTools {
     try {
       const result = await session.client.alignSplatPart(tool.path, selection.index, false);
       tool.file = { ...tool.file, merge: (tool.file.merge ?? []).map((part, i) => (i === selection.index ? { ...part, ...result.transform } : part)) };
-      this.#editing.value?.commit(tool.file);
-      this.#showSplat();
+      this.#commitSplat();
       session.notice.value = t.splatAligned(result.matched, result.error);
     } catch (error) {
       session.notice.value = (error as Error).message;
@@ -616,8 +613,14 @@ export class ViewportTools {
     if (!tool) return;
     const { floaters: _, ...rest } = tool.file;
     tool.file = on ? { ...rest, floaters: {} } : rest;
-    this.#editing.value?.commit(tool.file);
-    this.#showSplat();
+    this.#commitSplat();
+  }
+
+  /** 扫描的调色（曝光、色温、品红绿、饱和度；都是默认值时去掉），存成一步。 */
+  setSplatColor(color: NonNullable<SplatEditFile['color']>): void {
+    const defaults = { exposure: 0, temperature: 6500, tint: 0, saturation: 1 } as const;
+    const kept = Object.fromEntries(Object.entries(color).filter(([key, value]) => value !== defaults[key as keyof typeof defaults]));
+    this.#splat?.setColor(Object.keys(kept).length > 0 ? kept : undefined);
   }
 
   /** 清掉刷掉的球（刷错了重来）。 */
@@ -626,7 +629,15 @@ export class ViewportTools {
     if (!tool?.file.erase) return;
     const { erase: _, ...rest } = tool.file;
     tool.file = rest;
+    this.#commitSplat();
+  }
+
+  /** 存编辑扫描的文件（记一步撤销），刷新界面。 */
+  #commitSplat(): void {
+    const tool = this.#splat;
+    if (!tool) return;
     this.#editing.value?.commit(tool.file);
+    tool.saved();
     this.#showSplat();
   }
 

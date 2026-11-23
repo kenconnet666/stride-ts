@@ -113,8 +113,9 @@ var<workgroup> sums: array<u32, 256>;
 
 const DRAW = /* wgsl */ `${COMMON}
 @group(0) @binding(2) var<storage, read> order: array<u32>;
-// 编辑器里编辑扫描场景时的遮罩（content/splatEdit.ts 的 splatEditMask）：第一项是裁剪框、删掉的框、刷掉的球的个数，后面每个框
-// 3 行（泼溅坐标 → 框里 ±0.5 的单位坐标），每个球一项（球心、半径）。没在编辑时个数都是 0
+// 编辑器里编辑扫描场景时的遮罩（content/splatEdit.ts 的 splatEditMask）：第一项是裁剪框、删掉的框、刷掉的球的个数和有没有
+// 调色，接着 3 行调色的矩阵（线性），再是每个框 3 行（泼溅坐标 → 框里 ±0.5 的单位坐标），每个球一项（球心、半径）。没在编辑
+// 时都是 0
 @group(0) @binding(4) var<storage, read> mask: array<vec4f>;
 
 fn insideMaskBox(at: u32, p: vec3f) -> bool {
@@ -128,7 +129,7 @@ fn masked(p: vec3f) -> bool {
   let remove = u32(mask[0].y);
   let spheres = u32(mask[0].z);
   if (keep + remove + spheres == 0u) { return false; }
-  var at = 1u;
+  var at = 4u;
   if (keep > 0u) {
     var inside = false;
     for (var k = 0u; k < keep; k++) {
@@ -249,7 +250,10 @@ fn project(corner: u32, i: u32, colored: bool) -> Varyings {
   out.color = vec4f(0.0, 0.0, 0.0, color.a);
   if (colored) {
     let direction = normalize(splatCenter(i) - params.eye.xyz);
-    out.color = vec4f(decodeSrgb(max(color.rgb + shColor(i, direction), vec3f(0.0))), color.a);
+    var linear = decodeSrgb(max(color.rgb + shColor(i, direction), vec3f(0.0)));
+    // 编辑器里调色的预览（遮罩的调色矩阵）
+    if (mask[0].w > 0.5) { linear = max(vec3f(dot(mask[1].xyz, linear), dot(mask[2].xyz, linear), dot(mask[3].xyz, linear)), vec3f(0.0)); }
+    out.color = vec4f(linear, color.a);
   }
   return out;
 }

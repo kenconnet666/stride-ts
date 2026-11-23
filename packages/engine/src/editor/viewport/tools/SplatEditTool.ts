@@ -8,7 +8,7 @@
  * commit（编辑器存文件、记一步撤销、后端重新生成泼溅）。删飞点要数邻居，预览不了，存了以后看生成的。
  */
 import type { SplatEditFile } from '../../../content/formats/splatEditFormat';
-import { splatEditMask } from '../../../content/splatEdit';
+import { splatColorPreview, splatEditMask } from '../../../content/splatEdit';
 import { Matrix } from '../../../data/Matrix';
 import { Quaternion } from '../../../data/vectors';
 import type { DebugColor } from '../../../debug/DebugDraw';
@@ -47,16 +47,41 @@ export class SplatEditTool extends FileEditTool<SplatEditFile, SplatBoxSelection
   #lookAt: { readonly at: Point3; readonly size: number } | undefined;
   /** 合并的几段扫描的主体范围（按资源路径；读的时候是 null）：画它们的框、操纵器绕框的中心转。 */
   readonly #extents = new Map<string, SplatExtent | null>();
+  /**
+   * 画面上的泼溅是按哪次的调色烘的（预览只补从它到现在的那一下）：打开时是文件里的；存了以后，实体换上新烘的泼溅时换成存的那次的。
+   */
+  #bakedColor: SplatEditFile['color'];
+  #committedColor: SplatEditFile['color'];
+  #bakedCloud: SplatCloud | undefined;
 
   constructor(entity: string, path: string, file: SplatEditFile) {
     super(entity, path, file, undefined);
+    this.#bakedColor = this.#committedColor = file.color;
+  }
+
+  /** 调色（曝光、色温、品红绿、饱和度），存成一步。 */
+  setColor(color: SplatEditFile['color']): void {
+    const { color: _, ...rest } = this.file;
+    this.file = color ? { ...rest, color } : rest;
+    this.changed(true);
+  }
+
+  /** 编辑器存了文件（每次存都调）：后端接着照它重烘，下次换上来的泼溅是按这时的调色烘的。 */
+  saved(): void {
+    this.#committedColor = this.file.color;
   }
 
   update(frame: ViewportFrame): void {
     const entity = frame.agent.live?.entity(this.entity);
     if (!entity?.alive) return;
-    this.#updateMask(frame, entity.id);
     const cloud = SplatCloud.byId(entity.get(GaussianSplat)?.splats ?? 0);
+    if (cloud !== this.#bakedCloud) {
+      // 换上了新烘的泼溅：它是按最近存的那次调色烘的
+      if (this.#bakedCloud) this.#bakedColor = this.#committedColor;
+      this.#bakedCloud = cloud;
+      this.#masked = undefined;
+    }
+    this.#updateMask(frame, entity.id);
     if (cloud && cloud !== this.#boundsOf) {
       this.#bounds = splatExtent(cloud.nodes);
       this.#boundsOf = cloud;
@@ -207,7 +232,7 @@ export class SplatEditTool extends FileEditTool<SplatEditFile, SplatBoxSelection
     if (this.#masked === this.file && this.#maskEntity === entity) return;
     const renderer = frame.game.renderSystem.splats;
     if (this.#maskEntity !== undefined && this.#maskEntity !== entity) renderer.setEditMask(this.#maskEntity, undefined);
-    renderer.setEditMask(entity, splatEditMask(this.file));
+    renderer.setEditMask(entity, splatEditMask(this.file, splatColorPreview(this.file.color, this.#bakedColor)));
     this.#renderer = renderer;
     this.#masked = this.file;
     this.#maskEntity = entity;

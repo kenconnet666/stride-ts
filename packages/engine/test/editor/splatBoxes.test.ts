@@ -11,7 +11,7 @@ const bounds = { min: [-2, 0, -3] as const, max: [2, 3, 1] as const };
 function maskedOnCpu(mask: Float32Array, p: readonly number[]): boolean {
   const [keep, remove, spheres] = [mask[0]!, mask[1]!, mask[2]!];
   const inside = (at: number) => [0, 1, 2].every((k) => Math.abs(mask[at + k * 4]! * p[0]! + mask[at + k * 4 + 1]! * p[1]! + mask[at + k * 4 + 2]! * p[2]! + mask[at + k * 4 + 3]!) <= 0.5 + 1e-6);
-  let at = 4;
+  let at = 16;
   if (keep > 0 && !Array.from({ length: keep }, (_, k) => inside(at + k * 12)).some(Boolean)) return true;
   at += keep * 12;
   if (Array.from({ length: remove }, (_, k) => inside(at + k * 12)).some(Boolean)) return true;
@@ -100,6 +100,6 @@ describe('扫描场景编辑的框和刷', () => {
       const expected = !insideBox(edit.keep![0]!, p) || insideBox(edit.remove![0]!, p) || Math.hypot(p[0]! + 1, p[1]! - 1, p[2]! + 1) <= 0.3;
       expect(maskedOnCpu(mask, p)).toBe(expected);
     }
-    expect(Array.from(splatEditMask(file))).toEqual([0, 0, 0, 0]);
+    expect(Array.from(splatEditMask(file))).toEqual(Array.from({ length: 16 }, () => 0));
   });
 });

@@ -41,4 +41,14 @@ export const SPLAT_EDIT_FIELDS = fields<SplatEditFile>({
     optional: true,
     description: 'remove floaters: lone splats hanging in the air and nearly invisible ones; off when missing',
   },
+  color: {
+    type: object(fields<NonNullable<SplatEditFile['color']>>({
+      exposure: { type: number({ step: 0.1, unit: 'EV' }), optional: true, default: 0, description: 'exposure compensation in stops' },
+      temperature: { type: number({ min: 2000, max: 25000, step: 100, unit: 'K' }), optional: true, default: 6500, description: 'color temperature of the light in the scan: that white becomes white' },
+      tint: { type: number({ min: -1, max: 1, step: 0.05 }), optional: true, default: 0, description: 'magenta (+) or green (-) shift of that white' },
+      saturation: { type: number({ min: 0, step: 0.05 }), optional: true, default: 1, description: 'saturation (0 is grey)' },
+    })),
+    optional: true,
+    description: 'color adjustment of the scan (scans differ in exposure and white balance), in linear light',
+  },
 });

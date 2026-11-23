@@ -2,18 +2,27 @@
  * 开着视口的编辑工具时视口上面的工具条（换掉对实体的操作）：多边形（选择模式、操作的距离、挤出倒角……）、样条（删点、拉出
  * 分支）、白盒（加减交、删笔刷、转成多边形网格）、雕刻（笔刷的种类、半径、强度，或者地物的字段），最后是"完成"。
  */
-import { Check, Combine, Slice, FlipVertical2, GitBranchPlus, Merge, Plus, Scissors, Shapes, SquareDashedBottom, Trash2, ArrowUpFromLine } from '@lucide/icons';
+import { Check, Palette, Combine, Slice, FlipVertical2, GitBranchPlus, Merge, Plus, Scissors, Shapes, SquareDashedBottom, Trash2, ArrowUpFromLine } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
 import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, Checkbox, Flex, Menu, MenuItem, NumberField, Separator, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Checkbox, Flex, Grid, Menu, MenuItem, NumberField, Popover, Separator, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
 import { t } from '../i18n/messages';
 import type { ViewportTools } from '../session/ViewportTools';
 
 const styles = css.create({
   step: { width: '6.5em' },
+  color: { width: '20em' },
 });
+
+/** 扫描调色的四个数：默认值、范围、步长（和字段描述 scans.ts 一致）。 */
+const SPLAT_COLOR = {
+  exposure: { value: 0, min: -10, max: 10, step: 0.1 },
+  temperature: { value: 6500, min: 2000, max: 25000, step: 100 },
+  tint: { value: 0, min: -1, max: 1, step: 0.05 },
+  saturation: { value: 1, min: 0, max: 4, step: 0.05 },
+} as const;
 
 export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
   /** 挤出、内插、倒角的距离（米）：工具条上一个数，几个操作共用。 */
@@ -110,6 +119,22 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];
   };
+  /** 扫描的调色：一个按钮弹出曝光、色温、品红绿、饱和度（改一个存一步，编辑器里马上预览）。 */
+  const splatColor = (color: NonNullable<NonNullable<typeof tools.splatEditing.value>['file']['color']>) => {
+    const current = Object.fromEntries((Object.keys(SPLAT_COLOR) as (keyof typeof SPLAT_COLOR)[]).map((key) => [key, color[key] ?? SPLAT_COLOR[key].value])) as Record<keyof typeof SPLAT_COLOR, number>;
+    return (
+      <Popover placement="bottom-start" trigger={(props) => <Button {...props} size="sm" variant={Object.keys(color).length > 0 ? 'soft' : 'ghost'} tone="neutral" icon={Palette}>{t.splatColor}</Button>}>
+        <Grid columns={2} gap="xs" sx={styles.color}>
+          {(Object.keys(SPLAT_COLOR) as (keyof typeof SPLAT_COLOR)[]).map((key) => (
+            <NumberField size="sm" prefix={t.splatColorFields[key]} aria-label={t.splatColorFields[key]} min={SPLAT_COLOR[key].min} max={SPLAT_COLOR[key].max} step={SPLAT_COLOR[key].step}
+              format={{ useGrouping: false, maximumFractionDigits: 2 }} _value={current[key]}
+              onUpdate:_value={(value: number | null) => value !== null && tools.setSplatColor({ ...current, [key]: value })} />
+          ))}
+          <Button size="sm" variant="ghost" tone="neutral" disabled={Object.keys(color).length === 0} onClick={() => tools.setSplatColor({})}>{t.splatColorReset}</Button>
+        </Grid>
+      </Popover>
+    );
+  };
   /** 编辑扫描场景时的工具条：框选、刷选两种模式；框的模式加裁剪框、删掉的框、删选中的；刷的模式笔刷半径、清掉刷的；删飞点；最后是"完成"。 */
   const splatControls = (editing: NonNullable<typeof tools.splatEditing.value>) => {
     const modes = (['boxes', 'erase'] as const).map((mode) => (
@@ -134,6 +159,7 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       ...modeControls,
       <Separator orientation="vertical" />,
       <Button size="sm" variant={editing.file.floaters ? 'soft' : 'ghost'} tone="neutral" aria-pressed={editing.file.floaters !== undefined} onClick={() => tools.setSplatFloaters(!editing.file.floaters)}>{t.splatFloaters}</Button>,
+      splatColor(editing.file.color ?? {}),
       <Flex grow />,
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];

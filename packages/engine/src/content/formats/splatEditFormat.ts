@@ -48,4 +48,10 @@ export interface SplatEditFile {
    * 的也去掉（几乎看不见的；默认不按它删——很多淡的叠在一起是地面、墙上柔和的那层光，删了发暗）。默认 cell 0.25、neighbors 4。
    */
   readonly floaters?: { readonly cell?: number; readonly neighbors?: number; readonly minOpacity?: number };
+  /**
+   * 调色（几段扫描的曝光、白平衡不一样，和场景的光对不上时）：exposure 是曝光补偿（档，默认 0），temperature、tint 是扫描时
+   * 光的色温（K，默认 6500 不动）和品红、绿的偏移（同场景调色的白平衡：这个色温的白调成白），saturation 是饱和度（默认 1）。
+   * 在线性空间里算，烘的时候改颜色和高阶球谐。
+   */
+  readonly color?: { readonly exposure?: number; readonly temperature?: number; readonly tint?: number; readonly saturation?: number };
 }

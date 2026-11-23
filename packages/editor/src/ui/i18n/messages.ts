@@ -182,6 +182,9 @@ export interface EditorMessages {
   readonly splatAddRemove: string;
   readonly splatClearErase: (count: number) => string;
   readonly splatFloaters: string;
+  readonly splatColor: string;
+  readonly splatColorFields: Readonly<Record<'exposure' | 'temperature' | 'tint' | 'saturation', string>>;
+  readonly splatColorReset: string;
   readonly splatAddPart: string;
   readonly splatAlign: string;
   readonly splatAligning: string;
@@ -456,6 +459,9 @@ const zhCN: EditorMessages = {
   splatAddRemove: '删除框',
   splatClearErase: (count) => `清掉刷的（${count}）`,
   splatFloaters: '删飞点',
+  splatColor: '调色',
+  splatColorFields: { exposure: '曝光 EV', temperature: '色温 K', tint: '品红绿', saturation: '饱和度' },
+  splatColorReset: '还原',
   splatAddPart: '合并一段',
   splatAlign: '自动对齐',
   splatAligning: '正在对齐（几秒）……',
@@ -740,6 +746,9 @@ const enUS: EditorMessages = {
   splatAddRemove: 'Delete box',
   splatClearErase: (count) => `Clear brushing (${count})`,
   splatFloaters: 'Remove floaters',
+  splatColor: 'Color',
+  splatColorFields: { exposure: 'Exposure EV', temperature: 'Temperature K', tint: 'Tint', saturation: 'Saturation' },
+  splatColorReset: 'Reset',
   splatAddPart: 'Merge a scan',
   splatAlign: 'Auto-align',
   splatAligning: 'Aligning (a few seconds)…',

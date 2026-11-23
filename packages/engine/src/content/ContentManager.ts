@@ -54,6 +54,7 @@ import { CityAsset } from '../world/City';
 import { checkCity, type CityFile } from './formats/cityFormat';
 import { WaterAsset } from '../world/Water';
 import { checkWater, type WaterFile } from './formats/waterFormat';
+import { INPUT_MAP, type InputMap } from './formats/inputFormat';
 import { checkSpline } from '../modeling/spline';
 import type { SplineFile } from './formats/splineFormat';
 
@@ -72,6 +73,7 @@ declare module '../data/prop' {
     sound: Sound;
     timeline: Timeline;
     spline: SplineFile;
+    input: InputMap;
   }
 }
 
@@ -285,6 +287,7 @@ export class ContentManager {
     sound: (path) => this.loadSound(path),
     timeline: (path) => this.loadTimeline(path),
     spline: (path) => this.loadSpline(path),
+    input: (path) => this.loadInputMap(path),
   };
 
   constructor({ root = 'content/', read, readRange, manifest, shaderClass = () => undefined }: ContentOptions = {}) {
@@ -740,6 +743,11 @@ export class ContentManager {
   /** 世界（`.world.json`）：读进来、检查过的文件；格子的场景由 world/WorldStreaming.ts 按需加载。 */
   loadWorld(path: string): Promise<WorldFile> {
     return this.#once(path + EXTENSIONS.world, async (url) => checkWorldFile(this.#json<unknown>(await this.#read(url)), path));
+  }
+
+  /** 输入映射（.input.json）：开它用 `game.input.actions.add(map)`，见 input/InputActions.ts。 */
+  loadInputMap(path: string): Promise<InputMap> {
+    return this.#once(path + EXTENSIONS.input, async (url) => INPUT_MAP.parse(this.#json<unknown>(await this.#read(url)), url.href));
   }
 
   loadTimeline(path: string): Promise<Timeline> {

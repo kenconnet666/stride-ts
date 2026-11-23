@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "input asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "button",
+              "axis",
+              "axis2"
+            ]
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "control"
+                      ]
+                    },
+                    "scale": {
+                      "type": "number",
+                      "default": 1
+                    },
+                    "deadZone": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "control": {
+                      "type": "string",
+                      "description": "key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "control"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "axis"
+                      ]
+                    },
+                    "scale": {
+                      "type": "number",
+                      "default": 1
+                    },
+                    "deadZone": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "negative": {
+                      "type": "string",
+                      "description": "key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …"
+                    },
+                    "positive": {
+                      "type": "string",
+                      "description": "key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "negative",
+                    "positive"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "dpad"
+                      ]
+                    },
+                    "scale": {
+                      "type": "number",
+                      "default": 1
+                    },
+                    "deadZone": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0
+                    },
+                    "up": {
+                      "type": "string",
+                      "description": "key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …"
+                    },
+                    "down": {
+                      "type": "string",
+                      "description": "key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …"
+                    },
+                    "left": {
+                      "type": "string",
+                      "description": "key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …"
+                    },
+                    "right": {
+                      "type": "string",
+                      "description": "key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "up",
+                    "down",
+                    "left",
+                    "right"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "bindings"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "name",
+    "actions"
+  ],
+  "additionalProperties": false
+}

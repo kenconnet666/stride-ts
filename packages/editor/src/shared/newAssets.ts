@@ -2,7 +2,7 @@
  * 编辑器"新建"出来的资源的初始内容（前端的资源浏览器用；只有数据，没有 Node 的依赖）。都是最小的合法文件，建出来以后在
  * 编辑器里接着改：场景是空的、材质是浅灰的、基本形状是 JSON 写的模型（content/modelFile.ts）、UI 页面是一块全屏的 Canvas。
  */
-import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type WaterFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type ProductFile, type ShelfFile, type PileFile, type DebrisFile, type SplatEditFile, type SignFile, type CeilingFile, type FixtureFile, type TextModelFile, type TimelineFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
+import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type WaterFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type ProductFile, type ShelfFile, type PileFile, type DebrisFile, type SplatEditFile, type SignFile, type CeilingFile, type FixtureFile, type TextModelFile, type TimelineFile, type InputMapFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
 import { SOUND_PRESETS, seededRandom } from '@stride-ts/engine/audio-synth';
 import { polyCube } from '@stride-ts/engine/modeling';
 import type { AssetKind } from './protocol.ts';
@@ -12,7 +12,7 @@ export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
 /** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'debris' | 'splatEdit' | 'sign' | 'ceiling' | 'fixture' | 'spline' | `model:${ProceduralShapeType}` | `extension:${string}`;
+  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'debris' | 'splatEdit' | 'sign' | 'ceiling' | 'fixture' | 'spline' | 'input' | `model:${ProceduralShapeType}` | `extension:${string}`;
   readonly kind: AssetKind;
   /** 基本形状的模型是哪种形状。 */
   readonly shape?: ProceduralShapeType;
@@ -39,6 +39,16 @@ export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
     content: (name): UIFile => ({ name, designResolution: [1280, 720], root: 0, elements: [{ type: 'Canvas', props: {} }] }),
   },
   { id: 'timeline', kind: 'timeline', name: 'NewTimeline', content: (name): TimelineFile => ({ name, duration: 5, tracks: [] }) },
+  // 输入映射：走路的一套（WASD、方向键、左摇杆走，鼠标、右摇杆看，空格、手柄 A 跳）
+  { id: 'input', kind: 'input', name: 'NewInput', content: (name): InputMapFile => ({ name, actions: [
+    { name: 'move', type: 'axis2', bindings: [
+      { type: 'dpad', up: 'key:KeyW', down: 'key:KeyS', left: 'key:KeyA', right: 'key:KeyD' },
+      { type: 'dpad', up: 'key:ArrowUp', down: 'key:ArrowDown', left: 'key:ArrowLeft', right: 'key:ArrowRight' },
+      { type: 'control', control: 'pad:leftStick', deadZone: 0.2 },
+    ] },
+    { name: 'look', type: 'axis2', bindings: [{ type: 'control', control: 'mouse:delta', scale: 100 }, { type: 'control', control: 'pad:rightStick', deadZone: 0.2 }] },
+    { name: 'jump', type: 'button', bindings: [{ type: 'control', control: 'key:Space' }, { type: 'control', control: 'pad:a' }] },
+  ] }) },
   // 大世界：256 米的格子、一个图层，还没有格子（打开以后在常驻场景里摆好东西、选中后"放进世界"；常驻场景在属性里设）
   { id: 'world', kind: 'world', name: 'NewWorld', content: (name): WorldFile => ({ name, cellSize: 256, layers: [{ name: 'default', loadRadius: 512 }], cells: {} }) },
   // 矢量地形：起伏几百米的山地（侵蚀、一点山脊），场景里给一个实体加 Terrain 组件引用它

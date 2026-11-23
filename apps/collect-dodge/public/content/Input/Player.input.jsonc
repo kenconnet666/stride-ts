@@ -1,0 +1,23 @@
+// 玩家的操作：PlayerController 按这几个动作读输入（改键、加手柄只改这里）
+{
+  "name": "Player",
+  "actions": [
+    {
+      "name": "move",
+      "type": "axis2",
+      "bindings": [
+        { "type": "dpad", "up": "key:KeyW", "down": "key:KeyS", "left": "key:KeyA", "right": "key:KeyD" },
+        { "type": "dpad", "up": "key:ArrowUp", "down": "key:ArrowDown", "left": "key:ArrowLeft", "right": "key:ArrowRight" },
+        { "type": "control", "control": "pad:leftStick", "deadZone": 0.25 }
+      ]
+    },
+    {
+      "name": "jump",
+      "type": "button",
+      "bindings": [
+        { "type": "control", "control": "key:Space" },
+        { "type": "control", "control": "pad:a" }
+      ]
+    }
+  ]
+}

@@ -256,6 +256,10 @@
       "props": {
        "camera": {
         "$entity": "f372dac7-0344-4ba6-b9be-a7befad91363"
+       },
+       "controls": {
+        "$asset": "Input/Player",
+        "kind": "input"
        }
       }
      }

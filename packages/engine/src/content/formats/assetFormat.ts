@@ -84,6 +84,8 @@ export const EXTENSIONS = {
   water: '.water.json',
   /** 程序化摆放（ScatterFile，content/formats/scatterFormat.ts）：在地形上撒模型的规则和种子，实例运行时按相机附近的格子撒。 */
   scatter: '.scatter.json',
+  /** 输入映射（InputMapFile，content/formats/inputFormat.ts）：动作和绑在上面的键、鼠标、手柄，脚本按动作读（input/InputActions.ts）。 */
+  input: '.input.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/stages.md 的 D9）。 */

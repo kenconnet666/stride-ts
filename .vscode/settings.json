@@ -177,6 +177,13 @@
     },
     {
       "fileMatch": [
+        "*.input.json",
+        "*.input.jsonc"
+      ],
+      "url": "./schemas/input.schema.json"
+    },
+    {
+      "fileMatch": [
         "*.game.json",
         "*.game.jsonc"
       ],

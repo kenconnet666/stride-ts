@@ -3,8 +3,13 @@ import type { TimelineFile, SpriteSheetFile, SoundFile } from '../../../content/
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../../audio/soundSynth.ts';
 import { fields, number, integer, bool, string, oneOf, vector, asset, entity, list, object, type Field, type FieldSpec } from '../../../content/schema/builders.ts';
 import { textureRef } from './shared.ts';
+import { INPUT_MAP } from '../../../content/formats/inputFormat.ts';
+import { schemaFields } from '../../../content/schema/schema.ts';
 
 /** 时间轴（TimelineFile）：轨道按种类分；关键帧的值是数或按分量的数组，按 JSON 改。 */
+/** 输入映射（InputMapFile）：动作和绑定。字段由格式的模式给出（content/formats/inputFormat.ts）。 */
+export const INPUT_MAP_FIELDS = schemaFields(INPUT_MAP);
+
 export const TIMELINE_FIELDS = fields<TimelineFile>({
   name: string,
   duration: { type: number({ min: 0, unit: 's' }) },

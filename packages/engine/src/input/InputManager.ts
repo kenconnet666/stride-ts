@@ -17,27 +17,13 @@ import type { VirtualButtonConfig } from './virtualButtons';
 import { GestureCollection, type GestureEvent } from './gestures';
 import { ButtonTracker, CaptureState, InputCapturePriority, type RawKeys } from './capture';
 import { keyCode } from './keys';
+import { GamePadButton, type GamePadState } from './gamePad';
+import { InputActions } from './InputActions';
 
 /** 鼠标按键。 */
 export type MouseButton = 'left' | 'middle' | 'right';
+export { GamePadButton, type GamePadState };
 
-/** 手柄按键（Stride 的 GamePadButton，同样的位）。 */
-export const GamePadButton = {
-  padUp: 1 << 0,
-  padDown: 1 << 1,
-  padLeft: 1 << 2,
-  padRight: 1 << 3,
-  start: 1 << 4,
-  back: 1 << 5,
-  leftThumb: 1 << 6,
-  rightThumb: 1 << 7,
-  leftShoulder: 1 << 8,
-  rightShoulder: 1 << 9,
-  a: 1 << 12,
-  b: 1 << 13,
-  x: 1 << 14,
-  y: 1 << 15,
-} as const;
 
 /** 标准布局（https://w3c.github.io/gamepad/#remapping）的按键下标对应的位；6、7 是扳机，按模拟量读。 */
 const STANDARD_BUTTONS: readonly number[] = [
@@ -47,17 +33,6 @@ const STANDARD_BUTTONS: readonly number[] = [
   GamePadButton.padUp, GamePadButton.padDown, GamePadButton.padLeft, GamePadButton.padRight,
 ];
 
-export interface GamePadState {
-  /** 按着的键，GamePadButton 的位或。 */
-  buttons: number;
-  /** 这一帧刚按下的键（上一帧没按着）。 */
-  pressedButtons: number;
-  /** 左摇杆，x 向右、y 向上，-1..1。 */
-  readonly leftThumb: [number, number];
-  readonly rightThumb: [number, number];
-  leftTrigger: number;
-  rightTrigger: number;
-}
 
 const MOUSE_BUTTONS: readonly MouseButton[] = ['left', 'middle', 'right'];
 
@@ -97,6 +72,8 @@ export class InputManager {
   rawTextInput: readonly string[] = [];
   /** 虚拟按钮的配置（Stride 的 VirtualButtonConfigSet），getVirtualButton 按下标取。 */
   readonly virtualButtonConfigSet: VirtualButtonConfig[] = [];
+  /** 输入的动作：按映射文件（.input.json）把物理输入换成跳、移动这些动作，见 InputActions。 */
+  readonly actions: InputActions = new InputActions(this);
 
   readonly #canvas: HTMLCanvasElement;
   /** 要识别的手势（Stride 的 Input.Gestures）：`gestures.add(Gestures.drag())`，见 gestures.ts。 */
@@ -196,6 +173,7 @@ export class InputManager {
     }
     const { clientWidth, clientHeight } = this.#canvas;
     this.gestureEvents = this.gestures.size > 0 ? this.gestures.process(elapsed, this.pointerEvents, (clientWidth || 1) / (clientHeight || 1)) : NO_GESTURES;
+    this.actions.update();
   }
 
   /** @internal 每帧 update 时、脚本读输入之前调用 resolve（UI 在这里按指针决定占用）；返回取消登记的函数。 */

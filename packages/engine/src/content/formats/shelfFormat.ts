@@ -83,6 +83,8 @@ export const SHELF = s.object({
    * 下面一条写 slogan（"天然矿泉水"），中间空着看得见里面的货。color 是贴纸的底色，textColor 是字的颜色，border 是两边边框的宽；
    * 字要有 font。
    */
+  /** 冷柜：玻璃门上的脏（0..1；0 是擦得干干净净）——把手边的手印、掌印和灰点，底下一截水雾和水珠，每扇门按种子不同。 */
+  doorHaze: s.number({ min: 0, max: 1, step: 0.05 }).default(0.5).describe('fridge: how smudged the door glass is (0..1, 0 spotless): fingerprints, palm marks and specks by the handle, a band of fog and droplets at the bottom; different on every door from the seed'),
   doorSticker: SHELF_DOOR_STICKER.optional().describe('fridge: an advertising sticker on the outside of every door glass, around the lower two thirds: a banner with a title, side borders and a strip with a slogan, the middle left clear'),
   /**
    * 价签放在哪：价签条（strip：层板前沿往下的一条，价签贴在正面）或透明挡条（rail：立在层板前沿、略往后仰的一条透明塑料，

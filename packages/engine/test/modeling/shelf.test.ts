@@ -117,6 +117,28 @@ describe('货架', () => {
     for (let i = 0; i < model.vertices.length; i += 8) expect(Math.abs(model.vertices[i + 2]!)).toBeLessThanOrEqual(0.45 + 1e-6);
   });
 
+  test('冷柜门上的脏：每扇门两片贴在玻璃外面（把手周围、底下的水雾，UV 在贴图里这扇门的那一格里），贴图每扇不同；doorHaze 0 时没有，别的货架没有', () => {
+    const fridge: ShelfFile = { ...island, type: 'fridge', sides: 1, length: 2.25, bay: 0.75 };
+    const model = shelfModel(fridge, sources);
+    expect(model.haze!.indices.length).toBe(3 * 2 * 6);
+    expect(model.hazePixels).toEqual([3 * Math.round((0.75 - 0.04) * 600), Math.round((1.6 - 0.15) * 600)]);
+    const vertices = model.haze!.vertices;
+    for (let i = 0; i < vertices.length; i += 8) {
+      expect(vertices[i + 2]!).toBeGreaterThan(0.4);
+      // 第几扇门：按 x 算，UV 落在那一格里
+      const door = Math.min(2, Math.floor((vertices[i]! + 1.125) / 0.75 + 1e-6));
+      expect(vertices[i + 6]! * 3).toBeGreaterThanOrEqual(door - 1e-6);
+      expect(vertices[i + 6]! * 3).toBeLessThanOrEqual(door + 1 + 1e-6);
+      expect(vertices[i + 7]!).toBeGreaterThanOrEqual(-1e-6);
+      expect(vertices[i + 7]!).toBeLessThanOrEqual(1 + 1e-6);
+    }
+    const doors = model.hazeSvg!.split('<g transform=').slice(1);
+    expect(doors).toHaveLength(3);
+    expect(new Set(doors.map((door) => door.slice(door.indexOf('>'))))).toHaveProperty('size', 3);
+    expect(shelfModel({ ...fridge, doorHaze: 0 }, sources).haze).toBeUndefined();
+    expect(shelfModel(island, sources).haze).toBeUndefined();
+  });
+
   test('品牌冷柜：doorColor 是门框、门下前脸、顶和灯箱的颜色；每扇门一个把手，凸在门外', () => {
     const fridge: ShelfFile = { ...island, type: 'fridge', sides: 1, length: 0.7, bay: 0.7 };
     const plain = shelfModel(fridge, sources), branded = shelfModel({ ...fridge, doorColor: '#e8a91c' }, sources);

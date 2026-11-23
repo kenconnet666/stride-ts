@@ -65,6 +65,10 @@ export interface MergedProducts {
   readonly atlasPixels: number;
   readonly glass: MeshArrays | undefined;
   readonly clear: MeshArrays | undefined;
+  /** 贴在玻璃外面的一层脏（hazeQuad）；有它时生成的一方给出贴图的 SVG 和像素大小（mergedHazeMaterial）。 */
+  readonly haze: MeshArrays | undefined;
+  readonly hazeSvg?: string;
+  readonly hazePixels?: readonly [number, number];
 }
 
 /** 一个网格的顶点（每个 8 个数：位置、法线、UV）和下标。 */
@@ -104,6 +108,8 @@ export class ProductBatch {
   readonly #glassIndices: number[] = [];
   readonly #clearVertices: number[] = [];
   readonly #clearIndices: number[] = [];
+  readonly #hazeVertices: number[] = [];
+  readonly #hazeIndices: number[] = [];
   /** 图集的边长（像素）。 */
   readonly #atlas: number;
 
@@ -238,6 +244,16 @@ export class ProductBatch {
     this.#indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
+  /**
+   * 贴在玻璃外面的一层脏（冷柜门上的手印、水雾；半透明混合，见 mergedHazeMaterial）：corners 同 quad（左下、右下、右上、左上），
+   * uv 是这一片在脏的贴图里的范围 [u0, v0, u1, v1]（v 朝下）。
+   */
+  hazeQuad(corners: readonly (readonly number[])[], normal: readonly number[], [u0, v0, u1, v1]: readonly [number, number, number, number]): void {
+    const base = this.#hazeVertices.length / 8, uv = [[u0, v1], [u1, v1], [u1, v0], [u0, v0]] as const;
+    corners.forEach((p, i) => this.#hazeVertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, uv[i]![0], uv[i]![1]));
+    this.#hazeIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+  }
+
   /** 加上商品，出网格和图集。 */
   finish(): MergedProducts {
     const cellOf = new Map(this.#variantKeys.map((key, i) => [key, this.#labelCells[i]!]));
@@ -299,6 +315,7 @@ export class ProductBatch {
       emissiveSvg: strongest > 0 ? svg(glow, '#000000') : undefined, emissive: strongest, atlasPixels: this.#atlas,
       glass: this.#glassIndices.length > 0 ? { vertices: Float32Array.from(this.#glassVertices), indices: Uint32Array.from(this.#glassIndices) } : undefined,
       clear: this.#clearIndices.length > 0 ? { vertices: Float32Array.from(this.#clearVertices), indices: Uint32Array.from(this.#clearIndices) } : undefined,
+      haze: this.#hazeIndices.length > 0 ? { vertices: Float32Array.from(this.#hazeVertices), indices: Uint32Array.from(this.#hazeIndices) } : undefined,
     };
   }
 
@@ -392,6 +409,15 @@ export function mergedMaterial(name: string, path: string, pixels: number, emiss
 export function mergedClearMaterial(name: string, path: string, pixels: number): MaterialFile {
   const material = mergedMaterial(`${name} clear`, path, pixels);
   return { ...material, glossinessTexture: { ...material.glossinessTexture!, transmissionChannel: 'r' }, transmission: PACKAGE_TRANSMISSION };
+}
+
+/** 玻璃外面那层脏的材质：白色、按贴图的 alpha 半透明混合，比玻璃糙（手印、水雾把反光打散）。 */
+export function mergedHazeMaterial(name: string, path: string, pixels: readonly [number, number]): MaterialFile {
+  return {
+    name: `${name} haze`, baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.55,
+    baseColorTexture: { texture: `${path}.haze`, encoding: 'svg', size: pixels, srgb: true, filter: 'anisotropic', scale: [1, 1], offset: [0, 0] },
+    transparency: { type: 'blend', alpha: 1 },
+  };
 }
 
 /** 合成的那批里玻璃的材质（冷柜的门、冰柜的盖）：同材质库的透明玻璃，带一点冷色。 */

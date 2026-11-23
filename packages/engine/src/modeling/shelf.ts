@@ -332,7 +332,7 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
   const zFar = back + file.depth;
   const zEnd = type === 'fridge' ? zFar + DOOR + 0.01 : zFar;
   for (const x of [-L, L - SPINE]) batch.box([x, 0, file.sides === 2 && type === 'gondola' ? -zFar : -SPINE], [x + SPINE, H, zEnd], FRAME);
-  if (type === 'fridge') fridgeFront(batch, file, zFar, prices.length);
+  const haze = type === 'fridge' ? fridgeFront(batch, file, zFar, prices.length) : undefined;
   for (const side of sides) {
     const z0 = side * back, z1 = side * zFar;
     const zs = [Math.min(z0, z1), Math.max(z0, z1)] as const;
@@ -359,7 +359,7 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
     else addTag(batch, tag, electronic, priceCell.get(tag.price)!);
   }
   if (cubbies) cubbyBody(batch, cubbies, cubbyWood);
-  return { ...batch.finish(), items: items.length + (cubbies?.bottles.length ?? 0) };
+  return { ...batch.finish(), ...(haze && { hazeSvg: haze.svg, hazePixels: haze.pixels }), items: items.length + (cubbies?.bottles.length ?? 0) };
 }
 
 /** 格子柜的板厚（米）。 */
@@ -622,12 +622,14 @@ function stickerCells(file: Shelf, font: TextFont | undefined): AtlasCell[] {
 /**
  * 冷柜的前面：每一扇门的玻璃、门之间的门框（doorColor，默认深色）和门框里侧竖着的灯带、门把手，门下面压缩机那一格的前脸，
  * 顶盖和顶上的灯箱（图集里价签格之后那一格；写了 doorColor 时顶盖、灯箱也是这个颜色），门上的广告贴（doorSticker：灯箱之后
- * 的两格是横幅和下面那条，两边的边框是纯色）。zFar 是层板前沿。
+ * 的两格是横幅和下面那条，两边的边框是纯色），玻璃外面那层脏（doorHaze：每扇门一片，贴图是一条横排的 SVG，返回它）。zFar 是层板前沿。
  */
-function fridgeFront(batch: ProductBatch, file: Shelf, zFar: number, headerCell: number): void {
+function fridgeFront(batch: ProductBatch, file: Shelf, zFar: number, headerCell: number): { svg: string; pixels: [number, number] } | undefined {
   const L = file.length / 2, H = file.height, bottom = file.levels[0]!;
   const doors = Math.max(1, Math.round(file.length / (file.bay ?? 0.75)));
   const z0 = zFar + DOOR - 0.01, z1 = zFar + DOOR + 0.01;
+  const doorWidth = file.length / doors - MULLION, doorHeight = H - bottom;
+  const [cellW, cellH] = [Math.round(doorWidth * HAZE_PIXELS), Math.round(doorHeight * HAZE_PIXELS)], hazes: string[] = [];
   for (let k = 0; k <= doors; k++) {
     const x = -L + (file.length * k) / doors;
     batch.box([x - MULLION / 2, bottom, z0 - 0.01], [x + MULLION / 2, H, z1], DOOR_BODY);
@@ -640,6 +642,19 @@ function fridgeFront(batch: ProductBatch, file: Shelf, zFar: number, headerCell:
       if (file.doorSticker) doorSticker(batch, file.doorSticker, [x + MULLION / 2, right], [bottom, H], z0 + 0.0085, headerCell + 1);
       // 门把手：竖着一根，在门不开铰链的那边（相邻两扇对开）
       const hx = k % 2 === 0 ? right - 0.05 : x + MULLION / 2 + 0.05, hy = bottom + (H - bottom) * 0.45;
+      if (file.doorHaze > 0) {
+        // 只贴有脏的两片（整扇门都贴的话，透明阶段每个像素都要照一遍所有的灯）：把手周围、底下的水雾
+        const zh = z0 + 0.0095, left = x + MULLION / 2;
+        const patch = (x0: number, x1: number, y0: number, y1: number) => {
+          const [a, b] = [Math.max(left, x0), Math.min(right, x1)], [c, d] = [Math.max(bottom, y0), Math.min(H, y1)];
+          const u = (value: number) => (k + (value - left) / doorWidth) / doors, v = (value: number) => (H - value) / doorHeight;
+          batch.hazeQuad([[a, c, zh], [b, c, zh], [b, d, zh], [a, d, zh]], [0, 0, 1], [u(a), v(d), u(b), v(c)]);
+        };
+        patch(hx - HAZE_HANDLE[0], hx + HAZE_HANDLE[0], hy - HAZE_HANDLE[1], hy + 0.45 + HAZE_HANDLE[1]);
+        patch(left, right, bottom, bottom + HAZE_FOG);
+        const random = seededRandom(hash32(file.seed, 7001 + k));
+        hazes.push(`<g transform="translate(${k * cellW} 0)">${doorHazeShapes(random, cellW, cellH, (hx - left) * HAZE_PIXELS, (H - hy) * HAZE_PIXELS, file.doorHaze)}</g>`);
+      }
       batch.box([hx - 0.009, hy, z1 + 0.012], [hx + 0.009, hy + 0.45, z1 + 0.03], HANDLE);
       batch.box([hx - 0.006, hy + 0.03, z1], [hx + 0.006, hy + 0.05, z1 + 0.012], HANDLE);
       batch.box([hx - 0.006, hy + 0.4, z1], [hx + 0.006, hy + 0.42, z1 + 0.012], HANDLE);
@@ -654,6 +669,53 @@ function fridgeFront(batch: ProductBatch, file: Shelf, zFar: number, headerCell:
   batch.box([-L, H + 0.04, z1 - 0.2], [L, H + HEADER, z1], file.doorColor ? DOOR_BODY : FRAME);
   const z = z1 + 0.001, y0 = H + 0.06, y1 = H + HEADER - 0.02;
   batch.quad([[-L, y0, z], [L, y0, z], [L, y1, z], [-L, y1, z]], [0, 0, 1], headerCell);
+  if (hazes.length === 0) return undefined;
+  const pixels: [number, number] = [cellW * doors, cellH];
+  const defs = '<defs><radialGradient id="smudge"><stop offset="0" stop-color="#ffffff"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0.6"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>'
+    + '<linearGradient id="fog" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs>';
+  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${pixels[0]} ${pixels[1]}" width="${pixels[0]}" height="${pixels[1]}">${defs}${hazes.join('')}</svg>`, pixels };
+}
+
+/** 玻璃门上那层脏的贴图每米几个像素（手印、水雾都是糊的，不用细）。 */
+const HAZE_PIXELS = 600;
+/** 贴脏的两片：把手周围（左右、上下各多出去多少米，把手 0.45 米长），底下水雾那一条的高（米）；doorHazeShapes 只画在这两片里。 */
+const HAZE_HANDLE = [0.17, 0.1] as const, HAZE_FOG = 0.42;
+
+/**
+ * 一扇玻璃门上的脏（贴图里的一格，W × H 像素，y 朝下；handle 是把手在这格里的位置——横坐标、把手底的纵坐标，amount 是多脏）：
+ * 把手那边一团手印（指头大的椭圆）和一两个掌印、零星的灰点，底下一截水雾（上沿起伏）和里面的水珠。都在 HAZE_HANDLE、HAZE_FOG 那两片里。
+ */
+function doorHazeShapes(random: () => number, W: number, H: number, handleX: number, handleY: number, amount: number): string {
+  const m = HAZE_PIXELS, out: string[] = [];
+  const n = (value: number) => svgNumber(value);
+  // 手印：把手周围，竖着散在把手的高度上（把手 0.45 米长）
+  const prints = Math.round(6 + 16 * amount);
+  for (let i = 0; i < prints; i++) {
+    const x = handleX + (random() - 0.5) * 0.2 * m, y = handleY + 0.04 * m - random() * 0.5 * m;
+    const rx = (0.008 + random() * 0.01) * m, ry = rx * (1.2 + random() * 0.4), angle = (random() - 0.5) * 70;
+    out.push(`<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(rx)}" ry="${n(ry)}" transform="rotate(${n(angle)} ${n(x)} ${n(y)})" fill="url(#smudge)" opacity="${n((0.25 + random() * 0.35) * amount)}"/>`);
+  }
+  // 掌印：把手旁边稍大的一两团
+  for (let i = 0, palms = 1 + Math.floor(random() * 2); i < palms; i++) {
+    const x = handleX + (random() - 0.5) * 0.16 * m, y = handleY - (0.1 + random() * 0.3) * m, r = (0.03 + random() * 0.02) * m;
+    out.push(`<ellipse cx="${n(x)}" cy="${n(y)}" rx="${n(r)}" ry="${n(r * 1.25)}" fill="url(#smudge)" opacity="${n(0.18 * amount)}"/>`);
+  }
+  // 水雾：底下一截，上沿起伏；水珠在雾里和雾的上沿
+  const fog = (0.08 + random() * 0.1) * m * (0.6 + amount * 0.8), top = H - fog;
+  let edge = `M0 ${H}L0 ${n(top)}`;
+  const waves = 5 + Math.floor(random() * 4);
+  for (let i = 1; i <= waves; i++) edge += `Q${n((W * (i - 0.5)) / waves)} ${n(top + (random() - 0.5) * fog * 0.5)} ${n((W * i) / waves)} ${n(top + (random() - 0.5) * fog * 0.2)}`;
+  out.push(`<path d="${edge}L${W} ${H}Z" fill="url(#fog)" opacity="${n(0.55 * amount)}"/>`);
+  for (let i = 0, drops = Math.round(60 * amount); i < drops; i++) {
+    const x = random() * W, y = H - random() * Math.min(fog * 1.2, HAZE_FOG * m), r = (0.0015 + random() * 0.003) * m;
+    out.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${n(r)}" fill="#ffffff" opacity="${n(0.3 + random() * 0.3)}"/>`);
+  }
+  // 灰点：把手那一片里
+  for (let i = 0, specks = Math.round(20 * amount); i < specks; i++) {
+    const x = handleX + (random() - 0.5) * 2 * HAZE_HANDLE[0] * m, y = handleY + HAZE_HANDLE[1] * m - random() * (0.45 + 2 * HAZE_HANDLE[1]) * m;
+    out.push(`<circle cx="${n(x)}" cy="${n(y)}" r="${n((0.0006 + random() * 0.0012) * m)}" fill="#d8d8d4" opacity="0.5"/>`);
+  }
+  return out.join('');
 }
 
 /**

@@ -781,7 +781,10 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   // 室内映射：玻璃后面的房间，乘没被反射走的部分
   let interior = interiorLight(in.world, n) * saturate(1.0 - max(environmentSpecular.r, max(environmentSpecular.g, environmentSpecular.b)));
-  let color = min(scattered + direct.specular * PI + environment + transmitted + interior + layerEmissive(in, emitted.rgb), vec3f(60000.0));
+  // 和 Stride 不同：透明阶段里混合的材质，颜色也乘基础色（贴图）的 alpha，才是真正的预乘。Stride 只拿它管遮挡（后面的东西
+  // 减多少），贴图透明的地方照样加上整块的光，得自己把贴图预乘（玻璃上的手印、水雾这种贴图大半透明的就整片发白）
+  let coverage = select(1.0, base.a, TRANSPARENT_STAGE && transmission <= 0.0);
+  let color = min(scattered + direct.specular * PI + environment + transmitted + interior + layerEmissive(in, emitted.rgb), vec3f(60000.0)) * coverage;
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
   return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment, scattered);
 }`;

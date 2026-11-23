@@ -157,4 +157,10 @@ $results = $selected | ForEach-Object -ThrottleLimit $Parallel -Parallel {
     $_
 }
 $results | Sort-Object App | Format-Table App, Passed, Failed, Seconds -AutoSize
+# 失败的样例在最后再列一遍 FAIL 的那几行：只看输出尾巴（后台跑、verify.ps1 截尾）时也知道是哪一项
+foreach ($failed in @($results | Where-Object { -not $_.Passed } | Sort-Object App)) {
+    $lines = @($failed.Output | Select-String '^FAIL' | ForEach-Object { $_.Line })
+    Write-Host "FAILED $($failed.App): $(if ($lines.Count -gt 0) { '' } else { '(no FAIL line; see its output above)' })"
+    $lines | ForEach-Object { Write-Host "  $_" }
+}
 if ($results.Passed -contains $false) { exit 1 }

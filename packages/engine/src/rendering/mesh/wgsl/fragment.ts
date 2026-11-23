@@ -119,11 +119,6 @@ fn celEnvironment(color: vec3f) -> vec3f {
 }
 
 /**
- * 一个光源的直射光：Lambert 漫反射加微表面镜面（默认菲涅耳 Schlick、GGX、Smith-Schlick-GGX，材质可以换，见 Surface.microfacet；
- * Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet），卡通着色的材质两项各过渐变。l 是指向光源的单位向量；
- * attenuation 是距离、角度衰减，visibility 是阴影乘遮蔽（卡通着色只让衰减进渐变）。
- */
-/**
  * 面光源每个像素只算一次的部分（光源循环之前，areaShading）：着色点的本地坐标系（法线是 z）、按粗糙度和视角查的 LTC 矩阵和
  * 菲涅耳的缩放偏移。原来每盏灯各查一遍表、各建一遍坐标系，灯一多（超市的天花板 36 盏，一簇平均 23 盏）白算很多遍。
  */
@@ -301,6 +296,11 @@ fn environmentRadiance(world: vec3f, direction: vec3f, roughness: f32, cluster: 
   return color;
 }
 
+/**
+ * 一个光源的直射光：Lambert 漫反射加微表面镜面（默认菲涅耳 Schlick、GGX、Smith-Schlick-GGX，材质可以换，见 Surface.microfacet；
+ * Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet），卡通着色的材质两项各过渐变。l 是指向光源的单位向量；
+ * attenuation 是距离、角度衰减，visibility 是阴影乘遮蔽（卡通着色只让衰减进渐变）。
+ */
 fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibility: f32) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * (attenuation * visibility * nDotL);

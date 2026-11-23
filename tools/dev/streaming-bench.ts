@@ -63,6 +63,9 @@ const measure = `(async () => {
   const metric = (name) => game().metrics?.read?.(name);
   const pipelinesBefore = { sync: game().graphicsDevice.pipelines.sync, warmed: game().graphicsDevice.pipelines.warmed };
   const worldBefore = { loads: game().world.loads, unloads: game().world.unloads };
+  // 显存和内存：飞行前后各读一次，飞过的格子卸载以后应该基本回到原来的数（涨得多就是泄漏）
+  const memoryNow = () => ({ entities: metric('entities'), gpuBufferMB: +(metric('gpu.buffers.bytes') / 1048576).toFixed(1), gpuTextureMB: +(metric('gpu.textures.bytes') / 1048576).toFixed(1), nativeMB: +(metric('native.allocated.bytes') / 1048576).toFixed(1) });
+  const memoryBefore = memoryNow();
   // 飞一圈：相机按路线挪，每帧记间隔
   const camera = game().entities.ids().map((id) => game().entities.entity(id)).find((entity) => entity.name === 'Camera');
   const position = camera.require(strideEngine.Transform).position;
@@ -95,6 +98,7 @@ const measure = `(async () => {
       frames: frames.length, medianMs: +at(0.5).toFixed(2), p95Ms: +at(0.95).toFixed(2), p99Ms: +at(0.99).toFixed(2), maxMs: +sorted[sorted.length - 1].toFixed(1),
       over50ms: frames.filter((ms) => ms > 50).length, over100ms: frames.filter((ms) => ms > 100).length,
     },
+    memory: { before: memoryBefore, after: memoryNow() },
     world: { cellsLoaded: game().world.loads - worldBefore.loads, cellsUnloaded: game().world.unloads - worldBefore.unloads, loadedNow: game().world.loaded.length },
     pipelines: { syncDuringFlight: game().graphicsDevice.pipelines.sync - pipelinesBefore.sync, warmedDuringFlight: game().graphicsDevice.pipelines.warmed - pipelinesBefore.warmed, recentSync: game().graphicsDevice.pipelines.recentSync.slice(-8) },
     finalDownload: { requests: performance.getEntriesByType('resource').length, transferKB: Math.round(performance.getEntriesByType('resource').reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) },

@@ -204,6 +204,37 @@ TS 版能用、而且写法基本不变的优化：
 
 来源：[MegaLights（SIGGRAPH 2025）](https://www.advances.realtimerendering.com/s2025/content/MegaLights_Stochastic_Direct_Lighting_2025.pdf)、[MegaLights 文档](https://dev.epicgames.com/documentation/unreal-engine/megalights-in-unreal-engine)、[Stochastic Tile-Based Lighting 讲稿](https://www.advances.realtimerendering.com/s2025/content/s2025_stb_lighting_v1.1_notes.pdf)、[ReSTIR（Bitterli 2020）](https://developer.download.nvidia.com/devblogs/ReSTIR.pdf)、[CWBVH（Ylitie 2017）](https://research.nvidia.com/sites/default/files/publications/ylitie2017hpg-paper.pdf)、[宽 BVH 的硕士论文（CTU 2025）](https://dcgi.fel.cvut.cz/wp-content/wpallimport-dist/theses/pdf/theses-2025-cezneluk-thesis.pdf)、[tinybvh](https://github.com/jbikker/tinybvh)、[AMD Hybrid Reflections](https://gpuopen.com/learn/hybrid-reflections/)、[D3D12 VRS](https://learn.microsoft.com/en-us/windows/win32/direct3d12/vrs)。
 
+## 浏览器的新特性和实验特性（2026-11-23 调研）
+
+用户问：浏览器允许打开实验性特性时能用上哪些（我们做兼容，有就更快）。在本机（Chrome 157、RX 9070 GRE、D3D12 后端）的无头 Chrome 里列了适配器的特性、WGSL 语言特性和上限，一次默认、一次开 `--enable-unsafe-webgpu --enable-features=WebGPUExperimentalFeatures --enable-experimental-web-platform-features`；JS、Wasm 这边两次一样（JSPI、Float16Array、`Math.sumPrecise`、`scheduler.yield`、`DisposableStack` 都已经正式有了），区别只在 WebGPU。
+
+**先说最大的发现：不用开关就有、我们没用的。** 设备只请求了 5 个特性（BC 压缩、depth-clip-control、timestamp-query、indirect-first-instance、core），适配器还有这些：
+
+| 特性 | 用在哪 | 好处 |
+|---|---|---|
+| `subgroups`（加 `subgroup-size-control`、WGSL `subgroup_id`） | GPU 剔除的压缩、泼溅的计数排序、分簇、直方图测光、DDGI 的归约、降噪 | 前缀和、归约少走共享内存和屏障，这几个计算通道常见 1.5～3 倍；随机直接光照（120 帧那条）的按块抽样也要它 |
+| `shader-f16` | 后处理、泼溅、粒子、降噪、颜色金字塔 | 半精度的寄存器和带宽减半，AMD 上 f16 的打包运算吞吐翻倍 |
+| 立即数（`maxImmediateSize` 64 字节，WGSL `immediate_address_space`） | 每次绘制的小常量（批的下标、材质号） | 不用为每批建绑定组、改动态偏移，CPU 和 GPU 都省 |
+| `primitive-index`、`atomic-vec2u-min-max` | 可见性缓冲（先只写三角形号，再按像素着色）、软件光栅化小三角形（Nanite 那种 64 位原子写深度加号） | 大世界几百万三角形时的根本做法；`atomic-vec2u-min-max` 是 WebGPU 里唯一能做 64 位原子最小值的路 |
+| `texture-formats-tier1/2`（可读写的存储贴图） | 计算着色器原地改 r16f、rg11b10 这些格式（降噪、TAA、体积雾的体素） | 少一张乒乓贴图、少一次拷贝 |
+| `float32-filterable`、`float32-blendable`、`rg11b10ufloat-renderable` | 天空和大气的查找表、HDR 中间目标 | 双线性取 f32 不用手写；HDR 目标用 rg11b10 省一半显存带宽 |
+| `clip-distances` | 平面反射 | 换掉斜裁剪的投影（深度精度更好） |
+| `dual-source-blending` | 透射、玻璃一遍画完（现在玻璃是两遍：透过率乘、反射加） | 少一遍 |
+| `texture-component-swizzle`、`depth32float-stencil8`、`bgra8unorm-storage` | 小用处 | |
+
+**开了实验开关才有的**（`chromium-experimental-` 开头，接口还会变）：
+
+| 特性 | 用在哪 | 好处 |
+|---|---|---|
+| `multi-draw-indirect` | GPU 剔除以后的绘制：现在每个批一次间接绘制，换成一次调用画一整串（带个数缓冲） | 批多时 CPU 提交和驱动开销大降，GPU 驱动的渲染的标准做法 |
+| `sampling-resource-table`（无绑定贴图） | 材质的贴图不再绑在绑定组里，按下标取 | 不同贴图的网格能合批，可见性缓冲的按材质着色要它；去掉"16 张贴图上限"一类的限制 |
+| `timestamp-query-inside-passes` | GpuProfiler 在一个通道里按批、按阶段量 | 只是量得更细（开发用） |
+| WGSL `fragment_depth`（保守深度 `@builtin(frag_depth, greater)`） | 泼溅写深度、视差遮挡、远处卡片 | 写深度时保住提前深度测试 |
+
+Dawn 里还有 `chromium-experimental-subgroup-matrix`（类似张量核的矩阵乘，降噪网络、神经纹理压缩用），这块卡在 D3D12 上没暴露；像素本地存储、帧缓冲读取只给 Dawn 原生用，网页里没有。
+
+**兼容的做法**：`GraphicsDevice.create` 按适配器有什么就请求什么，引擎里按设备的特性选路（着色器用管线常量或生成两份 WGSL），没有的走现在的路，结果一样、只是慢；实验特性只在 `navigator.gpu` 报了才用，测试槽里用默认开关和开实验开关的 Chrome 各跑一遍。
+
 ## 来源
 
 - [Rapier](https://rapier.rs/)、[rapier.js](https://github.com/dimforge/rapier.js)（0.19.x）

@@ -27,6 +27,7 @@ const TRIANGLE_WORDS = 12;
 
 /**
  * 光追的着色器代码（group 是绑定组号）：rtTrace(原点, 方向, 最远) 返回最近的交点（instance 是 0xffffffff 时没打到），
+ * rtOccluded(原点, 方向, 最远) 只问挡没挡（阴影射线：碰到第一个交点就停，不找最近的，被挡住的射线快得多），
  * rtNormal 是交点的世界法线（朝着射线来的方向），rtBackFace 判断打到的是不是单面材质的背面，rtAlbedo、rtEmissive 是实例材质的
  * 颜色和自发光。
  */
@@ -59,8 +60,8 @@ fn rtBox(node0: vec4u, node1: vec4u, origin: vec3f, inverse: vec3f, tMax: f32) -
   return select(1e30, near, near <= far);
 }
 
-/** 一个实例的 BLAS 里最近的三角形（局部的射线，t 和世界里的一样），比 hit.t 近才改。 */
-fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHit>) {
+/** 一个实例的 BLAS 里最近的三角形（局部的射线，t 和世界里的一样），比 hit.t 近才改；any 时打到一个就停（阴影射线）。 */
+fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHit>, any: bool) {
   let header = bitcast<vec4u>(rtInstances[instance * 6u + 3u]);
   let nodeBase = header.x;
   let triangleBase = header.y;
@@ -110,6 +111,10 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
         let t = dot(e2, q) * invDet;
         if (u >= 0.0 && v >= 0.0 && u + v <= 1.0 && t > 1e-4 && t < (*hit).t) {
           *hit = RtHit(t, instance, triangleBase + i, vec2f(u, v), (*hit).capped, (*hit).steps);
+          if (any) {
+            (*hit).steps = max((*hit).steps, steps);
+            return;
+          }
         }
       }
     }
@@ -122,6 +127,16 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
 
 /** 最近的交点（世界的射线，dir 可以不归一；没打到时 instance 是 0xffffffff，t 是 tMax）。 */
 fn rtTrace(origin: vec3f, dir: vec3f, tMax: f32) -> RtHit {
+  return rtTraverse(origin, dir, tMax, false);
+}
+
+/** 原点到 tMax 之间有没有挡着的（阴影射线）：打到任何一个三角形就停。 */
+fn rtOccluded(origin: vec3f, dir: vec3f, tMax: f32) -> bool {
+  return rtTraverse(origin, dir, tMax, true).instance != 0xffffffffu;
+}
+
+/** 两层 BVH 的遍历：any 是假时找最近的交点，真时打到任何一个就停。 */
+fn rtTraverse(origin: vec3f, dir: vec3f, tMax: f32, any: bool) -> RtHit {
   var hit = RtHit(tMax, 0xffffffffu, 0u, vec2f(0.0), false, 0u);
   if (arrayLength(&rtTlas) < 2u) { return hit; }
   let inverse = 1.0 / select(dir, vec3f(1e-20), abs(dir) < vec3f(1e-20));
@@ -158,7 +173,11 @@ fn rtTrace(origin: vec3f, dir: vec3f, tMax: f32) -> RtHit {
         let r2 = rtInstances[i * 6u + 2u];
         let o = vec3f(dot(r0, vec4f(origin, 1.0)), dot(r1, vec4f(origin, 1.0)), dot(r2, vec4f(origin, 1.0)));
         let d = vec3f(dot(r0.xyz, dir), dot(r1.xyz, dir), dot(r2.xyz, dir));
-        rtTraceBlas(i, o, d, &hit);
+        rtTraceBlas(i, o, d, &hit, any);
+        if (any && hit.instance != 0xffffffffu) {
+          hit.steps = max(hit.steps, steps);
+          return hit;
+        }
       }
     }
     if (sp == 0u) { break; }

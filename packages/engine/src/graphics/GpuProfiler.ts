@@ -16,6 +16,16 @@ export interface GpuTiming {
   readonly passes: number;
 }
 
+/** 逐帧的记录最多留多少帧（120 Hz 下 5 秒）。 */
+const FRAME_LOG = 600;
+
+/** 一帧的 GPU 时间：各通道加起来、从第一个通道开始到最后一个结束的跨度（含通道之间的空档），和每个通道的毫秒数。 */
+export interface GpuFrame {
+  readonly totalMs: number;
+  readonly spanMs: number;
+  readonly passes: readonly (readonly [label: string, ms: number])[];
+}
+
 const profilers = new WeakMap<GPUDevice, GpuProfiler>();
 
 export class GpuProfiler {
@@ -32,6 +42,8 @@ export class GpuProfiler {
   #labels: string[] = [];
   readonly #totals = new Map<string, { nanoseconds: number; passes: number }>();
   #frames = 0;
+  /** 最近 FRAME_LOG 帧逐帧的记录（找偶发的长帧用），reset 清掉。 */
+  readonly #frameLog: GpuFrame[] = [];
 
   constructor(device: GPUDevice, supported: boolean) {
     this.#device = device;
@@ -81,10 +93,16 @@ export class GpuProfiler {
       .sort((a, b) => b[1].milliseconds - a[1].milliseconds);
   }
 
+  /** 累计以来逐帧的记录（最多最近 FRAME_LOG 帧），按时间先后。 */
+  frames(): readonly GpuFrame[] {
+    return this.#frameLog;
+  }
+
   /** 清掉累计，重新开始。 */
   reset(): void {
     this.#totals.clear();
     this.#frames = 0;
+    this.#frameLog.length = 0;
   }
 
   destroy(): void {
@@ -101,14 +119,23 @@ export class GpuProfiler {
       return;
     }
     const times = new BigUint64Array(readback.buffer.getMappedRange(0, labels.length * 16));
+    const passes: [string, number][] = [];
+    let first = times[0]!, last = times[1]!, frameTotal = 0;
     labels.forEach((label, i) => {
       const begin = times[i * 2]!, end = times[i * 2 + 1]!;
+      const nanoseconds = end > begin ? Number(end - begin) : 0;
       const total = this.#totals.get(label) ?? { nanoseconds: 0, passes: 0 };
-      total.nanoseconds += end > begin ? Number(end - begin) : 0;
+      total.nanoseconds += nanoseconds;
       total.passes++;
       this.#totals.set(label, total);
+      passes.push([label, nanoseconds / 1e6]);
+      frameTotal += nanoseconds;
+      if (begin < first) first = begin;
+      if (end > last) last = end;
     });
     readback.buffer.unmap();
+    this.#frameLog.push({ totalMs: frameTotal / 1e6, spanMs: last > first ? Number(last - first) / 1e6 : 0, passes });
+    if (this.#frameLog.length > FRAME_LOG) this.#frameLog.shift();
     readback.busy = false;
     this.#frames++;
   }

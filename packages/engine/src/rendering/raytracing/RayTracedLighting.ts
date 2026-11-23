@@ -80,7 +80,7 @@ fn rtDirectLight(p: vec3f, n: vec3f) -> vec3f {
     let l = -rtLighting.lightDirections[i].xyz;
     let nDotL = dot(n, l);
     if (nDotL <= 0.0) { continue; }
-    if (rtTrace(origin, l, ${SHADOW_DISTANCE}).instance != 0xffffffffu) { continue; }
+    if (rtOccluded(origin, l, ${SHADOW_DISTANCE})) { continue; }
     light += rtLighting.lightColors[i].rgb * nDotL;
   }
   // 射程里、朝着表面的：先数有几盏
@@ -96,7 +96,7 @@ fn rtDirectLight(p: vec3f, n: vec3f) -> vec3f {
       let at = localLightAt(local, p);
       let nDotL = dot(n, at.xyz);
       if (at.w <= 0.0 || nDotL <= 0.0) { continue; }
-      if (rtTrace(origin, at.xyz, distance(local.position.xyz, p) - 1e-3).instance != 0xffffffffu) { continue; }
+      if (rtOccluded(origin, at.xyz, distance(local.position.xyz, p) - 1e-3)) { continue; }
       light += local.color.rgb * nDotL * at.w;
     }
     return light;
@@ -128,7 +128,7 @@ fn rtDirectLight(p: vec3f, n: vec3f) -> vec3f {
   if (chosenWeight > 0.0) {
     let local = localLight(chosen);
     let at = localLightAt(local, p);
-    if (rtTrace(origin, at.xyz, distance(local.position.xyz, p) - 1e-3).instance == 0xffffffffu) {
+    if (!rtOccluded(origin, at.xyz, distance(local.position.xyz, p) - 1e-3)) {
       light += chosenLight * (total / chosenWeight);
     }
   }

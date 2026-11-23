@@ -28,7 +28,9 @@ async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {
   const native = game.native.debugSnapshot();
   if (!wasProfiling) profiler.enabled = false;
   const intervals = debug.frames.last(frames, debug.frames.interval);
+  const updateTimes = debug.frames.last(frames, debug.frames.update), drawTimes = debug.frames.last(frames, debug.frames.draw);
   const perFrame = (total: number) => total / updates;
+  const gpuFrames = gpu ? profiler.frames() : [];
   return {
     seconds,
     frames,
@@ -39,7 +41,20 @@ async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {
     throttled: throttled(debug, intervals.reduce((sum, ms) => sum + ms, 0) / Math.max(1, intervals.length)),
     cpuMsPerUpdate: Object.fromEntries([...timings].sort((a, b) => b[1] - a[1]).map(([label, ms]) => [label, round(perFrame(ms))])),
     nativeMsPerUpdate: Object.fromEntries(Object.entries(native.timings).sort((a, b) => b[1].ms - a[1].ms).map(([label, t]) => [label, round(perFrame(t.ms))])),
-    gpu: gpu ? { totalMs: round(gpuReport.reduce((sum, [, t]) => sum + t.milliseconds, 0)), passes: Object.fromEntries(gpuReport.map(([label, t]) => [label, round(t.milliseconds)])) } : 'timestamp-query is not available',
+    gpu: gpu ? {
+      totalMs: round(gpuReport.reduce((sum, [, t]) => sum + t.milliseconds, 0)),
+      // 逐帧：各通道加起来、首尾的跨度的分布；最慢的几帧各贵在哪（偶发的长帧是哪个通道）
+      frameTotalMs: summary(gpuFrames.map((frame) => frame.totalMs)),
+      frameSpanMs: summary(gpuFrames.map((frame) => frame.spanMs)),
+      slowestFrames: [...gpuFrames].sort((a, b) => b.totalMs - a.totalMs).slice(0, 3).map((frame) => ({
+        totalMs: round(frame.totalMs), spanMs: round(frame.spanMs),
+        top: Object.fromEntries([...frame.passes].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, ms]) => [label, round(ms)])),
+      })),
+      passes: Object.fromEntries(gpuReport.map(([label, t]) => [label, round(t.milliseconds)])),
+    } : 'timestamp-query is not available',
+    // CPU 一侧最慢的几帧：间隔、那一帧的更新和绘制（间隔长而更新、绘制都短的，是在等 GPU 或者浏览器）
+    slowestIntervals: intervals.map((ms, i) => ({ intervalMs: round(ms), updateMs: round(updateTimes[i] ?? 0), drawMs: round(drawTimes[i] ?? 0) }))
+      .sort((a, b) => b.intervalMs - a.intervalMs).slice(0, 5),
     render: Object.fromEntries(game.renderSystem.features.map((feature) => [feature.name, feature.stats()])),
     graph: game.graphicsCompositor.graphStats,
   };

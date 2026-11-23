@@ -1,5 +1,5 @@
 /** 店里的资源的字段：商品包装、货架、堆放、招牌、天花板、器具。 */
-import { SHELF, type ProductFile, type PileFile, type DebrisFile, type SignFile, type CeilingFile, type FixtureFile } from '../../../content/formats/format.ts';
+import { PILE, SHELF, type ProductFile, type DebrisFile, type SignFile, type CeilingFile, type FixtureFile } from '../../../content/formats/format.ts';
 import { schemaFields } from '../../../content/schema/schema.ts';
 import { fields, number, integer, bool, string, oneOf, vector, asset, list, object, type FieldSpec } from '../../../content/schema/builders.ts';
 
@@ -80,40 +80,7 @@ export const DEBRIS_FIELDS = fields<DebrisFile>({
 });
 
 /** 物理堆放（PileFile）：后端跑物理、生成同名的模型、标签图集和材质。 */
-export const PILE_FIELDS = fields<PileFile>({
-  name: string,
-  container: {
-    type: object(fields<PileFile['container']>({
-      size: { type: vector(3, 'm'), description: 'inside width, wall height and depth' },
-      wall: { type: number({ min: 0.001, step: 0.005, unit: 'm' }), optional: true, default: 0.015, description: 'wall thickness' },
-      color: { type: string, optional: true, description: 'color of the container (sRGB #rrggbb, dark grey plastic when missing)' },
-      cells: { type: vector(2), optional: true, default: [1, 1], description: 'split into compartments (columns, rows), numbered from back left to front right' },
-      lids: { type: bool, optional: true, default: false, description: 'a clear lid on each compartment, hinged at the back and lifted open' },
-    })),
-    description: 'the bin the items are poured into',
-  },
-  items: {
-    type: list(object(fields<PileFile['items'][number]>({
-      product: { type: asset('product'), description: 'what to pour in (produce or packaged goods)' },
-      count: { type: integer(0, 5000), description: 'how many' },
-      variants: { type: integer(1, 32), optional: true, default: 3, description: 'color or brand variants of it' },
-      cell: { type: integer(0, 255), optional: true, description: 'compartment to pour into; the whole container when missing' },
-    }))),
-    description: 'items dropped into the container; physics settles them and the result is baked into one model',
-  },
-  heaps: {
-    type: list(object(fields<NonNullable<PileFile['heaps']>[number]>({
-      cell: { type: integer(0, 255), description: 'compartment of the heap' },
-      color: { type: string, description: 'grain color (sRGB #rrggbb)' },
-      level: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.8, description: 'fill height as a share of the wall (the middle rises a bit more)' },
-      grain: { type: number({ min: 0.001, step: 0.001, unit: 'm' }), optional: true, default: 0.006, description: 'grain size' },
-      speckle: { type: string, optional: true, description: 'darker color between the grains (sRGB #rrggbb, black when missing)' },
-    }))),
-    optional: true,
-    description: 'fine grains (rice, beans, seeds) drawn as a heap instead of single bodies',
-  },
-  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the drop positions and variants' },
-});
+export const PILE_FIELDS = schemaFields(PILE);
 
 /** 招牌（SignFile）：后端生成同名的模型、图集和材质。 */
 export const SIGN_FIELDS = fields<SignFile>({

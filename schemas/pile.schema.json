@@ -26,7 +26,8 @@
         },
         "color": {
           "type": "string",
-          "description": "color of the container (sRGB #rrggbb, dark grey plastic when missing)"
+          "description": "color of the container (sRGB #rrggbb)",
+          "default": "#3d4044"
         },
         "cells": {
           "type": "array",
@@ -120,7 +121,8 @@
           },
           "speckle": {
             "type": "string",
-            "description": "darker color between the grains (sRGB #rrggbb, black when missing)"
+            "description": "darker color between the grains (sRGB #rrggbb)",
+            "default": "#000000"
           }
         },
         "required": [
@@ -129,7 +131,8 @@
         ],
         "additionalProperties": false
       },
-      "description": "fine grains (rice, beans, seeds) drawn as a heap instead of single bodies"
+      "description": "fine grains (rice, beans, seeds) drawn as a heap instead of single bodies",
+      "default": []
     },
     "seed": {
       "type": "integer",

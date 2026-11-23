@@ -5,6 +5,7 @@
 import { Animator } from '../animation/Animator';
 import { Transform } from '../engine/transform';
 import { CrowdAgent } from '../physics/CrowdAgent';
+import { runEnvironmentQuery } from './EnvironmentQuery';
 import { perceivedBy, registerBuiltInTask, type StateTreeContext, type StateTreeStatus, type StateTreeTaskRun } from './StateTree';
 
 const done: StateTreeTaskRun = { update: () => 'succeeded' };
@@ -74,6 +75,16 @@ registerBuiltInTask('flee', (context, task) => {
     if (end && Math.hypot(end.x - from.x, end.z - from.z) > task.distance * 0.3) return walk(agent, end, task.tolerance, task.timeout);
   }
   return { update: () => 'failed' };
+});
+
+registerBuiltInTask('findSpot', (context, task) => {
+  const world = context.entity?.get(Transform)?.world;
+  const game = context.game;
+  if (!world || !game) return { update: () => 'failed' };
+  const result = runEnvironmentQuery(task.query, { game, querier: { x: world[12]!, y: world[13]!, z: world[14]! }, parameter: (name) => context.tree.vector(name) });
+  if (result.point) context.tree.set(task.store, result.point);
+  const status = result.point ? 'succeeded' : 'failed';
+  return { update: () => status };
 });
 
 registerBuiltInTask('sense', (context, task) => ({

@@ -19,7 +19,7 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Table columns': '列', 'Table rows': '行', 'Target state': '去哪个状态',
+    'Table columns': '列', 'Table rows': '行', 'Target state': '去哪个状态', 'Distance to': '离哪里', 'Seen from': '从哪里看',
     'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Irradiance volume': '辐照度体', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Persistent': '持久（存档）', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
@@ -43,6 +43,8 @@ const zhCN: FieldMessages = {
     parent: '父状态', enter: '进入条件', tasks: '任务', on: '时机', event: '事件', not: '取反', probability: '概率', seconds: '秒数', random: '随机多等',
     point: '位置', tolerance: '到达的距离', timeout: '超时', args: '参数值', defaultVector: '默认位置', chance: '概率', wander: '闲逛', moveTo: '走到',
     stand: '站着', set: '设参数', animator: '动画参数', emit: '发事件', call: '调用代码',
+    tag: '种类', findSpot: '找地方', query: '环境查询', generator: '候选点', rings: '几圈', grid: '方格', tests: '测试', pick: '取哪个', around: '围着', want: '要', prefer: '偏好',
+    reachable: '走得到', visible: '看得见',
     perceives: '感知到', sense: '感知', flee: '跑开', store: '位置写进', flag: '有没有写进', seeing: '正看得见',
     parameters: '参数', parameter: '参数', loop: '循环', states: '状态', initial: '初始状态', transitions: '过渡', motion: '动作', blend1d: '一维混合', when: '条件', exitTime: '退出时间', test: '判断',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
@@ -106,6 +108,12 @@ const zhCN: FieldMessages = {
     'event name when on is event': '时机是事件时的事件名',
     'a state, or $next, $root, $succeeded, $failed': '一个状态，或者 $next（下一个兄弟）、$root（从顶层重选）、$succeeded、$failed（整棵树结束）',
     'parent state; top level when empty': '父状态；空着是顶层',
+    'vector parameter at the center; empty: the querier': '中心的位置参数；空着是查询的人自己',
+    'vector parameter; empty: the querier': '位置参数；空着是查询的人自己',
+    'vector parameter of the viewer': '看的人的位置参数',
+    'true: must be in sight; false: must be hidden': '开：要看得见；关：要看不见',
+    'best: the highest score; top25: random among the best quarter': 'best：分最高的；top25：最好的四分之一里随便挑',
+    'vector parameter that gets the spot': '写进找到的点的位置参数',
     'stimulus tag; empty matches any': '东西的种类（PerceptionStimulus 的 tag）；空着是任何',
     'only while it is in sight right now (not remembered)': '只算这一刻看得见的（不算记着的）',
     'vector parameter that gets the last known position': '写进最后知道的位置的位置参数',

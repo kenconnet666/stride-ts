@@ -15,6 +15,7 @@
  * - 任务和条件除了内置的几种，还有 `call`：按名字调代码里登记的（`registerStateTreeTask`、`registerStateTreeCondition`），args 原样给它。
  */
 import { s, type Infer, type InputOf } from '../schema/schema.ts';
+import { ENVIRONMENT_QUERY } from './environmentQueryFormat.ts';
 
 export const STATE_TREE_PARAMETER = s.object({
   name: s.string(),
@@ -70,6 +71,11 @@ export const STATE_TREE_TASK = s.union('type', {
     distance: s.number({ min: 1, step: 1, unit: 'm' }).default(25),
     tolerance: s.number({ min: 0.1, step: 0.1, unit: 'm' }).default(0.8),
     timeout: s.number({ min: 0, step: 1, unit: 's' }).default(30),
+  },
+  /** 环境查询（content/formats/environmentQueryFormat.ts）找一个点写进位置参数 store：找到了成功，一个都没留下失败。 */
+  findSpot: {
+    query: ENVIRONMENT_QUERY,
+    store: s.string().describe('vector parameter that gets the spot'),
   },
   /** 设一个参数（数、开关），马上成功。 */
   set: { parameter: s.string(), value: s.number({ step: 0.05 }).default(1) },
@@ -153,6 +159,11 @@ export function checkStateTree(tree: StateTreeData, where: string): StateTreeDat
       const atTask = `${at} task ${i} (${task.type})`;
       if (task.type === 'set') parameter(atTask, task.parameter, ['number', 'bool']);
       if (task.type === 'flee') parameter(atTask, task.parameter, ['vector']);
+      if (task.type === 'findSpot') {
+        parameter(atTask, task.store, ['vector']);
+        const vectors = [task.query.generator.around, ...task.query.tests.flatMap((test) => (test.type === 'distance' ? [test.to] : test.type === 'visible' ? [test.from] : []))];
+        for (const name of vectors) if (name !== '') parameter(atTask, name, ['vector']);
+      }
       if (task.type === 'sense') {
         if (task.store !== undefined) parameter(atTask, task.store, ['vector']);
         if (task.flag !== undefined) parameter(atTask, task.flag, ['number', 'bool']);

@@ -405,6 +405,12 @@ export class NavigationSystem {
     for (const key of this.#building) square(key, [1, 0.8, 0.1, 1]);
   }
 
+  /** 导航网格上离 point 最近的点（在水平 2 米、上下 4 米以内找）；没有时是 undefined。 */
+  nearestPoint(point: Vec3Like): Vector3 | undefined {
+    // 起点、终点相同的寻路：Detour 先把两头贴到最近的多边形上，第一个拐点就是贴好的位置
+    return this.findPath(point, point)?.[0];
+  }
+
   /** @internal 排队算一条路：plan 在之后的某一帧调用。 */
   queuePath(plan: () => void): void {
     this.#queue.push(plan);

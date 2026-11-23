@@ -1,10 +1,11 @@
-// 行人：平时等一会儿、附近走一走；看见 threat（挂 PerceptionStimulus、tag 是 threat 的东西）或者收到 scare 事件就背对着它跑开，
-// 跑完还看得见就接着跑，看不见了回到平时
+// 行人：平时等一会儿、附近走一走；看见 threat（挂 PerceptionStimulus、tag 是 threat 的东西）或者收到 scare 事件就慌了：
+// 先找一个威胁看不见的地方（环境查询）躲过去，找不到就背对着它跑开；跑完还看得见就接着慌，看不见了回到平时
 {
   "name": "Pedestrian",
   "parameters": [
     { "name": "alarm", "type": "bool" },
-    { "name": "threat", "type": "vector" }
+    { "name": "threat", "type": "vector" },
+    { "name": "cover", "type": "vector" }
   ],
   "states": [
     {
@@ -25,11 +26,30 @@
     },
     {
       "name": "Panic",
+      "tasks": [{ "type": "sense", "tag": "threat", "sense": "sight", "store": "threat", "flag": "alarm" }]
+    },
+    {
+      "name": "FindCover",
+      "parent": "Panic",
       "tasks": [
-        { "type": "sense", "tag": "threat", "sense": "sight", "store": "threat", "flag": "alarm" },
-        { "type": "flee", "parameter": "threat", "distance": 30 }
+        {
+          "type": "findSpot",
+          "store": "cover",
+          "query": {
+            "generator": { "type": "rings", "radius": 16, "rings": 2, "count": 12 },
+            "tests": [
+              { "type": "visible", "from": "threat", "want": false, "mode": "filter" },
+              { "type": "distance", "to": "threat", "min": 8, "mode": "filter" },
+              { "type": "distance", "to": "threat", "prefer": "far" },
+              { "type": "distance", "prefer": "near", "weight": 0.7 }
+            ],
+            "pick": "top25"
+          }
+        }
       ],
-      "transitions": [{ "to": "$root" }]
-    }
+      "transitions": [{ "on": "succeeded", "to": "$next" }, { "on": "failed", "to": "Flee" }]
+    },
+    { "name": "TakeCover", "parent": "Panic", "tasks": [{ "type": "moveTo", "parameter": "cover", "timeout": 20 }], "transitions": [{ "to": "$root" }] },
+    { "name": "Flee", "parent": "Panic", "tasks": [{ "type": "flee", "parameter": "threat", "distance": 30 }], "transitions": [{ "to": "$root" }] }
   ]
 }

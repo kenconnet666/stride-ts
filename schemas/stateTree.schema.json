@@ -379,6 +379,261 @@
                   "properties": {
                     "type": {
                       "enum": [
+                        "findSpot"
+                      ]
+                    },
+                    "query": {
+                      "type": "object",
+                      "properties": {
+                        "generator": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "enum": [
+                                    "rings"
+                                  ]
+                                },
+                                "around": {
+                                  "type": "string",
+                                  "description": "vector parameter at the center; empty: the querier",
+                                  "default": ""
+                                },
+                                "radius": {
+                                  "type": "number",
+                                  "minimum": 0.5,
+                                  "description": "unit: m",
+                                  "default": 10
+                                },
+                                "rings": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 16,
+                                  "default": 2
+                                },
+                                "count": {
+                                  "type": "integer",
+                                  "minimum": 3,
+                                  "maximum": 64,
+                                  "default": 12
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "enum": [
+                                    "grid"
+                                  ]
+                                },
+                                "around": {
+                                  "type": "string",
+                                  "description": "vector parameter at the center; empty: the querier",
+                                  "default": ""
+                                },
+                                "size": {
+                                  "type": "number",
+                                  "minimum": 1,
+                                  "description": "unit: m",
+                                  "default": 20
+                                },
+                                "spacing": {
+                                  "type": "number",
+                                  "minimum": 0.5,
+                                  "description": "unit: m",
+                                  "default": 2
+                                }
+                              },
+                              "required": [
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "tests": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "enum": [
+                                      "distance"
+                                    ]
+                                  },
+                                  "mode": {
+                                    "enum": [
+                                      "filter",
+                                      "score"
+                                    ],
+                                    "default": "score"
+                                  },
+                                  "weight": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "default": 1
+                                  },
+                                  "to": {
+                                    "type": "string",
+                                    "description": "vector parameter; empty: the querier",
+                                    "default": ""
+                                  },
+                                  "min": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "description": "unit: m",
+                                    "default": 0
+                                  },
+                                  "max": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "description": "unit: m",
+                                    "default": 1000000
+                                  },
+                                  "prefer": {
+                                    "enum": [
+                                      "near",
+                                      "far"
+                                    ],
+                                    "default": "near"
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "enum": [
+                                      "visible"
+                                    ]
+                                  },
+                                  "mode": {
+                                    "enum": [
+                                      "filter",
+                                      "score"
+                                    ],
+                                    "default": "score"
+                                  },
+                                  "weight": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "default": 1
+                                  },
+                                  "from": {
+                                    "type": "string",
+                                    "description": "vector parameter of the viewer"
+                                  },
+                                  "want": {
+                                    "type": "boolean",
+                                    "description": "true: must be in sight; false: must be hidden",
+                                    "default": false
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "from"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "enum": [
+                                      "reachable"
+                                    ]
+                                  },
+                                  "mode": {
+                                    "enum": [
+                                      "filter",
+                                      "score"
+                                    ],
+                                    "default": "score"
+                                  },
+                                  "weight": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "default": 1
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "enum": [
+                                      "random"
+                                    ]
+                                  },
+                                  "mode": {
+                                    "enum": [
+                                      "filter",
+                                      "score"
+                                    ],
+                                    "default": "score"
+                                  },
+                                  "weight": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "default": 1
+                                  }
+                                },
+                                "required": [
+                                  "type"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          },
+                          "default": []
+                        },
+                        "pick": {
+                          "enum": [
+                            "best",
+                            "top25"
+                          ],
+                          "description": "best: the highest score; top25: random among the best quarter",
+                          "default": "best"
+                        }
+                      },
+                      "required": [
+                        "generator"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "store": {
+                      "type": "string",
+                      "description": "vector parameter that gets the spot"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "query",
+                    "store"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
                         "set"
                       ]
                     },

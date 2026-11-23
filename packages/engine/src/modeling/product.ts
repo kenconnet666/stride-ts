@@ -31,6 +31,8 @@ export interface ProductDesign {
   readonly detail: boolean;
   readonly motif: ProductMotif;
   readonly badge: string | undefined;
+  /** 卖点（印得细的标签上的小字）。 */
+  readonly claims: readonly string[];
 }
 
 /** 包装上常见的颜色（sRGB）：底色和强调色从这里挑。 */
@@ -38,6 +40,8 @@ const PALETTE = ['#d7262b', '#f6c40f', '#2f9e44', '#1e64c8', '#f4f2ec', '#1d1d1f
 const PATTERNS: readonly ProductPattern[] = ['plain', 'band', 'stripes', 'split', 'wave', 'dots'];
 /** 没写时挑的配料小图（花生、玉米、芝麻这些说明是什么的，写在文件里）。 */
 const MOTIFS: readonly ProductMotif[] = ['leaf', 'drop', 'wheat', 'sunflower', 'none'];
+/** 没写卖点时挑的（包装上常见的小字，什么商品都说得通的）。 */
+const CLAIMS = ['精选原料', '品质保证', '健康美味', '营养均衡', '传统工艺', '新鲜美味', '匠心之选', '醇香浓郁', '原料严选', '安心好品', '绿色食品', '口感醇正'];
 /** 镶边的颜色：金、白、米白。 */
 const TRIMS = ['#e8c25a', '#ffffff', '#f4f2ec'];
 /** 拼品牌名的字（常见的商标用字）。 */
@@ -88,22 +92,26 @@ export function productDesign(input: ProductFile, variant = 0): ProductDesign {
   const pattern = file.pattern ?? pick(PATTERNS);
   // 后加的几样排在最后挑：前面的（品牌、配色、图案）和加之前按同一个种子挑的一样
   const motif = file.motif ?? pick(MOTIFS), trim = file.colors.trim ?? pick(TRIMS);
+  const first = pick(CLAIMS), claims = file.claims ?? [first, pick(CLAIMS.filter((claim) => claim !== first))];
   return {
     brand,
     text: file.text,
     colors: { background, accent, text: file.colors.text ?? '', cap, trim },
     pattern,
     surface: file.surface ?? DEFAULT_SURFACE[file.shape],
-    detail: file.detail, motif, badge: file.badge || undefined,
+    detail: file.detail, motif, badge: file.badge || undefined, claims,
   };
 }
 
 /** 果蔬、器皿：没有印的东西。 */
-const UNPRINTED = { detail: false, motif: 'none', badge: undefined } as const;
+const UNPRINTED = { detail: false, motif: 'none', badge: undefined, claims: [] } as const;
 
-/** 标签上要排的字（品牌名、品类、角标）：烘焙时按它从字体里取子集。 */
+/** 净含量那一行的前缀。 */
+const NET_CONTENT = '净含量';
+
+/** 标签上要排的字（品牌名、品类、角标、卖点、净含量）：烘焙时按它从字体里取子集。 */
 export function productText(design: ProductDesign): string {
-  return design.brand + (design.text ?? '') + (design.badge ?? '');
+  return design.brand + (design.text ?? '') + (design.badge ?? '') + design.claims.join('') + (design.badge ? NET_CONTENT : '');
 }
 
 /** 检查尺寸；不对时报错（where 是报错的前缀）。 */
@@ -668,7 +676,8 @@ function bandFinish(design: ProductDesign, x: number, w: number, top: number, he
 
 /**
  * 印得细的标签在正面那块字的周围加的：顶上一枚徽标（镶边色的圆章、品牌的头一个字），品牌名两边配料的小图（白圆底），药丸下面
- * 几行看不清的细字（灰的短横），右下的角标（星形，"5L"）。没有字体时徽标和角标不写字。
+ * 几行细字（卖点一行，有角标时"净含量"一行，最下面一行看不清的小字画成灰的短横；没有字体时都是短横），右下的角标（星形，"5L"）。
+ * 没有字体时徽标和角标不写字。
  */
 function labelDetails(design: ProductDesign, font: TextFont | undefined, area: TextArea, random: () => number): string[] {
   const { cx, cy, width, height } = area;
@@ -691,10 +700,25 @@ function labelDetails(design: ProductDesign, font: TextFont | undefined, area: T
       out.push(circle(mx, my, size * 0.62, '#ffffff', ` stroke="${trim}" stroke-width="${svgNumber(size * 0.05)}"`), motifShapes(design.motif, mx, my, size));
     }
   }
-  // 细字：几行长短不一的短横
-  const rowHeight = height * 0.022;
-  for (let row = 0; row < 3; row++) {
-    const y = cy + height * (0.43 + row * 0.04), left = cx - width * 0.26, right = cx + width * 0.26;
+  // 细字：卖点印在强调色的色条上（白字），有角标时下面一行"净含量"，剩下的行是长短不一的短横；没有字体时都是短横
+  const rowHeight = height * 0.022, rowY = (row: number) => cy + height * (0.43 + row * 0.04);
+  let written = 0;
+  const claims = design.claims.join('  ');
+  if (font && claims) {
+    const y = cy + height * 0.45, h = height * 0.07, text = textPath(font, claims, cx, y, width * 0.5, h * 0.66, '#ffffff');
+    if (text) {
+      out.push(`<rect x="${svgNumber(cx - width * 0.29)}" y="${svgNumber(y - h / 2)}" width="${svgNumber(width * 0.58)}" height="${svgNumber(h)}" rx="${svgNumber(h * 0.2)}" fill="${design.colors.accent}"/>`, text);
+      written = 2;
+    }
+  }
+  const net = design.badge && font ? textPath(font, `${NET_CONTENT} ${design.badge}`, cx, rowY(written) + rowHeight, width * 0.4, height * 0.038, ink) : undefined;
+  if (net) {
+    out.push(`<g opacity="0.85">${net}</g>`);
+    written++;
+  }
+  // 写了字时短横多一行，排在字的下面（净含量的字比短横高，再往下让半行）
+  for (let row = written; row < (written > 0 ? 4 : 3); row++) {
+    const y = rowY(row) + (net ? rowHeight : 0), left = cx - width * 0.26, right = cx + width * 0.26;
     let words = '';
     for (let x = left + random() * width * 0.02; x < right;) {
       const w = Math.min(right - x, width * (0.015 + random() * 0.05));

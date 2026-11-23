@@ -90,6 +90,8 @@ export const PRODUCT = s.object({
   motif: s.oneOf(...PRODUCT_MOTIFS).optional().describe('small picture of the ingredient on both sides of the brand (on a white disc); picked from the seed when missing (leaf, drop, wheat, sunflower or none)'),
   /** 角上的标（"5L""非转基因"）；没写时不画。 */
   badge: s.string().optional().describe('text of the starburst in the lower right corner ("5L", "non-GMO"); none when missing'),
+  /** 卖点：印得细的标签上药丸下面的一行小字（"非转基因""物理压榨"）；没写时按种子挑两句。有角标时下面再印一行"净含量"加角标的字。 */
+  claims: s.list(s.string()).optional().describe('selling points printed small under the product name ("non-GMO", "cold pressed"); two picked by the seed when missing; with a badge a net-content line follows'),
   /** 标签印得细不细：徽标、配料的小图、细字、角标、色带的镶边和明暗；false 只画色块、底纹和字（卡通的风格）。果蔬、器皿不看它。 */
   detail: s.bool().default(true).describe('print details: emblem, ingredient pictures, fine print, badge, trim lines and shading of the band; false draws only the color blocks, pattern and text (a cartoon look)'),
   /**

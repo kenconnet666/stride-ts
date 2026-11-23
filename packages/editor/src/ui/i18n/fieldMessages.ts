@@ -76,7 +76,7 @@ const zhCN: FieldMessages = {
     duration: '时长', frameRate: '帧率', tracks: '轨道', entity: '实体', component: '组件', property: '属性', interpolation: '插值', keys: '关键帧',
     time: '时刻', value: '值', in: '入切线', out: '出切线',
     physical: '物理相机', aspectRatio: '画幅', follow: '跟随', followDamping: '跟随的平滑', lookAt: '注视', lookOffset: '注视的偏移', lookDamping: '注视的平滑',
-    header: '灯箱的字', number: '号码', ducts: '风管', trays: '桥架', pipes: '喷淋管', lights: '灯', drop: '吊下来多少', priceTags: '价签', tagHolder: '价签放在', tagAccent: '价签的色块', boardThickness: '层板厚', doorColor: '柜门的颜色', doorSticker: '门上的广告贴', title: '横幅的字', slogan: '下面的字', textColor: '字的颜色', border: '边框宽', style: '样式', cells: '分格', lids: '透明盖', heaps: '细粒的堆', cell: '格子', speckle: '颗粒间的颜色', container: '容器', wall: '壁厚', items: '倒进去的', product: '商品', bay: '立柱间距', frameColor: '架子的颜色', stripColor: '价签条的颜色', stock: '摆货', products: '商品', variants: '牌子数', facings: '排面数', gaps: '空位', messiness: '摆得多乱', cubbies: '顶上的格子柜', hex: '六边形格', price: '零售价',
+    header: '灯箱的字', number: '号码', ducts: '风管', trays: '桥架', pipes: '喷淋管', lights: '灯', drop: '吊下来多少', priceTags: '价签', tagHolder: '价签放在', tagAccent: '价签的色块', boardThickness: '层板厚', doorColor: '柜门的颜色', doorSticker: '门上的广告贴', title: '横幅的字', slogan: '下面的字', textColor: '字的颜色', border: '边框宽', style: '样式', cells: '分格', lids: '透明盖', heaps: '细粒的堆', cell: '格子', speckle: '颗粒间的颜色', container: '容器', wall: '壁厚', items: '倒进去的', product: '商品', bay: '立柱间距', frameColor: '架子的颜色', stripColor: '价签条的颜色', stock: '摆货', products: '商品', variants: '牌子数', facings: '排面数', gaps: '空位', messiness: '摆得多乱', cubbies: '顶上的格子柜', hex: '六边形格', price: '零售价', claims: '卖点',
     brand: '品牌名', colors: '配色', background: '底色', accent: '强调色', cap: '盖子', pattern: '底纹',
     shakeRotation: '晃动的角度', shakePosition: '晃动的位移', shakeFrequency: '晃动的频率', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
@@ -584,6 +584,7 @@ const zhCN: FieldMessages = {
     'tall hexagonal cells through all rows (pointed at half height on the left and right), placed by the seed': '上下贯通所有排的六边形格（左右在半高处是尖角），位置按种子挑',
     'bottles lying in the cells, neck out': '横躺在格子里的瓶子，瓶口朝外',
     'share of the cells that have bottles': '有瓶子的格子的比例',
+    'selling points printed small under the product name ("non-GMO", "cold pressed"); two picked by the seed when missing; with a badge a net-content line follows': '卖点：印在品名下面的小字（"非转基因""物理压榨"）；没写时按种子挑两句；有角标时下面再印一行净含量',
   },
 };
 

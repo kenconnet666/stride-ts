@@ -1,6 +1,10 @@
 {
  "name": "Oil900",
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "claims": [
+  "小磨香油",
+  "纯正"
+ ],
  "shape": "bottle",
  "size": [
   0.075,

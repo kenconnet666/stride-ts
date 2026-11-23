@@ -35,11 +35,11 @@ const FONT = 'Shared/Fonts/ZCOOLQingKeHuangYou';
 // 照片里的油：5 升的大桶（下面几层）、1.8 升（中间）、900 毫升（最上层）。瓶身是透出来的油色（琥珀、金黄），标签只是中间一圈
 // （band），红、绿、蓝居多（金龙鱼、鲁花、福临门那样）
 const oils: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
-  { id: 'Oil5L', shape: 'jug', size: [0.17, 0.32, 0.105], text: '食用油', price: 69.9, seed: 81, motif: 'sunflower', badge: '5L', pattern: 'band', transmission: 0.75, colors: { background: '#e8a52c', accent: '#d7262b', cap: '#d7262b' } },
-  { id: 'Peanut5L', shape: 'jug', size: [0.17, 0.32, 0.105], text: '花生油', price: 129.9, seed: 82, motif: 'peanut', badge: '5L', pattern: 'band', transmission: 0.75, colors: { background: '#d98a22', accent: '#2f9e44', cap: '#d7262b' } },
-  { id: 'Corn5L', shape: 'jug', size: [0.16, 0.31, 0.1], text: '玉米油', price: 79.9, seed: 83, motif: 'corn', badge: '5L', pattern: 'band', transmission: 0.75, colors: { background: '#f0b830', accent: '#1e64c8', cap: '#f6c40f' } },
-  { id: 'Oil18', shape: 'bottle', size: [0.1, 0.3, 0], text: '调和油', price: 29.9, seed: 84, motif: 'drop', badge: '1.8L', pattern: 'band', transmission: 0.75, colors: { background: '#e6a82e', accent: '#d7262b', cap: '#d7262b' } },
-  { id: 'Oil900', shape: 'bottle', size: [0.075, 0.26, 0], text: '芝麻油', price: 32.8, seed: 85, motif: 'sesame', badge: '900ml', pattern: 'band', transmission: 0.75, colors: { background: '#8a3c10', accent: '#2f9e44', cap: '#f4f2ec' } },
+  { id: 'Oil5L', claims: ['非转基因', '一级'], shape: 'jug', size: [0.17, 0.32, 0.105], text: '食用油', price: 69.9, seed: 81, motif: 'sunflower', badge: '5L', pattern: 'band', transmission: 0.75, colors: { background: '#e8a52c', accent: '#d7262b', cap: '#d7262b' } },
+  { id: 'Peanut5L', claims: ['物理压榨', '一级'], shape: 'jug', size: [0.17, 0.32, 0.105], text: '花生油', price: 129.9, seed: 82, motif: 'peanut', badge: '5L', pattern: 'band', transmission: 0.75, colors: { background: '#d98a22', accent: '#2f9e44', cap: '#d7262b' } },
+  { id: 'Corn5L', claims: ['非转基因', '压榨'], shape: 'jug', size: [0.16, 0.31, 0.1], text: '玉米油', price: 79.9, seed: 83, motif: 'corn', badge: '5L', pattern: 'band', transmission: 0.75, colors: { background: '#f0b830', accent: '#1e64c8', cap: '#f6c40f' } },
+  { id: 'Oil18', claims: ['营养均衡', '一级'], shape: 'bottle', size: [0.1, 0.3, 0], text: '调和油', price: 29.9, seed: 84, motif: 'drop', badge: '1.8L', pattern: 'band', transmission: 0.75, colors: { background: '#e6a82e', accent: '#d7262b', cap: '#d7262b' } },
+  { id: 'Oil900', claims: ['小磨香油', '纯正'], shape: 'bottle', size: [0.075, 0.26, 0], text: '芝麻油', price: 32.8, seed: 85, motif: 'sesame', badge: '900ml', pattern: 'band', transmission: 0.75, colors: { background: '#8a3c10', accent: '#2f9e44', cap: '#f4f2ec' } },
 ];
 for (const { id, ...product } of oils) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 // 上面格子柜里横躺的红酒：深色的玻璃瓶、红、黄、绿的瓶盖朝外（照片里一格一排）

@@ -1,6 +1,10 @@
 {
  "name": "Corn5L",
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "claims": [
+  "非转基因",
+  "压榨"
+ ],
  "shape": "jug",
  "size": [
   0.16,

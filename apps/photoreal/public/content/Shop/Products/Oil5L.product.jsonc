@@ -1,6 +1,10 @@
 {
  "name": "Oil5L",
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "claims": [
+  "非转基因",
+  "一级"
+ ],
  "shape": "jug",
  "size": [
   0.17,

@@ -1,6 +1,10 @@
 {
  "name": "Peanut5L",
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "claims": [
+  "物理压榨",
+  "一级"
+ ],
  "shape": "jug",
  "size": [
   0.17,

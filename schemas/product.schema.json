@@ -167,6 +167,13 @@
       "type": "string",
       "description": "text of the starburst in the lower right corner (\"5L\", \"non-GMO\"); none when missing"
     },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "selling points printed small under the product name (\"non-GMO\", \"cold pressed\"); two picked by the seed when missing; with a badge a net-content line follows"
+    },
     "detail": {
       "type": "boolean",
       "description": "print details: emblem, ingredient pictures, fine print, badge, trim lines and shading of the band; false draws only the color blocks, pattern and text (a cartoon look)",

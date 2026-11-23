@@ -1,6 +1,10 @@
 {
  "name": "Oil18",
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "claims": [
+  "营养均衡",
+  "一级"
+ ],
  "shape": "bottle",
  "size": [
   0.1,

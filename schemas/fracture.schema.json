@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "fracture asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string",
+      "description": "the intact model to break into pieces; content path of a model asset (no extension)"
+    },
+    "count": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 256,
+      "description": "how many pieces (Voronoi cells; empty cells are dropped)",
+      "default": 8
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed of the cut",
+      "default": 1
+    },
+    "interiorMaterial": {
+      "type": "string",
+      "description": "material of the broken faces inside; the material of the first mesh when missing; content path of a material asset (no extension)"
+    },
+    "uvScale": {
+      "type": "number",
+      "minimum": 0.001,
+      "description": "metres per texture repeat on the broken faces; unit: m",
+      "default": 1
+    }
+  },
+  "required": [
+    "name",
+    "model"
+  ],
+  "additionalProperties": false
+}

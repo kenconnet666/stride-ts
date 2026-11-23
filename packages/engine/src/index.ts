@@ -220,9 +220,10 @@ export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type
 export { Vehicle } from './physics/Vehicle';
 export { Ragdoll } from './physics/Ragdoll';
 export { Rope, ropePoints } from './physics/Rope';
+export { Breakable, solidOf } from './physics/Breakable';
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './physics/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './physics/RecastNavigationComponent';
-export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
+export { TriggerHandler, type Contact, type ContactHandler, type StartedContact, type TouchingContact } from './physics/contacts';
 export { CameraRig, cameraRigSystem } from './rendering/CameraRig';
 export { Background, Camera, GaussianSplat, Instance, Instancing, IrradianceVolume, Light, Model, ModelPart, PlanarReflection, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog, Decal } from './rendering/components';
 export { Decals, packDecal, tileSize, type AtlasRect, type DecalInstance } from './rendering/mesh/Decals';

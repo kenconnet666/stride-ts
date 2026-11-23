@@ -5,6 +5,7 @@
  * ProceduralModels：尺寸默认 1，右手坐标系，三角形从外面看是逆时针。
  */
 import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, MORPH_ENTRY_WORDS, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../../content/formats/format';
+import { meshPositions } from '../../content/modelFile';
 import type { Branded } from '../../data/prop';
 import { ResourceTable } from '../../engine/ResourceTable';
 import { MESH_EFFECT_PARAMETERS } from './meshEffect';
@@ -111,19 +112,7 @@ export class Mesh {
 
   /** 模型空间的顶点位置 xyz（量化的位置已经反量化），网格碰撞体用。 */
   positions(): Float32Array {
-    const { vertices } = this.data;
-    const offset = vertexLayoutOffsets(this.layout).position;
-    const view = new DataView(vertices.buffer, vertices.byteOffset, vertices.byteLength);
-    const out = new Float32Array(this.vertexCount * 3);
-    const quantized = this.layout.position === 'unorm16x4';
-    const { positionOffset: o, positionScale: s } = this.dequantize;
-    for (let v = 0; v < this.vertexCount; v++) {
-      const at = v * this.vertexStride + offset;
-      for (let k = 0; k < 3; k++) {
-        out[v * 3 + k] = quantized ? o[k]! + (view.getUint16(at + k * 2, true) / 65535) * s[k]! : view.getFloat32(at + k * 4, true);
-      }
-    }
-    return out;
+    return meshPositions({ vertices: this.data.vertices, layout: this.layout, dequantize: this.dequantize });
   }
 
   /** 解量化后的纹理坐标的范围 [最小 u, 最小 v, 最大 u, 最大 v]（表面颜色的烘焙按它铺满一格）；没有顶点时是 0..1。 */

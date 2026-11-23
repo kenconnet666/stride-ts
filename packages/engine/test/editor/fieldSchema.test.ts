@@ -28,7 +28,7 @@ describe('字段描述换成 JSON Schema', () => {
     const light = schemas['light'] as { oneOf: { properties: { type: { enum: string[] } } }[] };
     expect(light.oneOf.map((variant) => variant.properties.type.enum[0])).toContain('directional');
     expect(Object.keys(sceneSettingSchemas())).toContain('compositor');
-    expect(Object.keys(assetSchemas())).toEqual(['material', 'terrain', 'model', 'timeline', 'brush', 'sdf', 'poly', 'modelImport', 'imageImport', 'spriteSheet', 'text', 'product', 'shelf', 'pile', 'debris', 'splatEdit', 'sign', 'ceiling', 'fixture', 'spline', 'tree', 'building', 'city', 'water', 'scatter', 'sound', 'input', 'table', 'gameSettings']);
+    expect(Object.keys(assetSchemas())).toEqual(['material', 'terrain', 'model', 'timeline', 'brush', 'sdf', 'poly', 'modelImport', 'imageImport', 'spriteSheet', 'text', 'product', 'shelf', 'pile', 'debris', 'fracture', 'splatEdit', 'sign', 'ceiling', 'fixture', 'spline', 'tree', 'building', 'city', 'water', 'scatter', 'sound', 'input', 'table', 'gameSettings']);
   });
 });
 

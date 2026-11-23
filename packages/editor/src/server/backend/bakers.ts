@@ -1,11 +1,11 @@
 /**
  * 生成模型的资源（源头是 JSON 的参数：白盒、SDF、多边形网格、3D 文字、样条、树、建筑、商品包装、货架、堆放、招牌、天花板、
- * 店里的器具）：每种怎么烘（pipeline 的 bake*），烘出哪些同名的资源（跟着源文件挪、删）。编辑器后端存下、磁盘上改了、打开工程时
+ * 店里的器具、可破碎物体的碎块）：每种怎么烘（pipeline 的 bake*），烘出哪些同名的资源（跟着源文件挪、删）。编辑器后端存下、磁盘上改了、打开工程时
  * 补烘都查这张表（generatorFor）；内置的加一种在这里加一行，工程自己的种类由编辑器扩展登记（shared/extension.ts 的 bake）。
  */
-import { EXTENSIONS, type BrushFile, type BuildingFile, type CeilingFile, type FixtureFile, type PileFile, type DebrisFile, type SplatEditFile, type PolyMeshFile, type ProductFile, type SdfFile, type ShelfFile, type SignFile, type SplineFile, type TextModelFile, type TreeFile } from '@stride-ts/engine/content-format';
+import { EXTENSIONS, type BrushFile, type BuildingFile, type CeilingFile, type FixtureFile, type PileFile, type DebrisFile, type FractureFile, type SplatEditFile, type PolyMeshFile, type ProductFile, type SdfFile, type ShelfFile, type SignFile, type SplineFile, type TextModelFile, type TreeFile } from '@stride-ts/engine/content-format';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakeBuildingModel, bakeCeiling, bakeDebris, bakeFixture, bakePile, bakeSplatEdit, SPLAT_PROXY_SUFFIX, bakePolyModel, bakeProduct, bakeSdfModel, bakeShelf, bakeSign, bakeSplineModel, bakeTextModel, bakeTreeModel } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakeBuildingModel, bakeCeiling, bakeDebris, bakeFixture, bakeFracture, bakePile, bakeSplatEdit, SPLAT_PROXY_SUFFIX, bakePolyModel, bakeProduct, bakeSdfModel, bakeShelf, bakeSign, bakeSplineModel, bakeTextModel, bakeTreeModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '../../shared/protocol.ts';
 import { extensionAssetKinds, extensionAssetKind } from '../../shared/extension.ts';
 
@@ -55,6 +55,8 @@ export const GENERATORS = {
   spline: modelOnly<SplineFile>(({ tools }, file, where) => bakeSplineModel(tools, file, where)),
   tree: modelOnly<TreeFile>(({ tools }, file, where) => bakeTreeModel(tools, file, where)),
   building: modelOnly<BuildingFile>(({ tools }, file, where) => bakeBuildingModel(tools, file, where)),
+  // 可破碎物体的碎块：读完整的模型切开
+  fracture: modelOnly<FractureFile>(({ tools, read }, file, where) => bakeFracture(tools, file, read, where)),
   // 包装还生成了同名的标签贴图和材质（瓶身透光时还有表面贴图）
   product: merged<ProductFile>(({ tools, read }, file, assetPath, where) => bakeProduct(tools, file, assetPath, read, where), [['model', ''], ['material', ''], ['image', ''], ['image', '.surface']]),
   shelf: merged<ShelfFile>(({ tools, read }, file, assetPath, where) => bakeShelf(tools, file, assetPath, read, where)),
@@ -83,5 +85,5 @@ export function generatedKinds(): AssetKind[] {
 
 export const isGenerated = (kind: string): boolean => generatorFor(kind) !== undefined;
 
-/** 生成的资源用着别的资源、那些变了要跟着重烘的：货架、堆放用着商品（标签、尺寸在它们的图集和网格里）。 */
-export const REBAKE_WITH: Readonly<Partial<Record<AssetKind, readonly AssetKind[]>>> = { product: ['shelf', 'pile', 'debris'], splats: ['splatEdit'] };
+/** 生成的资源用着别的资源、那些变了要跟着重烘的：货架、堆放用着商品（标签、尺寸在它们的图集和网格里），碎块用着完整的模型。 */
+export const REBAKE_WITH: Readonly<Partial<Record<AssetKind, readonly AssetKind[]>>> = { product: ['shelf', 'pile', 'debris'], splats: ['splatEdit'], model: ['fracture'] };

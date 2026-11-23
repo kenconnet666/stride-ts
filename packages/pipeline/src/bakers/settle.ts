@@ -17,6 +17,11 @@ const HULL_POINTS = 64;
 
 let native: Promise<StrideNative> | undefined;
 
+/** 烘焙共用的运行时原生模块（带物理）：跑物理、解压别的模型（decodeMeshoptBatch）用，第一次用到时建。 */
+export function runtimeNative(): Promise<StrideNative> {
+  return (native ??= createStrideNative({ features: [physics] }));
+}
+
 /** 读这些商品文件（内容路径，去重）；读不到、不是 JSON 时报错。 */
 export async function readProducts(paths: Iterable<string>, readContent: (path: string) => Promise<Uint8Array>, where: string): Promise<Map<string, ProductFile>> {
   const products = new Map<string, ProductFile>();
@@ -120,7 +125,7 @@ interface SettleBody {
  * bodies）。世界和变换用完就释放。
  */
 async function settle(count: number, addStatic: (world: World) => void, bodies: (world: World) => SettleBody[]): Promise<Pick<PlacedProduct, 'position' | 'rotation'>[]> {
-  const runtime = await (native ??= createStrideNative({ features: [physics] }));
+  const runtime = await runtimeNative();
   using transforms = runtime.createTransforms(count + 1);
   // 物体对、接触的上限是容量的 8 倍：一堆紧挨着的小东西（核桃、碗里的豆子）每个碰到十来个邻居、器皿的几个三角形，容量按物体数的
   // 8 倍开

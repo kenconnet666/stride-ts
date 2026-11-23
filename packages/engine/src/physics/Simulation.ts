@@ -369,6 +369,7 @@ export class Simulation {
     const world = this.#world!;
     world.setContactEvents(body, handler?.onTouching ? 'touching' : handler !== undefined);
     world.setSensor(body, handler?.noContactResponse === true);
+    world.setBreakSpeed(body, handler?.breakSpeed ?? 0);
     if (handler) this.#handlers.set(body, handler);
     else this.#handlers.delete(body);
   }
@@ -526,12 +527,12 @@ export class Simulation {
 
   /** 一步的接触事件交给两边的处理器（原生只报一次：设了事件的一方在前）。 */
   #dispatchContacts(): void {
-    for (const { type, self, other, depth } of this.#world!.contactEvents()) {
+    for (const { type, self, other, depth, speed } of this.#world!.contactEvents()) {
       const a = this.#bodyEntities[self], b = this.#bodyEntities[other];
       if (a === undefined || b === undefined) continue;
       for (const [body, entity, otherEntity] of [[self, a, b], [other, b, a]] as const) {
         const handler = this.#handlers.get(body);
-        if (type === 'started') handler?.onStartedTouching?.({ entity, other: otherEntity });
+        if (type === 'started') handler?.onStartedTouching?.({ entity, other: otherEntity, speed });
         else if (type === 'touching') handler?.onTouching?.({ entity, other: otherEntity, depth });
         else handler?.onStoppedTouching?.({ entity, other: otherEntity });
       }

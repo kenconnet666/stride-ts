@@ -70,6 +70,8 @@ export const EXTENSIONS = {
   pile: '.pile.json',
   /** 地上的碎石杂物（DebrisFile，content/formats/debrisFormat.ts）：一块地面和撒什么，编辑器后端跑物理、合成同名的模型、图集（.svg、.surface.svg）和材质。 */
   debris: '.debris.json',
+  /** 可破碎物体的预先切块（FractureFile，content/formats/fractureFormat.ts）：完整的模型和切几块，编辑器后端切成同名的碎块模型（.model）。 */
+  fracture: '.fracture.json',
   /** 招牌（SignFile，content/formats/signFormat.ts）：灯箱、挂牌，编辑器后端生成同名的模型、图集和材质。 */
   sign: '.sign.json',
   /** 天花板（CeilingFile，content/formats/ceilingFormat.ts）：开放式的顶或格栅吊顶，编辑器后端生成同名的模型、图集和材质。 */

@@ -4,7 +4,7 @@
  * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  AnimationData, BuildingFile, BrushFile, CityFile, WaterFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, ProductFile, ShelfFile, PileFile, DebrisFile, ImageImportFile, SplatEditFile, SignFile, FixtureFile, TableFile, TextureRef, UIFile,
+  AnimationData, BuildingFile, BrushFile, CityFile, WaterFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, ProductFile, ShelfFile, PileFile, DebrisFile, FractureFile, ImageImportFile, SplatEditFile, SignFile, FixtureFile, TableFile, TextureRef, UIFile,
   UISpriteValue, SceneCompositor,
 } from './formats/format';
 import { textureRefs } from './loading.ts';
@@ -315,6 +315,12 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
         if (column.type !== 'asset') continue;
         for (const row of table.rows) if (typeof row[column.name] === 'string') add(column.asset as AssetKind, row, column.name);
       }
+      break;
+    }
+    case 'fracture': {
+      const fracture = file as FractureFile;
+      add('model', fracture, 'model');
+      if (fracture.interiorMaterial) add('material', fracture, 'interiorMaterial');
       break;
     }
     case 'debris': {

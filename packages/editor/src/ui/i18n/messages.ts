@@ -75,7 +75,7 @@ export interface EditorMessages {
   readonly delete: string;
   readonly open: string;
   readonly newAsset: string;
-  readonly newAssetLabels: { readonly scene: string; readonly spriteSheet: string; readonly sound: string; readonly text: string; readonly product: string; readonly shelf: string; readonly pile: string; readonly debris: string; readonly splatEdit: string; readonly sign: string; readonly ceiling: string; readonly fixture: string; readonly material: string; readonly ui: string; readonly timeline: string; readonly world: string; readonly terrain: string; readonly scatter: string; readonly tree: string; readonly building: string; readonly city: string; readonly water: string; readonly brush: string; readonly spline: string; readonly sdf: string; readonly poly: string; readonly input: string; readonly table: string; readonly shape: (shape: string) => string };
+  readonly newAssetLabels: { readonly scene: string; readonly spriteSheet: string; readonly sound: string; readonly text: string; readonly product: string; readonly shelf: string; readonly pile: string; readonly debris: string; readonly fracture: string; readonly splatEdit: string; readonly sign: string; readonly ceiling: string; readonly fixture: string; readonly material: string; readonly ui: string; readonly timeline: string; readonly world: string; readonly terrain: string; readonly scatter: string; readonly tree: string; readonly building: string; readonly city: string; readonly water: string; readonly brush: string; readonly spline: string; readonly sdf: string; readonly poly: string; readonly input: string; readonly table: string; readonly shape: (shape: string) => string };
   readonly shapes: Readonly<Record<ProceduralShapeType, string>>;
   readonly importing: string;
   readonly working: (action: string) => string;
@@ -87,7 +87,7 @@ export interface EditorMessages {
   readonly created: (kind: string, path: string) => string;
   readonly imported: (assets: readonly string[]) => string;
   // 属性面板
-  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly spline: string; readonly sdf: string; readonly poly: string; readonly modelImport: string; readonly imageImport: string; readonly spriteSheet: string; readonly sound: string; readonly text: string; readonly product: string; readonly shelf: string; readonly pile: string; readonly debris: string; readonly splatEdit: string; readonly sign: string; readonly ceiling: string; readonly fixture: string; readonly gameSettings: string; readonly terrain: string; readonly scatter: string; readonly tree: string; readonly building: string; readonly city: string; readonly water: string; readonly input: string; readonly table: string };
+  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly spline: string; readonly sdf: string; readonly poly: string; readonly modelImport: string; readonly imageImport: string; readonly spriteSheet: string; readonly sound: string; readonly text: string; readonly product: string; readonly shelf: string; readonly pile: string; readonly debris: string; readonly fracture: string; readonly splatEdit: string; readonly sign: string; readonly ceiling: string; readonly fixture: string; readonly gameSettings: string; readonly terrain: string; readonly scatter: string; readonly tree: string; readonly building: string; readonly city: string; readonly water: string; readonly input: string; readonly table: string };
   readonly assetHint: (kind: string, path: string) => string;
   readonly instanceOf: (prefab: string) => string;
   readonly memberOf: (prefab: string, instance: string, member: string) => string;
@@ -392,7 +392,7 @@ const zhCN: EditorMessages = {
   delete: '删除',
   open: '打开',
   newAsset: '新建资源',
-  newAssetLabels: { spriteSheet: '精灵表', sound: '音效（合成）', text: '3D 文字（店招、站名）', product: '商品包装（盒、瓶、罐、袋）', shelf: '货架（连同摆的货）', pile: '一筐散装的（物理堆放）', debris: '地上的碎石杂物', splatEdit: '扫描场景的编辑（裁剪、刷掉、删飞点）', sign: '招牌（灯箱、挂牌）', ceiling: '天花板（开放式、格栅）', fixture: '店里的器具（收银台、购物车、篮子、寄存柜、闸机）', scene: '场景', material: '材质', ui: 'UI 页面', timeline: '时间轴', world: '大世界（格子流式加载）', terrain: '矢量地形（噪声、地物、雕刻）', scatter: '程序化摆放（在地形上撒树、石头）', tree: '参数化的树（按层生长）', building: '程序化建筑（体块、立面、构件）', city: '城市（沿路摆楼）', water: '水体（湖、海）', brush: '白盒（布尔建模）', spline: '样条（道路、管子、轨道、围栏、电线）', sdf: 'SDF 模型（平滑融合）', poly: '多边形网格（点线面编辑）', input: '输入映射（动作和键、手柄的绑定）', table: '数据表（列和按 id 排的行）', shape: (shape) => `基本形状：${shape}` },
+  newAssetLabels: { spriteSheet: '精灵表', sound: '音效（合成）', text: '3D 文字（店招、站名）', product: '商品包装（盒、瓶、罐、袋）', shelf: '货架（连同摆的货）', pile: '一筐散装的（物理堆放）', debris: '地上的碎石杂物', fracture: '可破碎物体（预先切好的碎块）', splatEdit: '扫描场景的编辑（裁剪、刷掉、删飞点）', sign: '招牌（灯箱、挂牌）', ceiling: '天花板（开放式、格栅）', fixture: '店里的器具（收银台、购物车、篮子、寄存柜、闸机）', scene: '场景', material: '材质', ui: 'UI 页面', timeline: '时间轴', world: '大世界（格子流式加载）', terrain: '矢量地形（噪声、地物、雕刻）', scatter: '程序化摆放（在地形上撒树、石头）', tree: '参数化的树（按层生长）', building: '程序化建筑（体块、立面、构件）', city: '城市（沿路摆楼）', water: '水体（湖、海）', brush: '白盒（布尔建模）', spline: '样条（道路、管子、轨道、围栏、电线）', sdf: 'SDF 模型（平滑融合）', poly: '多边形网格（点线面编辑）', input: '输入映射（动作和键、手柄的绑定）', table: '数据表（列和按 id 排的行）', shape: (shape) => `基本形状：${shape}` },
   shapes: { cube: '立方体', plane: '平面', sphere: '球', geoSphere: '测地球', capsule: '胶囊', cylinder: '圆柱', torus: '圆环', cone: '圆锥', teapot: '茶壶' },
   importing: '导入',
   working: (action) => `${action}……`,
@@ -403,7 +403,7 @@ const zhCN: EditorMessages = {
   opened: (kind, path) => `打开了 ${kind} ${path}`,
   created: (kind, path) => `建了 ${kind} ${path}（路径框里可以改名）`,
   imported: (assets) => `导入了 ${assets.join('、')}`,
-  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', product: '商品包装', shelf: '货架', pile: '物理堆放', debris: '碎石杂物', splatEdit: '泼溅的编辑', sign: '招牌', ceiling: '天花板', fixture: '器具', spline: '样条', sdf: 'SDF 模型', poly: '多边形网格', modelImport: '导入设置', imageImport: '贴图的导入设置', spriteSheet: '精灵表', sound: '声音', text: '3D 文字', gameSettings: '游戏设置', terrain: '矢量地形', scatter: '程序化摆放', tree: '参数化的树', building: '程序化建筑', city: '城市', water: '水体', input: '输入映射', table: '数据表' },
+  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', product: '商品包装', shelf: '货架', pile: '物理堆放', debris: '碎石杂物', fracture: '碎块', splatEdit: '泼溅的编辑', sign: '招牌', ceiling: '天花板', fixture: '器具', spline: '样条', sdf: 'SDF 模型', poly: '多边形网格', modelImport: '导入设置', imageImport: '贴图的导入设置', spriteSheet: '精灵表', sound: '声音', text: '3D 文字', gameSettings: '游戏设置', terrain: '矢量地形', scatter: '程序化摆放', tree: '参数化的树', building: '程序化建筑', city: '城市', water: '水体', input: '输入映射', table: '数据表' },
   assetHint: (kind, path) => `${kind} ${path}：改了马上存进资源文件，视口里用到它的实体跟着变。`,
   instanceOf: (prefab) => `预制体 ${prefab} 的实例`,
   memberOf: (prefab, instance, member) => `预制体 ${prefab} 的实例 ${instance} 里的 ${member}`,
@@ -714,7 +714,7 @@ const enUS: EditorMessages = {
   delete: 'Delete',
   open: 'Open',
   newAsset: 'New asset',
-  newAssetLabels: { spriteSheet: 'Sprite sheet', sound: 'Sound effect (generated)', text: '3D text (signs)', product: 'Product packaging (boxes, bottles, cans, bags)', shelf: 'Shelf (with its stock)', pile: 'Bin of loose items (physics pile)', debris: 'Debris on the ground', splatEdit: 'Scan edit (crop, erase, floaters)', sign: 'Sign (lightbox, panel)', ceiling: 'Ceiling (open, grid)', fixture: 'Store fixture (checkout, cart, basket, locker, gate)', scene: 'Scene', material: 'Material', ui: 'UI page', timeline: 'Timeline', world: 'Large world (streamed cells)', terrain: 'Vector terrain (noise, features, sculpting)', scatter: 'Procedural placement (trees and rocks on a terrain)', tree: 'Parametric tree (grown level by level)', building: 'Procedural building (masses, facades, modules)', city: 'City (buildings along roads)', water: 'Water (lake, sea)', brush: 'Greybox (CSG)', spline: 'Spline (road, pipe, rail, fence, power line)', sdf: 'SDF model (smooth blends)', poly: 'Poly mesh (point, edge, face editing)', input: 'Input map (actions and their keys, buttons)', table: 'Data table (columns and rows by id)', shape: (shape) => `Shape: ${shape}` },
+  newAssetLabels: { spriteSheet: 'Sprite sheet', sound: 'Sound effect (generated)', text: '3D text (signs)', product: 'Product packaging (boxes, bottles, cans, bags)', shelf: 'Shelf (with its stock)', pile: 'Bin of loose items (physics pile)', debris: 'Debris on the ground', fracture: 'Breakable object (pre-cut pieces)', splatEdit: 'Scan edit (crop, erase, floaters)', sign: 'Sign (lightbox, panel)', ceiling: 'Ceiling (open, grid)', fixture: 'Store fixture (checkout, cart, basket, locker, gate)', scene: 'Scene', material: 'Material', ui: 'UI page', timeline: 'Timeline', world: 'Large world (streamed cells)', terrain: 'Vector terrain (noise, features, sculpting)', scatter: 'Procedural placement (trees and rocks on a terrain)', tree: 'Parametric tree (grown level by level)', building: 'Procedural building (masses, facades, modules)', city: 'City (buildings along roads)', water: 'Water (lake, sea)', brush: 'Greybox (CSG)', spline: 'Spline (road, pipe, rail, fence, power line)', sdf: 'SDF model (smooth blends)', poly: 'Poly mesh (point, edge, face editing)', input: 'Input map (actions and their keys, buttons)', table: 'Data table (columns and rows by id)', shape: (shape) => `Shape: ${shape}` },
   shapes: { cube: 'Cube', plane: 'Plane', sphere: 'Sphere', geoSphere: 'Geosphere', capsule: 'Capsule', cylinder: 'Cylinder', torus: 'Torus', cone: 'Cone', teapot: 'Teapot' },
   importing: 'Import',
   working: (action) => `${action}…`,
@@ -725,7 +725,7 @@ const enUS: EditorMessages = {
   opened: (kind, path) => `Opened ${kind} ${path}`,
   created: (kind, path) => `Created ${kind} ${path} (rename it in the path box)`,
   imported: (assets) => `Imported ${assets.join(', ')}`,
-  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', product: 'Product', shelf: 'Shelf', pile: 'Pile', debris: 'Debris', splatEdit: 'Splat edit', sign: 'Sign', ceiling: 'Ceiling', fixture: 'Fixture', spline: 'Spline', sdf: 'SDF model', poly: 'Poly mesh', modelImport: 'Import settings', imageImport: 'Texture import settings', spriteSheet: 'Sprite sheet', sound: 'Sound', text: '3D text', gameSettings: 'Game settings', terrain: 'Vector terrain', scatter: 'Procedural placement', tree: 'Parametric tree', building: 'Procedural building', city: 'City', water: 'Water', input: 'Input map', table: 'Data table' },
+  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', product: 'Product', shelf: 'Shelf', pile: 'Pile', debris: 'Debris', fracture: 'Fracture', splatEdit: 'Splat edit', sign: 'Sign', ceiling: 'Ceiling', fixture: 'Fixture', spline: 'Spline', sdf: 'SDF model', poly: 'Poly mesh', modelImport: 'Import settings', imageImport: 'Texture import settings', spriteSheet: 'Sprite sheet', sound: 'Sound', text: '3D text', gameSettings: 'Game settings', terrain: 'Vector terrain', scatter: 'Procedural placement', tree: 'Parametric tree', building: 'Procedural building', city: 'City', water: 'Water', input: 'Input map', table: 'Data table' },
   assetHint: (kind, path) => `${kind} ${path}: changes are saved to the asset file at once, and the entities that use it in the viewport follow.`,
   instanceOf: (prefab) => `Instance of prefab ${prefab}`,
   memberOf: (prefab, instance, member) => `${member} in ${instance}, an instance of prefab ${prefab}`,
@@ -943,7 +943,7 @@ export const t = translations(editorMessages);
 /** "新建"菜单里这一项的文字。 */
 export function newAssetLabel(option: NewAssetOption): string {
   if (option.id.startsWith('extension:')) return assetLabel(option.kind);
-  return option.shape ? t.newAssetLabels.shape(t.shapes[option.shape]) : t.newAssetLabels[option.id as 'scene' | 'material' | 'ui' | 'timeline' | 'brush' | 'spline' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'debris' | 'splatEdit' | 'sign' | 'ceiling' | 'fixture' | 'world' | 'terrain' | 'input' | 'table'];
+  return option.shape ? t.newAssetLabels.shape(t.shapes[option.shape]) : t.newAssetLabels[option.id as 'scene' | 'material' | 'ui' | 'timeline' | 'brush' | 'spline' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'debris' | 'fracture' | 'splatEdit' | 'sign' | 'ceiling' | 'fixture' | 'world' | 'terrain' | 'input' | 'table'];
 }
 
 /** 材质节点在界面上的名字：内置的按翻译表，工程、插件登记的按它的 label，都没有时是 type。 */

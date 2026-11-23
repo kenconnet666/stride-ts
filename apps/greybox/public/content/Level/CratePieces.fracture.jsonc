@@ -1,0 +1,8 @@
+// 箱子的碎块：切成 9 块，断面露出木头（Breakable 撞得够狠时换成它们）
+{
+  "name": "CratePieces",
+  "model": "Level/Crate",
+  "count": 9,
+  "seed": 4,
+  "interiorMaterial": "Level/Materials/Floor"
+}

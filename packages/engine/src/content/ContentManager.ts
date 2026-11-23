@@ -25,7 +25,7 @@ import { expandPrefabInstances, loadPrefabs } from './prefabInstances';
 import { Prefab, type PrefabShape } from './Prefab';
 import { changedEntities, SceneBuilder, type ModelUse, type SceneAssets } from './SceneBuilder';
 import { SceneTemplate } from './SceneTemplate';
-import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
+import { Mesh, type Bounds } from '../rendering/mesh/Mesh';
 import { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import { LightProfile, parseIes } from '../rendering/lighting/LightProfile';
 import { parseCubeLut, registerColorLut, type ColorLut } from '../rendering/postfx/tonemap/ColorLut';
@@ -43,7 +43,7 @@ import type { GraphFile } from './formats/nodeGraph';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVideoEncoding, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './formats/format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVideoEncoding, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, type ScenePostEffects, type TextureEncoding, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './formats/format';
 import { Timeline } from '../animation/Timeline';
 import { checkWorldFile, type WorldFile } from './formats/worldFormat';
 import { checkTerrainFile } from './formats/terrainFormat';
@@ -54,7 +54,9 @@ import { CityAsset } from '../world/City';
 import { checkCity, type CityFile } from './formats/cityFormat';
 import { WaterAsset } from '../world/Water';
 import { checkWater, type WaterFile } from './formats/waterFormat';
-import { PROCEDURAL_MODEL_FORMAT, proceduralModelData } from './modelFile';
+import { decodeModelMeshes, PROCEDURAL_MODEL_FORMAT, proceduralModelData, type MeshoptDecoder } from './modelFile';
+
+export type { MeshoptDecoder, MeshoptRequest } from './modelFile';
 import type { ProceduralModel } from '../rendering/mesh/procedural';
 import type { ModelData } from './formats/binaryFormat';
 import { INPUT_MAP, type InputMap } from './formats/inputFormat';
@@ -133,16 +135,6 @@ export interface LoadSceneOptions {
   readonly signal?: AbortSignal;
 }
 
-/** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
-export interface MeshoptRequest {
-  readonly source: Uint8Array;
-  readonly count: number;
-  readonly stride: number;
-  readonly mode: 'attributes' | 'triangles';
-}
-
-/** 并行解码一批 meshopt 流，返回每个请求的 count * stride 个字节。 */
-export type MeshoptDecoder = (requests: readonly MeshoptRequest[]) => Promise<Uint8Array[]>;
 
 /** 读一个文件；默认用 fetch，测试和 Node 里可以换成读本地文件。 */
 export type ContentReader = (url: URL) => Promise<ArrayBuffer>;
@@ -367,7 +359,7 @@ export class ContentManager {
 
   async #modelFromData(data: ModelData, path: string, url: URL): Promise<LoadedModel> {
       const [meshes, materials, skeleton] = await Promise.all([
-        this.#decodeMeshes(data.meshes, url),
+        decodeModelMeshes(data.meshes, this.meshoptDecoder, url.href),
         Promise.all(data.materials.map((material) => (material === null ? Promise.resolve(null) : this.loadMaterial(material)))),
         data.skeleton === undefined ? undefined : this.loadSkeleton(data.skeleton),
       ]);
@@ -405,28 +397,6 @@ export class ContentManager {
   #animationNative(url: URL): AnimationNative {
     if (!this.animationNative) throw new Error(`loading ${url.href}: skeletons, animations and skins need animationNative (Game sets one when it starts)`);
     return this.animationNative;
-  }
-
-  /** 模型文件里的网格变成 MeshData：压缩的一起交给 meshoptDecoder 并行解码，没压缩的直接用文件里的字节。 */
-  async #decodeMeshes(meshes: readonly ModelMeshData[], url: URL): Promise<MeshData[]> {
-    const compressed = meshes.filter((mesh) => mesh.compression === 'meshopt');
-    let decoded: Uint8Array[] = [];
-    if (compressed.length > 0) {
-      if (!this.meshoptDecoder) throw new Error(`loading ${url.href}: compressed meshes need a meshoptDecoder (Game sets one when it starts)`);
-      decoded = await this.meshoptDecoder(compressed.flatMap((mesh) => [
-        { source: mesh.vertices, count: mesh.vertexCount, stride: vertexLayoutOffsets(mesh.layout).stride, mode: 'attributes' as const },
-        { source: mesh.indices, count: mesh.indexCount, stride: mesh.indexFormat === 'uint16' ? 2 : 4, mode: 'triangles' as const },
-      ]));
-    }
-    let next = 0;
-    return meshes.map((mesh) => {
-      const [vertices, indexBytes] = mesh.compression === 'meshopt' ? [decoded[next++]!, decoded[next++]!] : [mesh.vertices, mesh.indices];
-      const indices = mesh.indexFormat === 'uint16'
-        ? new Uint16Array(indexBytes.buffer, indexBytes.byteOffset, mesh.indexCount)
-        : new Uint32Array(indexBytes.buffer, indexBytes.byteOffset, mesh.indexCount);
-      const morph = mesh.morphData && new Uint32Array(mesh.morphData.buffer, mesh.morphData.byteOffset, mesh.morphData.byteLength / 4);
-      return { vertices, indices, layout: mesh.layout, dequantize: mesh.dequantize, ...(morph ? { morph } : {}) };
-    });
   }
 
   loadMaterial(path: string): Promise<Material> {

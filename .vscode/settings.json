@@ -100,6 +100,13 @@
     },
     {
       "fileMatch": [
+        "*.fracture.json",
+        "*.fracture.jsonc"
+      ],
+      "url": "./schemas/fracture.schema.json"
+    },
+    {
+      "fileMatch": [
         "*.splatedit.json",
         "*.splatedit.jsonc"
       ],

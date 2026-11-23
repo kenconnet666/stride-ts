@@ -35,6 +35,7 @@ import { TimelinePlayer } from '../animation/TimelinePlayer';
 import { Vehicle } from '../physics/Vehicle';
 import { Ragdoll } from '../physics/Ragdoll';
 import { Rope } from '../physics/Rope';
+import { Breakable } from '../physics/Breakable';
 import { cameraRigSystem } from '../rendering/CameraRig';
 import { RecastNavigationComponent } from '../physics/RecastNavigationComponent';
 import { AtmosphereRenderFeature } from '../rendering/sky/AtmosphereRenderFeature';
@@ -357,6 +358,7 @@ export class Game {
       this.registry.register(Vehicle);
       this.registry.register(Ragdoll);
       this.registry.register(Rope);
+      this.registry.register(Breakable);
       this.registry.register(Train);
       this.registry.register(TrainDoor);
       this.animation = new AnimationSystem(this.native, this.entities);

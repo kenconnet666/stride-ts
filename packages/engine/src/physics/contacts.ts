@@ -11,6 +11,11 @@ export interface Contact {
   readonly other: EntityId;
 }
 
+/** 开始接触：两者在接触点上互相接近的速度（米/秒，碰撞求解之前的、沿接触法线；Stride 没有）。撞得多狠——可破碎、撞击声——按它。 */
+export interface StartedContact extends Contact {
+  readonly speed: number;
+}
+
 /** 正在接触：这一个物理步里两者最深的穿透深度（米，正数是陷进去）。 */
 export interface TouchingContact extends Contact {
   readonly depth: number;
@@ -19,7 +24,12 @@ export interface TouchingContact extends Contact {
 export interface ContactHandler {
   /** 只检测、不产生碰撞响应（Stride 的 NoContactResponse）；设处理器时读一次。 */
   readonly noContactResponse?: boolean;
-  onStartedTouching?(contact: Contact): void;
+  /**
+   * 破碎速度（米/秒，Stride 没有）：开始接触时接近的速度（StartedContact.speed）到它，这一对这一步不做碰撞响应——物体要换成碎块了，
+   * 撞它的东西带着原来的速度穿进去、撞上碎块（Breakable 用）。设处理器时读一次；没有或 0 是照常挡住。
+   */
+  readonly breakSpeed?: number;
+  onStartedTouching?(contact: StartedContact): void;
   /**
    * 接触期间每个物理步调一次（Stride 的 OnTouching，那里给每个接触点，这里给这一步最深的深度）。设处理器时看有没有这个方法，
    * 有才让原生侧报（每步每对物体一个事件）。

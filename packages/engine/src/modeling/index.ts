@@ -16,6 +16,7 @@ export * from './shelf.ts';
 export * from './productBatch.ts';
 export * from './pile.ts';
 export * from './debris.ts';
+export * from './fracture.ts';
 export * from './sign.ts';
 export * from './ceiling.ts';
 export * from './fixture.ts';

@@ -221,7 +221,7 @@ async function call(name: string, args: Record<string, unknown> = {}, extraTimeo
 
 /** 去掉 TS 的类型（eval 的代码在页面里按 JS 跑）。Node 的这个接口还是实验性的，调用时会打一行提示：只在调它的时候不打。 */
 function stripTypes(code: string): string {
-  const emitWarning = process.emitWarning;
+  const emitWarning = process.emitWarning.bind(process);
   process.emitWarning = () => undefined;
   try {
     return stripTypeScriptTypes(code);

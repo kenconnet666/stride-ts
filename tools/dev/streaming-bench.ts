@@ -106,7 +106,7 @@ await closeBrowser();
 const browser = await openUrl(url, { headless: !process.argv.includes('--headed'), size, dpr: 1, chromeArgs: ['--disable-frame-rate-limit', '--disable-gpu-vsync'] });
 try {
   const cdp = await CdpSession.connect((await pageTarget(browser, base)).webSocketDebuggerUrl);
-  const reply = (await cdp.send('Runtime.evaluate', { expression: measure, awaitPromise: true, returnByValue: true, timeout: (seconds + 120) * 1000 })) as { result: { value?: unknown }; exceptionDetails?: { exception?: { description?: string } } };
+  const reply = (await cdp.send('Runtime.evaluate', { expression: measure, awaitPromise: true, returnByValue: true }, (seconds + 120) * 1000)) as { result: { value?: unknown }; exceptionDetails?: { exception?: { description?: string } } };
   if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'the measurement failed');
   const result = reply.result.value;
   lastResult = result;

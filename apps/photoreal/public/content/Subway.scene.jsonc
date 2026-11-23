@@ -23,15 +23,16 @@
     "edgeFade": 0.1
    },
    "colorGrading": {
-    "operator": "agx",
-    "temperature": 5600,
-    "contrast": 0.9,
-    "saturation": 1.15,
+    "operator": "hejl2",
+    "temperature": 6200,
+    "contrast": 1.1,
+    "saturation": 1.3,
     "vignette": 0.15
    },
    "exposure": {
     "metering": "histogram",
-    "localShadows": 0.4
+    "localShadows": 0.4,
+    "localHighlights": 1.4
    }
   },
   "transparent": true

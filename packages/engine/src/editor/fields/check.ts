@@ -1,9 +1,9 @@
 /** 检查一个实体文件（checkEntity）：保存前、读别人写的文件时；单个值照描述查用 fieldValues.ts 的 checkFields。 */
 import type { SceneEntityFile } from '../../content/formats/format';
 import { COMPONENT_FIELDS, ENTITY_FIELDS, type ComponentDescription } from './components.ts';
-import { checkObject, checkValue } from './fieldValues.ts';
+import { checkObject, checkValue } from '../../content/schema/fieldValues.ts';
 
-export { checkFields } from './fieldValues.ts';
+export { checkFields } from '../../content/schema/fieldValues.ts';
 
 /** 场景文件里一个实体能有的键（SceneEntityFile）。 */
 const ENTITY_KEYS: ReadonlySet<string> = new Set(['id', 'name', 'parent', 'prefab', 'position', 'rotation', 'scale', 'components'] satisfies (keyof SceneEntityFile)[]);

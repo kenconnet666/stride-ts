@@ -1,6 +1,6 @@
 /** 字段描述的种类（FieldType、Field）和写描述用的小函数，同目录的各份描述共用。 */
-import { TEXTURE_EXTENSIONS, type TextureEncoding, type TextureRef } from '../../content/formats/assetFormat.ts';
-import type { AssetKind } from '../../content/references';
+import { TEXTURE_EXTENSIONS, type TextureEncoding, type TextureRef } from '../formats/assetFormat.ts';
+import type { AssetKind } from '../references';
 
 export type FieldType =
   | { readonly kind: 'number'; readonly min?: number; readonly max?: number; readonly step?: number; readonly unit?: string; readonly integer?: boolean }

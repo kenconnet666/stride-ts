@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（各种资源的表按领域分在这个目录里；ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { Field } from '../builders.ts';
+import type { Field } from '../../../content/schema/builders.ts';
 import { MATERIAL_FIELDS } from './materials.ts';
 import { PROCEDURAL_MODEL_FIELDS, BRUSH_FIELDS, SDF_FIELDS, POLY_FIELDS, SPLINE_FIELDS, TEXT_FIELDS } from './modeling.ts';
 import { TERRAIN_FIELDS, TREE_FIELDS, BUILDING_FIELDS, CITY_FIELDS, WATER_FIELDS, SCATTER_FIELDS } from './world.ts';

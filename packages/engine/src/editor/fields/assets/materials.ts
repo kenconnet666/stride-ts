@@ -1,6 +1,6 @@
 /** 材质文件的字段：基础色、金属度、粗糙度、贴图槽、透明和玻璃、扩展材质（光泽、各向异性、室内映射），颜色树、材质层按 JSON 改。 */
 import type { TextureRef, MaterialFile, TextureSlot } from '../../../content/formats/format';
-import { fields, number, bool, string, oneOf, vector, object, optional, textureRef, type FieldType, type Field } from '../builders.ts';
+import { fields, number, bool, string, oneOf, vector, object, optional, textureRef, type FieldType, type Field } from '../../../content/schema/builders.ts';
 import { json } from './shared.ts';
 
 /** 材质的贴图槽（颜色、自发光）：贴图加采样方式和 UV 的缩放、偏移。 */

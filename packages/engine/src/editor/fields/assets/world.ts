@@ -1,6 +1,6 @@
 /** 大世界资源的字段：地形、树、建筑、城市、水体、程序化摆放。 */
 import type { BuildingFile, CityFile, WaterFile, TerrainFile, ScatterFile, TreeFile } from '../../../content/formats/format';
-import { nullable, fields, number, integer, bool, string, oneOf, vector, asset, list, object } from '../builders.ts';
+import { nullable, fields, number, integer, bool, string, oneOf, vector, asset, list, object } from '../../../content/schema/builders.ts';
 
 /** 矢量地形（TerrainFile）：改了马上存，视口里的地形热重载（整个重新求值）。 */
 export const TERRAIN_FIELDS = fields<TerrainFile>({

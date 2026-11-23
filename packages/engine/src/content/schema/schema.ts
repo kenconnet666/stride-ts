@@ -14,7 +14,7 @@
  * 校验和补默认值照的是字段描述（fieldValues.ts 的 checkFields、withDefaults），和编辑器同一套规则：缺了必填的、多了没描述的键、
  * 种类不对、数超出范围都报，一次报全，带路径。
  */
-import type { AssetKind } from '../../content/references';
+import type { AssetKind } from '../references';
 import type { Field, FieldType } from './builders.ts';
 import { checkFields, withDefaults } from './fieldValues.ts';
 

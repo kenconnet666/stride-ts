@@ -1,7 +1,7 @@
 /** 时间轴、精灵表和声音（含音效生成器的参数）的字段。 */
 import type { TimelineFile, SpriteSheetFile, SoundFile } from '../../../content/formats/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../../audio/soundSynth.ts';
-import { fields, number, integer, bool, string, oneOf, vector, asset, entity, list, object, textureRef, type Field, type FieldSpec } from '../builders.ts';
+import { fields, number, integer, bool, string, oneOf, vector, asset, entity, list, object, textureRef, type Field, type FieldSpec } from '../../../content/schema/builders.ts';
 
 /** 时间轴（TimelineFile）：轨道按种类分；关键帧的值是数或按分量的数组，按 JSON 改。 */
 export const TIMELINE_FIELDS = fields<TimelineFile>({

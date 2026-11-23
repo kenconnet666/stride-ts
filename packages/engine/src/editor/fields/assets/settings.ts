@@ -1,6 +1,6 @@
 /** 游戏设置和导入设置（模型、位图）的字段。 */
 import type { ModelImportFile, ImageImportFile, GameSettingsFile } from '../../../content/formats/format';
-import { nullable, fields, number, integer, bool, string, oneOf, vector, asset, object, optional } from '../builders.ts';
+import { nullable, fields, number, integer, bool, string, oneOf, vector, asset, object, optional } from '../../../content/schema/builders.ts';
 
 /**
  * 游戏设置（.game.json，Stride 的 GameSettings）。根渲染器（合成器的根是游戏自己的渲染器时，SpriteFonts、CustomEffect）的类型是

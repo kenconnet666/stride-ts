@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { assetKindExtension, isJsonAssetKind, registerAssetKind } from '../../src/content/assetKinds';
 import { assetReferences } from '../../src/content/references';
 import { allAssetFields, assetFields, registerAssetFields } from '../../src/editor/fields/assets/index.ts';
-import { asset, fields, string } from '../../src/editor/fields/builders';
+import { asset, fields, string } from '../../src/content/schema/builders';
 import type { AssetKind } from '../../src/content/references';
 
 interface LampFile {

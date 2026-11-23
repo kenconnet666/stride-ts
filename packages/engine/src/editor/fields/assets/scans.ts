@@ -1,6 +1,6 @@
 /** 扫描场景的资源（高斯泼溅的编辑）的字段描述。 */
 import type { SplatEditFile } from '../../../content/formats/format';
-import { fields, number, integer, string, vector, asset, list, object } from '../builders.ts';
+import { fields, number, integer, string, vector, asset, list, object } from '../../../content/schema/builders.ts';
 
 const splatBox = object(fields<NonNullable<SplatEditFile['keep']>[number]>({
   center: { type: vector(3, 'm'), description: 'center of the box in the source splats\' own coordinates' },

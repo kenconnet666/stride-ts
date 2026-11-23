@@ -1,6 +1,6 @@
 /** 建模类资源的字段：JSON 写的基本形状、白盒、SDF、多边形网格、样条、3D 文字。 */
 import type { ProceduralModelFile, BrushFile, SdfFile, PolyMeshFile, SplineFile, TextModelFile } from '../../../content/formats/format';
-import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, list, optional, type FieldType, type FieldSpec } from '../builders.ts';
+import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, list, optional, type FieldType, type FieldSpec } from '../../../content/schema/builders.ts';
 
 export const positiveNumber = (step = 0.05): FieldType => number({ min: 0, step });
 

@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, test } from 'vitest';
-import { checkFields } from '../../src/editor/fields/fieldValues';
-import { s, SchemaError, schemaFields, type Infer, type InputOf } from '../../src/editor/fields/schema';
+import { checkFields } from '../../src/content/schema/fieldValues';
+import { s, SchemaError, schemaFields, type Infer, type InputOf } from '../../src/content/schema/schema';
 
 const stock = s.object({
   products: s.list(s.asset('product')),

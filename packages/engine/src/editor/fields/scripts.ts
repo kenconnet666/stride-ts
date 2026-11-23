@@ -3,7 +3,7 @@ import type { SceneScriptValue } from '../../content/formats/format';
 import type { AssetKind } from '../../content/references';
 import type { PropOptions } from '../../data/prop';
 import type { ScriptConstructor } from '../../engine/scripts';
-import { number, bool, string, vector, rotation, list, object, type FieldType, type Field } from './builders.ts';
+import { number, bool, string, vector, rotation, list, object, type FieldType, type Field } from '../../content/schema/builders.ts';
 
 /**
  * 按值推出字段（游戏自己的渲染器、没有声明的脚本属性：代码里没有字段描述，文件里的值就是全部信息）：资源引用

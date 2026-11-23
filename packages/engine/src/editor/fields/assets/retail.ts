@@ -1,6 +1,6 @@
 /** 店里的资源的字段：商品包装、货架、堆放、招牌、天花板、器具。 */
 import type { ProductFile, ShelfFile, PileFile, DebrisFile, SignFile, CeilingFile, FixtureFile } from '../../../content/formats/format';
-import { fields, number, integer, bool, string, oneOf, vector, asset, list, object, type FieldSpec } from '../builders.ts';
+import { fields, number, integer, bool, string, oneOf, vector, asset, list, object, type FieldSpec } from '../../../content/schema/builders.ts';
 
 /** 颜色写成 sRGB 的 #rrggbb。 */
 export const hexColor = (description: string): FieldSpec => ({ type: string, optional: true, description: `${description} (sRGB #rrggbb; picked from the seed when missing)` });

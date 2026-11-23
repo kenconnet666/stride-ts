@@ -1,0 +1,17 @@
+// 小镇的店：营业时间（世界时钟的小时）、卖什么。以后行人按它去买东西、店按它开关门
+{
+  "name": "Shops",
+  "columns": [
+    { "type": "string", "name": "title" },
+    { "type": "enum", "name": "kind", "values": ["food", "cafe", "tools", "clothes"] },
+    { "type": "number", "name": "opens", "min": 0, "max": 24, "unit": "h", "default": 8 },
+    { "type": "number", "name": "closes", "min": 0, "max": 24, "unit": "h", "default": 20 },
+    { "type": "integer", "name": "staff", "min": 0, "default": 2 }
+  ],
+  "rows": [
+    { "id": "bakery", "title": "面包房", "kind": "food", "opens": 6, "closes": 18 },
+    { "id": "cafe", "title": "街角咖啡", "kind": "cafe", "opens": 7, "closes": 22, "staff": 3 },
+    { "id": "hardware", "title": "五金店", "kind": "tools" },
+    { "id": "tailor", "title": "裁缝铺", "kind": "clothes", "opens": 9, "closes": 19, "staff": 1 }
+  ]
+}

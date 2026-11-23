@@ -1,0 +1,238 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "table asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "number"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "integer"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              },
+              "min": {
+                "type": "integer"
+              },
+              "max": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "type",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "string"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "bool"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "enum"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "asset"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              },
+              "asset": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "asset"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "color"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "vector"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "default": {},
+              "description": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 2,
+                "maximum": 4
+              }
+            },
+            "required": [
+              "type",
+              "name",
+              "size"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "values keyed by name; the keys and value kinds the file already has"
+      }
+    }
+  },
+  "required": [
+    "name",
+    "columns",
+    "rows"
+  ],
+  "additionalProperties": false
+}

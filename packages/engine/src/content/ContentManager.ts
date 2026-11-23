@@ -55,6 +55,8 @@ import { checkCity, type CityFile } from './formats/cityFormat';
 import { WaterAsset } from '../world/Water';
 import { checkWater, type WaterFile } from './formats/waterFormat';
 import { INPUT_MAP, type InputMap } from './formats/inputFormat';
+import { checkTable } from './formats/tableFormat';
+import { DataTable } from './DataTable';
 import { checkSpline } from '../modeling/spline';
 import type { SplineFile } from './formats/splineFormat';
 
@@ -74,6 +76,7 @@ declare module '../data/prop' {
     timeline: Timeline;
     spline: SplineFile;
     input: InputMap;
+    table: DataTable;
   }
 }
 
@@ -288,6 +291,7 @@ export class ContentManager {
     timeline: (path) => this.loadTimeline(path),
     spline: (path) => this.loadSpline(path),
     input: (path) => this.loadInputMap(path),
+    table: (path) => this.loadTable(path),
   };
 
   constructor({ root = 'content/', read, readRange, manifest, shaderClass = () => undefined }: ContentOptions = {}) {
@@ -748,6 +752,14 @@ export class ContentManager {
   /** 输入映射（.input.json）：开它用 `game.input.actions.add(map)`，见 input/InputActions.ts。 */
   loadInputMap(path: string): Promise<InputMap> {
     return this.#once(path + EXTENSIONS.input, async (url) => INPUT_MAP.parse(this.#json<unknown>(await this.#read(url)), url.href));
+  }
+
+  /** 数据表（.table.json）：按列检查过每一行、补好默认值；见 content/DataTable.ts。 */
+  loadTable(path: string): Promise<DataTable> {
+    return this.#once(path + EXTENSIONS.table, async (url) => {
+      const { name, columns, rows } = checkTable(this.#json<unknown>(await this.#read(url)), url.href);
+      return new DataTable(path, name, columns, rows);
+    });
   }
 
   loadTimeline(path: string): Promise<Timeline> {

@@ -184,6 +184,13 @@
     },
     {
       "fileMatch": [
+        "*.table.json",
+        "*.table.jsonc"
+      ],
+      "url": "./schemas/table.schema.json"
+    },
+    {
+      "fileMatch": [
         "*.game.json",
         "*.game.jsonc"
       ],

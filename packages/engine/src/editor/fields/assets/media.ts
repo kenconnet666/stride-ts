@@ -4,11 +4,15 @@ import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../../aud
 import { fields, number, integer, bool, string, oneOf, vector, asset, entity, list, object, type Field, type FieldSpec } from '../../../content/schema/builders.ts';
 import { textureRef } from './shared.ts';
 import { INPUT_MAP } from '../../../content/formats/inputFormat.ts';
+import { TABLE } from '../../../content/formats/tableFormat.ts';
 import { schemaFields } from '../../../content/schema/schema.ts';
 
 /** 时间轴（TimelineFile）：轨道按种类分；关键帧的值是数或按分量的数组，按 JSON 改。 */
 /** 输入映射（InputMapFile）：动作和绑定。字段由格式的模式给出（content/formats/inputFormat.ts）。 */
 export const INPUT_MAP_FIELDS = schemaFields(INPUT_MAP);
+
+/** 数据表（TableFile）：列的描述和行（行按值推字段）。 */
+export const TABLE_FIELDS = schemaFields(TABLE);
 
 export const TIMELINE_FIELDS = fields<TimelineFile>({
   name: string,

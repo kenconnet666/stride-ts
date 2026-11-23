@@ -86,6 +86,8 @@ export const EXTENSIONS = {
   scatter: '.scatter.json',
   /** 输入映射（InputMapFile，content/formats/inputFormat.ts）：动作和绑在上面的键、鼠标、手柄，脚本按动作读（input/InputActions.ts）。 */
   input: '.input.json',
+  /** 数据表（TableFile，content/formats/tableFormat.ts）：列和按 id 排的行，content/DataTable.ts。 */
+  table: '.table.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/stages.md 的 D9）。 */

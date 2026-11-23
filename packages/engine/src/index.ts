@@ -198,6 +198,8 @@ export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { GamePadButton, InputManager, type GamePadState, type InputDevice, type MouseButton, type PointerEvent } from './input/InputManager';
 export { InputActions, type InputSource } from './input/InputActions';
 export type { InputAction, InputBinding, InputBindingFile, InputMap, InputMapFile } from './content/formats/inputFormat';
+export { DataTable } from './content/DataTable';
+export type { TableColumn, TableFile, TableRow } from './content/formats/tableFormat';
 export { VirtualButton, VirtualButtonBinding, VirtualButtonConfig, type VirtualButtonInput } from './input/virtualButtons';
 export {
   createGestureRecognizer, GestureCollection, GestureRecognizer, Gestures,

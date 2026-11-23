@@ -392,7 +392,7 @@ export interface SceneAnimation {
  * scene：只记路径，不随引用它的场景加载（场景之间常常互相引用），切换时才加载（Game.setRootScene）。
  * prefab：随场景加载好（和它引用的资源一起），脚本运行中实例化。
  */
-export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab' | 'font' | 'texture' | 'spriteSheet' | 'uiPage' | 'uiLibrary' | 'sound' | 'timeline' | 'spline' | 'input';
+export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab' | 'font' | 'texture' | 'spriteSheet' | 'uiPage' | 'uiLibrary' | 'sound' | 'timeline' | 'spline' | 'input' | 'table';
 
 /**
  * 游戏设置（Stride 的 GameSettings）：默认场景和图形合成器。合成器的根（Stride 的 GraphicsCompositor.Game）是游戏自己的渲染器时

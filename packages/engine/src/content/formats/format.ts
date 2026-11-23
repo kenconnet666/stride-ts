@@ -37,6 +37,7 @@ export * from './debrisFormat.ts';
 export * from './splatEditFormat.ts';
 export * from './signFormat.ts';
 export * from './inputFormat.ts';
+export * from './tableFormat.ts';
 export * from './ceilingFormat.ts';
 export * from './fixtureFormat.ts';
 export * from '../../data/jsonc.ts';

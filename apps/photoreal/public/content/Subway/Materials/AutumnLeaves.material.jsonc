@@ -1,0 +1,29 @@
+{
+ "name": "AutumnLeaves",
+ "baseColor": [
+  0.62,
+  0.5,
+  0.16,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.8,
+ "baseColorTexture": {
+  "texture": "Subway/Textures/LeafCluster",
+  "encoding": "svg",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ },
+ "alphaCutoff": 0.5,
+ "doubleSided": true,
+ "wind": {
+  "bend": 0.45,
+  "flutter": 0.08
+ }
+}

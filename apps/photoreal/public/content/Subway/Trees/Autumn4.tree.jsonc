@@ -1,0 +1,52 @@
+{
+ "name": "Autumn4",
+ "materials": [
+  "Subway/Materials/TreeBark",
+  "Subway/Materials/AutumnLeaves"
+ ],
+ "seed": 4,
+ "levels": [
+  {
+   "length": 6.8999999999999995,
+   "radius": 0.368,
+   "children": 7,
+   "sections": 10,
+   "segments": 8,
+   "gnarliness": 0.06,
+   "taper": 0.6
+  },
+  {
+   "length": 5.75,
+   "radius": 0.6325,
+   "angle": 55,
+   "start": 0.4,
+   "children": 5,
+   "sections": 7,
+   "segments": 6,
+   "gnarliness": 0.1
+  },
+  {
+   "length": 2.53,
+   "radius": 0.575,
+   "angle": 45,
+   "start": 0.15,
+   "sections": 4,
+   "segments": 4,
+   "gnarliness": 0.15
+  }
+ ],
+ "leaves": {
+  "count": 26,
+  "size": 2.6449999999999996,
+  "sizeVariance": 0.4,
+  "angle": 35
+ },
+ "growth": {
+  "direction": [
+   0,
+   1,
+   0
+  ],
+  "strength": 0.003
+ }
+}

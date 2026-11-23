@@ -5,8 +5,9 @@
 // 1.55 米高，竖拍（窗口 960 × 1280，竖向视角 67°，手机主摄约等效 26 毫米）。
 //   比对：pnpm exec stride open "http://localhost:5234/?scene=Subway" --headless --size 960x1280
 //         pnpm exec stride shot out.png --photo reference/subway/platform-screen-doors.jpg
+import { copyFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { nodeGraph } from '@stride-ts/editor/library';
+import { LIBRARY_MATERIALS, nodeGraph } from '@stride-ts/editor/library';
 import { McpProcess } from '@stride-ts/editor/mcp-client';
 
 const project = path.resolve(import.meta.dirname, '..');
@@ -45,7 +46,6 @@ await plain('Tile', [0.42, 0.41, 0.39], 0.35);
 await plain('FrameBlack', [0.015, 0.015, 0.016], 0.45);
 await plain('Ballast', [0.2, 0.16, 0.13], 0.95);
 await plain('Grass', [0.12, 0.17, 0.06], 0.9);
-await plain('Foliage', [0.06, 0.12, 0.04], 0.85);
 // 黄黑的挡杆：斜条纹（UV 按米：先转 45°，再沿一个方向拉开，棋盘就成了 10 厘米宽的条），棱边掉漆露出底下的铁（屏幕空间的曲率乘
 // 斑驳的噪声），缝里、挨着地的地方攒灰（遮蔽乘噪声）
 await write('material', 'Subway/Materials/HazardYellow', {
@@ -257,13 +257,33 @@ for (const z of TRACKS) {
 }
 await brushModel('Catenary', [STEEL, M('FrameBlack')], catenary);
 
-// ---- 远处：地面和一排树（白模先用球） ----
-const trees: Brush[] = [box('Field', [CENTER, -2.2, -60], [300, 1, 100], 0)];
-for (let i = 0; i < 14; i++) {
-  const tx = START - 30 + i * 9 + ((i * 37) % 5), tz = -22 - ((i * 13) % 7);
-  trees.push({ name: `Tree${i}`, kind: 'sphere', operation: 'add', position: [tx, 2 + ((i * 7) % 3), tz], radius: 4 + ((i * 11) % 3), material: 1, segments: 16 });
+// ---- 远处：地面和一排树（参数化的树：树干加叶簇卡片，叶子的贴图是 SVG 叶簇，借开放世界样例的；秋天的黄绿） ----
+await brushModel('Surroundings', [M('Grass')], [box('Field', [CENTER, -2.2, -60], [300, 1, 100], 0)]);
+await mkdir(path.join(project, 'public/content/Subway/Textures'), { recursive: true });
+await copyFile(path.resolve(project, '../open-world/public/content/Textures/LeafCluster.svg'), path.join(project, 'public/content/Subway/Textures/LeafCluster.svg'));
+await write('material', M('TreeBark'), { ...LIBRARY_MATERIALS.find((material) => material.id === 'bark')!.material, name: 'TreeBark' });
+await write('material', M('AutumnLeaves'), {
+  name: 'AutumnLeaves', baseColor: [0.62, 0.5, 0.16, 1], metalness: 0, roughness: 0.8,
+  baseColorTexture: { texture: 'Subway/Textures/LeafCluster', encoding: 'svg', scale: [1, 1], offset: [0, 0] },
+  alphaCutoff: 0.5, doubleSided: true, wind: { bend: 0.45, flutter: 0.08 },
+});
+// 两棵不同的树（种子、枝的层数不同），沿一排错开地放
+const crown = (seed: number, scale: number) => ({
+  name: `Autumn${seed}`, materials: [M('TreeBark'), M('AutumnLeaves')], seed,
+  levels: [
+    { length: 6 * scale, radius: 0.32 * scale, children: 7, sections: 10, segments: 8, gnarliness: 0.06, taper: 0.6 },
+    { length: 5 * scale, radius: 0.55 * scale, angle: 55, start: 0.4, children: 5, sections: 7, segments: 6, gnarliness: 0.1 },
+    { length: 2.2 * scale, radius: 0.5 * scale, angle: 45, start: 0.15, sections: 4, segments: 4, gnarliness: 0.15 },
+  ],
+  leaves: { count: 26, size: 2.3 * scale, sizeVariance: 0.4, angle: 35 },
+  growth: { direction: [0, 1, 0], strength: 0.003 },
+});
+const treeSizes = [[4, 1.15], [9, 0.95], [12, 1.3]] as const;
+for (const [seed, scale] of treeSizes) await write('tree', `Subway/Trees/Autumn${seed}`, crown(seed, scale));
+for (let i = 0; i < 20; i++) {
+  const [seed] = treeSizes[i % 3]!;
+  await place(`Tree${i}`, `Subway/Trees/Autumn${seed}`, [START - 30 + i * 6.5 + ((i * 37) % 5), -2.2, -28 - ((i * 13) % 7)]);
 }
-await brushModel('Surroundings', [M('Grass'), M('Foliage')], trees);
 
 // ---- 地上的碎石杂物：砂粒、石子、落叶、烟头，屏蔽门脚下、尽头的栏杆和挡杆底下攒得多（物理让它们躺稳，合成一个模型；不进光追场景）----
 const debrisProducts = {

@@ -14,8 +14,8 @@ ${FULLSCREEN_VERTEX}
   return textureSampleLevel(source, linearClamp, in.uv, 0.0);
 }`;
 
-/** 图片贴图的两种格式：管线在后台先编好，加载时第一张要出 mip 的贴图不用当场编（当场编会卡一下，统计量 gpu.pipelines.sync）。 */
-const WARM_FORMATS: readonly GPUTextureFormat[] = ['rgba8unorm', 'rgba8unorm-srgb'];
+/** 图片贴图的两种格式和远处卡片的法线图集（rgba16float）：管线在后台先编好，第一张要出 mip 的贴图不用当场编（当场编会卡一下，统计量 gpu.pipelines.sync）。 */
+const WARM_FORMATS: readonly GPUTextureFormat[] = ['rgba8unorm', 'rgba8unorm-srgb', 'rgba16float'];
 
 export class MipmapGenerator {
   readonly #device: GPUDevice;

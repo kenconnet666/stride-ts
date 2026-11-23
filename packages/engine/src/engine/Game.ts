@@ -75,7 +75,10 @@ export interface GameOptions {
   nativeFeatures?: readonly NativeFeature[];
   /** 变换存储一开始的槽位数（带 Transform 的实体数）；不够时自动翻倍增长，没有上限（到 2^31 - 2）。默认 16384。 */
   initialTransforms?: number;
-  /** 物理仿真最多的物体数（nativeFeatures 里有 physics 时），默认 65536；Jolt 在建世界时就按它定数组，超了加不进去。 */
+  /**
+   * 物理仿真最多的物体数（nativeFeatures 里有 physics 时），默认 16384。Jolt 在建世界时就按它定数组、不能再长，超了加不进去；
+   * 物体多的大世界传大一些（每个物体约 0.2 KB，65536 个比默认多占 12 MB）。
+   */
   maxBodies?: number;
   /**
    * 游戏的模块，即 `import.meta.glob('./**\/*.ts', { eager: true })` 的结果：loadContent 之前，按路径和导出名
@@ -101,7 +104,7 @@ const MAX_ELAPSED = 0.25;
 /** GameOptions.stats 隔多少秒（游戏时间）更新一次。 */
 const STATS_INTERVAL = 0.25;
 const DEFAULT_INITIAL_TRANSFORMS = 16384;
-const DEFAULT_MAX_BODIES = 65536;
+const DEFAULT_MAX_BODIES = 16384;
 /** 帧时间的统计量取最近这么多帧的平均。 */
 const METRIC_FRAMES = 60;
 /** 暂停时单步、没设 fixedTimeStep 时每步的秒数。 */

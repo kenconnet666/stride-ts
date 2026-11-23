@@ -14,7 +14,7 @@ const modules = import.meta.glob('./game/**/*.ts', { eager: true });
 
 const { game, created } = Game.hotEntry(import.meta.hot, modules, OpenWorldGame);
 if (created) {
-  game.run(canvas, { modules, stats, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics] }).catch((error: unknown) => {
+  game.run(canvas, { modules, stats, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics], maxBodies: 65536 }).catch((error: unknown) => {
     stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
   });
 }

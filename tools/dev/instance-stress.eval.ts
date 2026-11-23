@@ -13,4 +13,6 @@ for (let i = 0; i < N; i++) {
 }
 const t1 = performance.now();
 await seconds(3);
+// 最后一个表达式的值是 stride eval 打出来的结果
+// oxlint-disable-next-line no-unused-expressions
 ({ spawnMs: Math.round(t1 - t0), settleMs: Math.round(performance.now() - t1), entities: game.entities.count, transformCapacity: game.transforms.capacity });

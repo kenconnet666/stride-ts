@@ -117,6 +117,8 @@ export class ImpostorBaker {
   readonly #views: RenderView[] = [];
   #stage: RenderStage | undefined;
   #dilate: DilatePipeline | undefined;
+  /** 在后台编的 dilate 管线（烘第一张卡片前等它，那一帧不当场编）。 */
+  #dilateWarming: Promise<unknown> | undefined;
   #targets: Targets | undefined;
   /** 这一帧要画的、上一帧画好等着拷的。 */
   #drawing: Request | undefined;
@@ -163,7 +165,7 @@ export class ImpostorBaker {
     const size = Math.max(2 * radius, y1 - y0) * 1.04, centerY = (y0 + y1) / 2;
     const materials = model.meshes.map(({ material }) => (material === null ? null : model.materials[material]) ?? game.content.defaultMaterial);
     // 管线在后台编好再画，烘的那一帧不卡
-    await Promise.all(model.meshes.map(({ mesh, skin }, i) => game.meshes.warm(mesh, materials[i]!, skin !== undefined, false, [this.stage])));
+    await Promise.all([...model.meshes.map(({ mesh, skin }, i) => game.meshes.warm(mesh, materials[i]!, skin !== undefined, false, [this.stage])), this.#warmDilate()]);
     const width = this.frameSize * IMPOSTOR_FRAMES, height = this.frameSize;
     const atlas = (suffix: string, format: GPUTextureFormat) => new Texture(`${name} impostor ${suffix}`, { format, width, height, levels: [new Uint8Array(width * height * 4)], generateMipmaps: true });
     const albedo = atlas('albedo', ALBEDO_FORMAT), normal = atlas('normal', NORMAL_FORMAT);
@@ -279,20 +281,39 @@ export class ImpostorBaker {
     return targets;
   }
 
+  /** 填透明像素的管线：一般已经在 #warmDilate 里编好了；烘的中途改了 frameSize 时才当场编。 */
   #dilatePipeline(): DilatePipeline {
     if (this.#dilate && this.#dilate.frameSize === this.frameSize) return this.#dilate;
+    const { descriptor, layout } = this.#dilateDescriptor(this.frameSize);
+    return (this.#dilate = { pipeline: this.#device.createRenderPipeline(descriptor), layout, frameSize: this.frameSize });
+  }
+
+  /** 在后台编好当前 frameSize 的 dilate 管线（已经有了、正在编时不再编）。 */
+  #warmDilate(): Promise<unknown> {
+    const frameSize = this.frameSize;
+    if (this.#dilate?.frameSize === frameSize) return Promise.resolve();
+    if (this.#dilateWarming) return this.#dilateWarming;
+    const { descriptor, layout } = this.#dilateDescriptor(frameSize);
+    return (this.#dilateWarming = this.#device.createRenderPipelineAsync(descriptor).then((pipeline) => {
+      if (this.#dilate?.frameSize !== frameSize) this.#dilate = { pipeline, layout, frameSize };
+    }).finally(() => {
+      this.#dilateWarming = undefined;
+    }));
+  }
+
+  #dilateDescriptor(frameSize: number): { readonly descriptor: GPURenderPipelineDescriptor; readonly layout: GPUBindGroupLayout } {
     const device = this.#device;
     const module = device.createShaderModule({ label: 'ImpostorBake dilate', code: DILATE_SHADER });
     const layout = device.createBindGroupLayout({
       entries: [0, 1].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' as const } })),
     });
-    const pipeline = device.createRenderPipeline({
+    const descriptor: GPURenderPipelineDescriptor = {
       label: 'ImpostorBake dilate',
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
       vertex: { module, entryPoint: 'vs' },
-      fragment: { module, entryPoint: 'fs', constants: { FRAME_SIZE: this.frameSize }, targets: [{ format: ALBEDO_FORMAT }, { format: NORMAL_FORMAT }] },
-    });
-    return (this.#dilate = { pipeline, layout, frameSize: this.frameSize });
+      fragment: { module, entryPoint: 'fs', constants: { FRAME_SIZE: frameSize }, targets: [{ format: ALBEDO_FORMAT }, { format: NORMAL_FORMAT }] },
+    };
+    return { descriptor, layout };
   }
 
   #destroyTargets(): void {

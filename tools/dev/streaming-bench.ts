@@ -66,6 +66,8 @@ const measure = `(async () => {
   const loadStats = { requests: resources.length, transferKB: Math.round(resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) };
   const metric = (name) => game().metrics.snapshot().find((entry) => entry.name === name)?.value;
   const pipelinesBefore = { sync: game().graphicsDevice.pipelines.sync, warmed: game().graphicsDevice.pipelines.warmed };
+  // 飞行中当场编的管线叫什么（recentSync 留着最近的几条）：超了预算时看是哪一个
+  const syncLabels = (count) => (count > 0 ? game().graphicsDevice.pipelines.recentSync.slice(-count) : []);
   const worldBefore = { loads: game().world.loads, unloads: game().world.unloads, cancels: game().world.cancels };
   // 显存和内存：飞行前后各读一次，飞过的格子卸载以后应该基本回到原来的数（涨得多就是泄漏）
   const memoryNow = () => ({ entities: metric('entities'), gpuBufferMB: +(metric('gpu.buffers.bytes') / 1048576).toFixed(1), gpuTextureMB: +(metric('gpu.textures.bytes') / 1048576).toFixed(1), nativeMB: +(metric('native.allocated.bytes') / 1048576).toFixed(1) });
@@ -104,7 +106,7 @@ const measure = `(async () => {
     },
     memory: { before: memoryBefore, after: memoryNow() },
     world: { cellsLoaded: game().world.loads - worldBefore.loads, cellsUnloaded: game().world.unloads - worldBefore.unloads, cellsCancelled: game().world.cancels - worldBefore.cancels, loadedNow: game().world.loaded.length },
-    pipelines: { syncDuringFlight: game().graphicsDevice.pipelines.sync - pipelinesBefore.sync, warmedDuringFlight: game().graphicsDevice.pipelines.warmed - pipelinesBefore.warmed, recentSync: game().graphicsDevice.pipelines.recentSync.slice(-8) },
+    pipelines: { syncDuringFlight: game().graphicsDevice.pipelines.sync - pipelinesBefore.sync, syncLabelsDuringFlight: syncLabels(game().graphicsDevice.pipelines.sync - pipelinesBefore.sync), warmedDuringFlight: game().graphicsDevice.pipelines.warmed - pipelinesBefore.warmed, recentSync: game().graphicsDevice.pipelines.recentSync.slice(-8) },
     finalDownload: { requests: performance.getEntriesByType('resource').length, transferKB: Math.round(performance.getEntriesByType('resource').reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) },
   };
 })()`;

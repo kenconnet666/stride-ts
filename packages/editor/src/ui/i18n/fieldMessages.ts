@@ -22,7 +22,7 @@ const zhCN: FieldMessages = {
     'Table columns': '列', 'Table rows': '行',
     'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Irradiance volume': '辐照度体', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
-    'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
+    'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Persistent': '持久（存档）', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },

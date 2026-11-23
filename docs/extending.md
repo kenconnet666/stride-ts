@@ -8,6 +8,7 @@
 | 对大量实体的每帧逻辑 | 数据组件 `component({...})` 加系统 `system({ with, writes, update })` | `apps/sandbox/src/game/particles.ts` |
 | 不属于某个实体的每帧逻辑 | 子系统 `game.addSystem({ phase, update, moveOrigin, destroy })` | 引擎内置的地形、摆放、天气（`engine/Game.ts` 的 `#builtinSystems`） |
 | 自己的资源种类 | 引擎：`registerAssetKind` 加 `CustomAssetKinds` 声明合并；编辑器：工程扩展 `defineEditorExtension` | `apps/greybox/editor/extension.ts`（柱子） |
+| 存档、走远了再回来状态还在 | 场景实体挂 `Persistent`；不属于实体的状态（背包、分数）`game.persistence.section(名字, { save, load })`；`game.persistence.save()` 给 JSON、`load(json)` 读回 | `apps/open-world` 的 `Worlds/Test/props/0_0`（冒烟里抬高的方块） |
 | 一样的字段、很多条的数据（物品、价格、日程） | 资源 `.table.json`（列的描述和行），`game.content.loadTable(路径)` 或脚本属性 `prop.asset('table')`，`table.as(行模式)` 拿有类型的行 | `apps/open-world` 的 `Data/Shops.table.jsonc` |
 | 玩家的操作（跳、移动、开车时换一套） | 资源 `.input.json` 写动作和绑定，脚本属性 `prop.asset('input')`，`game.input.actions.add(map)` 后按动作读 | `apps/collect-dodge` 的 `Input/Player.input.jsonc` 和 `PlayerController` |
 | 世界里的事件（开门了、店开张了） | `game.events.emit(名字, 值)`，收 `this.receive(game.events.key(名字))`；类型写进 `interface GameEvents`（声明合并） | `engine/GameEvents.ts` 的说明；`stride call events` 看最近发的 |

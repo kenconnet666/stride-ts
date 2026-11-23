@@ -1,6 +1,7 @@
 // 冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/open-world smoke [-- --hub <中枢名的一部分>]
-// 检查：世界 Worlds/Test 加载了，相机附近的格子都在；相机挪到 1.2 公里外，那边的格子加载、原来的卸载；没有错误日志。
+// 检查：世界 Worlds/Test 加载了，相机附近的格子都在；相机挪到 1.2 公里外，那边的格子加载、原来的卸载；挪回来时格子 props/0_0 里
+// 持久的方块（Persistent）还在挪过的地方；没有错误日志。
 import { startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, check, finish } = startSmoke('open-world');
@@ -25,9 +26,19 @@ const start = settle();
 // 相机在 (0, 30, 0)：地面 1 公里内的格子、方块 256 米内的格子（格子边长 256：原点四周的 4 个）
 check('世界加载了，相机附近的格子都在', start.world === 'Worlds/Test' && start.loading.length === 0 && start.loaded.includes('ground/0_0') && start.loaded.includes('props/-1_-1') && !start.loaded.includes('props/2_2'), start);
 
+// 格子 props/0_0 里挂了 Persistent 的方块抬高 20 米：格子卸掉再读回来时应该还在那里
+const persistentBox = `game.entities.ids().map((id) => game.entities.entity(id)).find((e) => e.get(strideEngine.Persistent))`;
+const lifted = stride('eval', `{ const box = ${persistentBox}; box.require(strideEngine.Transform).position.y += 20; box.require(strideEngine.Transform).position.y }`) as number;
 stride('eval', `Object.assign(entity('Camera').require(strideEngine.Transform).position, { x: 1200, y: 30, z: 1200 })`);
 stride('wait', '--game', '4');
 const moved = settle();
 check('相机挪走以后那边的格子加载了，原来附近的方块卸载了', moved.loaded.includes('props/4_4') && !moved.loaded.includes('props/0_0') && moved.unloads > start.unloads, { loaded: moved.loaded.filter((key) => key.startsWith('props/')), loads: moved.loads, unloads: moved.unloads });
+
+stride('eval', `Object.assign(entity('Camera').require(strideEngine.Transform).position, { x: 0, y: 30, z: 0 })`);
+stride('wait', '--game', '4');
+const back = settle();
+const records = stride('call', 'save') as { records: Record<string, { transform?: { position: number[] } }> };
+const boxY = stride('eval', `(${persistentBox})?.require(strideEngine.Transform).position.y ?? null`) as number | null;
+check('挪回来：格子重新读了，持久的方块还在抬高的地方（存档的记录里有它）', back.loaded.includes('props/0_0') && boxY !== null && Math.abs(boxY - lifted) < 1e-3 && records.records['Worlds/Test/props/0_0#box-0_0-0']?.transform?.position[1] === lifted, { boxY, lifted, records: Object.keys(records.records) });
 
 finish();

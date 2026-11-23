@@ -4,6 +4,7 @@ import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { WorldClock } from '../world/WorldClock';
+import { PersistenceSystem } from '../world/Persistence';
 import { GameEventBus } from './GameEvents';
 import { dayNightCycleSystem } from '../rendering/sky/DayNightCycle';
 import { hook } from './events';
@@ -214,6 +215,8 @@ export class Game {
   readonly events = new GameEventBus(() => this.updateTime.frameCount);
   /** 世界时钟和日历：世界里现在几点、第几天（日夜循环、日程、存档读写它），见 world/WorldClock.ts。编辑状态下不走。 */
   readonly clock = new WorldClock();
+  /** 存档和世界状态的持久化：挂 Persistent 的场景实体卸掉再读回来状态还在，save() / load() 存档读档，见 world/Persistence.ts。 */
+  readonly persistence = new PersistenceSystem(this.entities, this.clock);
   /**
    * 渲染原点（D18 大世界）：位置都是双精度，GPU 上是单精度——渲染用的世界矩阵（`Transform.renderWorld`）、相机的视图矩阵、灯光、
    * 调试线都减去它。它跟着主画面的相机、按 RENDER_ORIGIN_CELL 米对齐，相机走出一格才换（换的那一帧所有实例的矩阵重传一次）。
@@ -579,6 +582,8 @@ export class Game {
     const sceneOptions = this.editing ? { attachScripts: false, ...options } : options;
     const scene = file ? await this.content.instantiateScene(file, this.entities, sceneOptions) : await this.content.loadScene(path, this.entities, sceneOptions);
     if (parent) this.#childScenes.set(parent, [...(this.#childScenes.get(parent) ?? []), scene]);
+    // 编辑状态里场景就是文件，不套运行时记下的状态
+    if (!this.editing) this.persistence.sceneLoaded(scene);
     if (options.applySettings === false) {
       this.scenesChanged.run({ scene, loaded: true });
       return scene;
@@ -679,6 +684,7 @@ export class Game {
    */
   unloadScene(scene: SceneInstance): void {
     for (const child of this.#childScenes.get(scene) ?? []) this.unloadScene(child);
+    if (!this.editing) this.persistence.sceneUnloading(scene);
     this.#childScenes.delete(scene);
     // 它自己是别人的子场景时，从父场景那里去掉
     for (const [parent, children] of this.#childScenes) {

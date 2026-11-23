@@ -300,6 +300,7 @@ export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitatio
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './world/Weather';
 export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
 export { DAYS_PER_YEAR, SECONDS_PER_DAY, WorldClock, type WorldClockState } from './world/WorldClock';
+export { Persistent, PersistenceSystem, type PersistedEntity, type SaveData, type SaveSection } from './world/Persistence';
 export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './world/Terrain';
 export { City, CityAsset, CitySystem, type CityAssetId } from './world/City';
 export { Water, WaterAsset, type WaterAssetId } from './world/Water';

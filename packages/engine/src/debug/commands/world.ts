@@ -4,13 +4,22 @@ import { Matrix } from '../../data/Matrix';
 import type { DebugColor } from '../DebugDraw';
 import { roadLanes } from '../../modeling/roadLanes';
 import { Precipitation } from '../../world/Precipitation';
+import type { SaveData } from '../../world/Persistence';
 import { Weather, WEATHER_PRESETS, type WeatherPreset, type WeatherTarget } from '../../world/Weather';
 import type { Game } from '../../engine/Game';
 import type { Debug } from '../Debug';
 import { entityArg } from './shared.ts';
 
 export function registerWorldCommands(debug: Debug, game: Game): void {
-  debug.command('events', 'Named game events (game.events): the recent ones (name, value, frame) and which names have receivers. args: emit (event name) sends one with value (any JSON, default null).', (args) => {
+  debug.command('save', 'Saves and persistent world state (game.persistence): entities with Persistent keep their state when their scene unloads and reloads. No args: the recorded states (key: scene path#entity id). args: take (true) returns a whole save (JSON); load (a save) restores it; forget (true or a key) drops recorded states.', (args) => {
+    const persistence = game.persistence;
+    if (args['take'] === true) return persistence.save();
+    if (args['load'] !== undefined) persistence.load(args['load'] as SaveData);
+    if (args['forget'] === true) persistence.forget();
+    else if (typeof args['forget'] === 'string') persistence.forget(args['forget']);
+    return { records: Object.fromEntries(persistence.records) };
+  });
+  debug.command('events','Named game events (game.events): the recent ones (name, value, frame) and which names have receivers. args: emit (event name) sends one with value (any JSON, default null).', (args) => {
     if (typeof args['emit'] === 'string') game.events.emitUnchecked(args['emit'], args['value'] ?? null);
     return { recent: game.events.recent, listeners: game.events.listeners() };
   });

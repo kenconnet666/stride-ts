@@ -1,5 +1,5 @@
 /** 实体的组件、场景的设置、实体自己的字段描述（COMPONENT_FIELDS、SCENE_FIELDS、ENTITY_FIELDS）。 */
-import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneIrradianceVolume, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneColorGrading, SceneExposure, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/formats/format';
+import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, ScenePersistent, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneIrradianceVolume, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneColorGrading, SceneExposure, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/formats/format';
 import type { SceneSettingKey } from '../SceneDocument';
 import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, nullable, type FieldType, type Field, type FieldSpec } from '../../content/schema/builders.ts';
 import { textureRef } from './assets/shared.ts';
@@ -381,6 +381,13 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       windDirection: { type: number({ unit: 'deg' }), optional: true, default: 0, description: 'where the wind blows to, around Y: 0 is +Z, 90 is +X' },
       gustiness: optional(number({ min: 0, max: 1 }), 0.3),
       transitionTime: { type: number({ min: 0, unit: 's' }), optional: true, default: 30, description: 'how fast the current weather follows; 0 changes at once' },
+    })),
+    initial: {},
+  },
+  persistent: {
+    label: 'Persistent',
+    type: object(fields<ScenePersistent>({
+      transform: { type: bool, optional: true, default: true, description: 'keep where it was moved (off when something else places it)' },
     })),
     initial: {},
   },

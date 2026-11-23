@@ -218,8 +218,10 @@ function fieldsOf(key: object, shape: Shape): readonly Field[] {
   }
   return fields;
 }
-const objectFields = (options: PropOptions) => fieldsOf(options, options.shape!);
-const variantFields = (options: PropOptions, tag: string) => fieldsOf(options.variants![tag]!, options.variants![tag]!);
+/** 嵌套对象属性（prop.object）的字段。 */
+export const objectFields = (options: PropOptions) => fieldsOf(options, options.shape!);
+/** 联合属性（prop.union）某一种的字段。 */
+export const variantFields = (options: PropOptions, tag: string) => fieldsOf(options.variants![tag]!, options.variants![tag]!);
 
 // -------------------------------------------------------------------------------------------------
 // 把输入的值转成存下来的值

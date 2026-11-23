@@ -25,7 +25,8 @@
     "model": {
      "model": "Models/Box",
      "materials": []
-    }
+    },
+    "persistent": {}
    }
   },
   {

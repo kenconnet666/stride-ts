@@ -356,6 +356,11 @@ export interface SceneWeather {
   readonly transitionTime?: number;
 }
 
+/** 持久的实体（Stride 没有，见 world/Persistence.ts）：场景卸掉再读回来、存档读档以后状态还在。 */
+export interface ScenePersistent {
+  readonly transform?: boolean;
+}
+
 /** 世界的流式源（Stride 没有，见 world/WorldStreaming.ts）：世界的格子按它附近加载。 */
 export interface SceneStreamingSource {
   readonly radiusScale?: number;
@@ -637,6 +642,7 @@ export interface SceneEntityFile {
     readonly precipitation?: ScenePrecipitation;
     readonly weather?: SceneWeather;
     readonly streamingSource?: SceneStreamingSource;
+    readonly persistent?: ScenePersistent;
     readonly decal?: SceneDecal;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;

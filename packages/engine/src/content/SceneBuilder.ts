@@ -28,6 +28,7 @@ import { DayNightCycle } from '../rendering/sky/DayNightCycle';
 import { Precipitation } from '../world/Precipitation';
 import { Weather } from '../world/Weather';
 import { StreamingSource } from '../world/WorldStreaming';
+import { Persistent } from '../world/Persistence';
 import { WindZone } from '../world/WindField';
 import type { Material } from '../rendering/mesh/Material';
 import type { Mesh } from '../rendering/mesh/Mesh';
@@ -439,6 +440,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   precipitation: { add: (entity, precipitation) => entity.add(Precipitation.with({ ...precipitation })), remove: drop(Precipitation) },
   weather: { add: (entity, weather) => entity.add(Weather.with({ ...weather })), remove: drop(Weather) },
   streamingSource: { add: (entity, source) => entity.add(StreamingSource.with({ ...source })), remove: drop(StreamingSource) },
+  persistent: { add: (entity, persistent) => entity.add(Persistent.with({ ...persistent })), remove: drop(Persistent) },
   decal: {
     add: (entity, { size, albedo, normal, color, ...decal }, { assets }) => entity.add(Decal.with({
       ...decal,

@@ -3,6 +3,7 @@ import { createStrideNative, type NativeFeature, type StrideNative, type Transfo
 import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { uiElementLinkSystem } from '../ui/UIElementLink';
+import { WorldClock } from '../world/WorldClock';
 import { dayNightCycleSystem } from '../rendering/sky/DayNightCycle';
 import { hook } from './events';
 import { failLoading, finishLoading, reportLoading } from './loadingScreen';
@@ -208,6 +209,8 @@ export class Game {
   readonly precipitation = new PrecipitationSystem();
   /** 天气状态（Stride 没有）：Weather 组件想要的天气慢慢过渡，驱动云、雾、风和雨雪；`game.weather.current` 是当前的天气。 */
   readonly weather = new WeatherSystem();
+  /** 世界时钟和日历：世界里现在几点、第几天（日夜循环、日程、存档读写它），见 world/WorldClock.ts。编辑状态下不走。 */
+  readonly clock = new WorldClock();
   /**
    * 渲染原点（D18 大世界）：位置都是双精度，GPU 上是单精度——渲染用的世界矩阵（`Transform.renderWorld`）、相机的视图矩阵、灯光、
    * 调试线都减去它。它跟着主画面的相机、按 RENDER_ORIGIN_CELL 米对齐，相机走出一格才换（换的那一帧所有实例的矩阵重传一次）。
@@ -345,7 +348,7 @@ export class Game {
       this.registry.register(Train);
       this.registry.register(TrainDoor);
       this.animation = new AnimationSystem(this.native, this.entities);
-      this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui), dayNightCycleSystem(this.entities, () => !this.editing), cameraRigSystem(this.entities, () => this.editing));
+      this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui), dayNightCycleSystem(this.entities, () => (this.editing ? undefined : this.clock)), cameraRigSystem(this.entities, () => this.editing));
       this.content.animationNative ??= this.native;
       // ?stride-limits=default：只要 WebGPU 的默认上限（同 CI 的软件 WebGPU，比如片元阶段最多 16 张采样贴图），本机的回归
       // 也能查出超了上限的绑定
@@ -841,6 +844,7 @@ export class Game {
       this.graphicsDevice.resizeToDisplaySize();
       if (advance !== undefined) {
         this.updateTime.advance(advance);
+        if (!this.editing) this.clock.advance(this.updateTime.elapsed);
         this.input.update(this.updateTime.elapsed);
         this.debugText.beginFrame();
         this.debugDraw.beginFrame(this.updateTime.total);

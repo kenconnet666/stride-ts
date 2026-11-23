@@ -10,6 +10,13 @@ import type { Debug } from '../Debug';
 import { entityArg } from './shared.ts';
 
 export function registerWorldCommands(debug: Debug, game: Game): void {
+  debug.command('clock', 'World clock and calendar (game.clock): the day-night cycle follows it. args: hours (0-24), dayOfYear (1-365), year, rate (world seconds per game second; 0 stops it, 720 is a day in two minutes), time (world seconds). Reports the calendar and whether game code or a day-night cycle has set it.', (args) => {
+    const clock = game.clock;
+    const number = (key: string) => (typeof args[key] === 'number' ? args[key] : undefined);
+    const change = { time: number('time'), year: number('year'), dayOfYear: number('dayOfYear'), hours: number('hours'), rate: number('rate') };
+    if (Object.values(change).some((value) => value !== undefined)) clock.set(Object.fromEntries(Object.entries(change).filter(([, value]) => value !== undefined)));
+    return { time: clock.time, rate: clock.rate, set: clock.isSet, year: clock.year, dayOfYear: clock.dayOfYear, timeOfDay: +clock.timeOfDay.toFixed(4), weekday: clock.weekday, running: !game.editing };
+  });
   debug.command('weather', `Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
     const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Weather));
     if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Weather', components: [Transform, Weather, Precipitation] }));

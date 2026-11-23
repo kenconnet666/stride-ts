@@ -7,6 +7,7 @@ import type { SceneFile } from '../../src/content/formats/format';
 import { SkyAtmosphere, VolumetricClouds } from '../../src/rendering/components';
 import { celestialState, DayNightCycle, dayNightCycleSystem, lightRotationTowards } from '../../src/rendering/sky/DayNightCycle';
 import { Vector3 } from '../../src/data/vectors';
+import { WorldClock } from '../../src/world/WorldClock';
 
 const DEGREES = Math.PI / 180;
 const elevation = (direction: readonly number[]) => Math.asin(direction[1]!) / DEGREES;
@@ -107,24 +108,29 @@ describe('日夜循环（DayNightCycle）', () => {
     expect(forward.z).toBeCloseTo(-direction[2], 6);
   });
 
-  test('系统：转太阳、月亮和自己；dayLength 大于 0 时时刻往前走，过了午夜日期加一、月相往前走', () => {
+  test('系统：转太阳、月亮和自己；时刻跟着世界时钟走（第一帧按字段设时钟），过了午夜日期加一、月相往前走；别处改字段就拨时钟', () => {
     // 带原生变换存储、但不跑帧循环的游戏
     const game = new Game();
     game.native = native;
     game.transforms = native.createTransforms(16);
     const { entities, updateTime: time } = game;
-    let advancing = true;
-    entities.addSystems(dayNightCycleSystem(entities, () => advancing));
+    const clock = new WorldClock();
+    let editing = false;
+    entities.addSystems(dayNightCycleSystem(entities, () => (editing ? undefined : clock)));
     const sun = entities.create({ components: [Transform] });
     const moon = entities.create({ components: [Transform] });
     const sky = entities.create({
       components: [Transform, SkyAtmosphere.with({ sun: sun.id, moon: moon.id }), DayNightCycle.with({ timeOfDay: 23, dayLength: 240, dayOfYear: 365, moonPhase: 0.5 })],
     });
+    // 同 Game 的帧：先走时钟（编辑状态不走），再跑系统
     const step = (seconds: number) => {
       time.advance(seconds);
+      if (!editing) clock.advance(seconds);
       entities.update(time);
     };
     step(0);
+    expect([clock.isSet, clock.dayOfYear, clock.rate]).toEqual([true, 365, 360]);
+    expect(clock.timeOfDay).toBeCloseTo(23, 4);
     const forward = () => new Vector3(0, 0, -1).rotate(sun.require(Transform).rotation);
     const expected = celestialState(23, 365, 35, 0, 0.5);
     expect(forward().x).toBeCloseTo(-expected.sun[0], 5);
@@ -137,12 +143,34 @@ describe('日夜循环（DayNightCycle）', () => {
     expect(cycle.timeOfDay).toBeCloseTo(1, 4);
     expect(cycle.dayOfYear).toBe(1);
     expect(cycle.moonPhase).toBeCloseTo(0.5 + 1 / 29.53, 5);
+    // 别处改了字段（调试命令、stride set）：拨时钟，不被时钟盖回去；改一天多长就改倍速
+    cycle.timeOfDay = 18;
+    cycle.dayLength = 120;
+    step(0);
+    expect(clock.timeOfDay).toBeCloseTo(18, 4);
+    expect(clock.rate).toBe(720);
+    expect(cycle.timeOfDay).toBeCloseTo(18, 4);
     // 编辑状态：时刻不走，改了时刻照样摆
-    advancing = false;
+    editing = true;
     step(20);
-    expect(cycle.timeOfDay).toBeCloseTo(1, 4);
+    expect(cycle.timeOfDay).toBeCloseTo(18, 4);
     cycle.timeOfDay = 12;
     step(0);
     expect(-forward().y).toBeCloseTo(celestialState(12, 1, 35, 0, cycle.moonPhase).sun[1], 5);
+  });
+
+  test('游戏代码先设了时钟：日夜循环跟着时钟，不拿自己的字段设它', () => {
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    const clock = new WorldClock();
+    clock.set({ dayOfYear: 172, hours: 6, rate: 60 });
+    game.entities.addSystems(dayNightCycleSystem(game.entities, () => clock));
+    const sky = game.entities.create({ components: [Transform, SkyAtmosphere, DayNightCycle.with({ timeOfDay: 20, dayLength: 240 })] });
+    game.updateTime.advance(0);
+    game.entities.update(game.updateTime);
+    const cycle = sky.require(DayNightCycle);
+    expect([cycle.dayOfYear, clock.rate]).toEqual([172, 60]);
+    expect(cycle.timeOfDay).toBeCloseTo(6, 4);
   });
 });

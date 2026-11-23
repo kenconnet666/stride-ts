@@ -294,6 +294,7 @@ export { gust, packWind, turbulenceAt, WindField, WindZone, GPU_LOCAL_WINDS, typ
 export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitationEmitter } from './world/Precipitation';
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './world/Weather';
 export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
+export { DAYS_PER_YEAR, SECONDS_PER_DAY, WorldClock, type WorldClockState } from './world/WorldClock';
 export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './world/Terrain';
 export { City, CityAsset, CitySystem, type CityAssetId } from './world/City';
 export { Water, WaterAsset, type WaterAssetId } from './world/Water';

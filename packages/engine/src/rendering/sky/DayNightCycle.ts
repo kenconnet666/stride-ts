@@ -8,8 +8,9 @@
  *   黄道上，比太阳超前 moonPhase 圈（不算白道 5° 的倾角，所以每个新月都是日食的位置——新月本来就看不见）。时刻是真太阳时
  *   （12 点太阳在正南或正北），不算时差和经度。
  * - 世界的方位：Y 朝上；north 是 0 时 -Z 是北、+X 是东（太阳从 +X 升起）。
- * - dayLength 大于 0 时时刻自己走（游戏时间，受 Game.timeScale 影响），过了午夜日期加一天、月相往前走一天的量（一个朔望月
- *   29.53 天）；编辑状态下不走，只按写的时刻摆。
+ * - 运行时时刻、日期跟着世界时钟（`game.clock`，world/WorldClock.ts）：游戏代码、存档没设过时钟时，第一帧按这里的时刻、日期设它，
+ *   dayLength 大于 0 时设它的倍速（一整天这么多秒游戏时间）。之后这几个字段每帧写成时钟的值；别处（调试命令、`stride set`、脚本）
+ *   改了字段就拨时钟。过了午夜月相往前走一天的量（一个朔望月 29.53 天）。编辑状态下时钟不走，只按写的时刻摆。
  *
  * 太阳、月亮的实体不要挂在转过的父实体下面：这里设的是它们的本地旋转。
  */
@@ -18,7 +19,7 @@ import { component } from '../../engine/component';
 import type { EntityManager } from '../../engine/EntityManager';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
-import type { GameTime } from '../../engine/GameTime';
+import { DAYS_PER_YEAR, SECONDS_PER_DAY, type WorldClock } from '../../world/WorldClock';
 import { Quaternion } from '../../data/vectors';
 import { SkyAtmosphere } from '../components';
 
@@ -40,7 +41,6 @@ export const DayNightCycle = component('DayNightCycle', {
 const DEGREES = Math.PI / 180;
 /** 黄赤交角。 */
 const OBLIQUITY = 23.44 * DEGREES;
-const DAYS_PER_YEAR = 365;
 /** 朔望月（两次满月之间）的天数。 */
 const SYNODIC_MONTH = 29.53;
 const X_AXIS = { x: 1, y: 0, z: 0 };
@@ -93,8 +93,21 @@ export function lightRotationTowards(direction: readonly [number, number, number
   return new Quaternion().setAxisAngle(Y_AXIS, yaw).multiply(new Quaternion().setAxisAngle(X_AXIS, pitch));
 }
 
-/** 日夜循环的系统：Game 加进 EntityManager。advancing 返回假时（编辑状态）时刻不走。 */
-export function dayNightCycleSystem(entities: EntityManager, advancing: () => boolean) {
+/** 上一帧写进字段的值（读回来的单精度）：字段和它不一样就是别处改了，拨时钟。 */
+interface Written {
+  readonly timeOfDay: number;
+  readonly dayOfYear: number;
+  readonly dayLength: number;
+  /** 时钟的第几天（月相按过了几天走）。 */
+  readonly day: number;
+}
+
+/** 一整天 dayLength 秒游戏时间对应的时钟倍速；0 是停着。 */
+const rateOf = (dayLength: number): number => (dayLength > 0 ? SECONDS_PER_DAY / dayLength : 0);
+
+/** 日夜循环的系统：Game 加进 EntityManager。running 返回世界时钟；编辑状态返回 undefined，只按字段摆。 */
+export function dayNightCycleSystem(entities: EntityManager, running: () => WorldClock | undefined) {
+  let written = new Map<number, Written>();
   /** 旋转变了才写（变换存储按写入记脏）。 */
   const turn = (id: number, rotation: Quaternion) => {
     if (id < 0 || !entities.isAlive(id as never)) return;
@@ -107,23 +120,31 @@ export function dayNightCycleSystem(entities: EntityManager, advancing: () => bo
   return system('DayNightCycle', {
     with: { cycle: DayNightCycle, atmosphere: SkyAtmosphere, transform: Transform },
     writes: [DayNightCycle],
-    update: ({ cycle, atmosphere, entities: ids, count }, time: GameTime) => {
+    update: ({ cycle, atmosphere, entities: ids, count }) => {
+      const clock = running();
+      const seen = new Map<number, Written>();
       for (let i = 0; i < count; i++) {
-        const dayLength = cycle.dayLength[i]!;
-        if (dayLength > 0 && advancing()) {
-          const hours = cycle.timeOfDay[i]! + (time.elapsed / dayLength) * 24;
-          const days = Math.floor(hours / 24);
-          cycle.timeOfDay[i] = hours - days * 24;
-          if (days > 0) {
-            cycle.dayOfYear[i] = ((cycle.dayOfYear[i]! - 1 + days) % DAYS_PER_YEAR) + 1;
-            cycle.moonPhase[i] = (cycle.moonPhase[i]! + days / SYNODIC_MONTH) % 1;
+        if (clock) {
+          const id = ids[i]!, last = written.get(id);
+          const timeOfDay = cycle.timeOfDay[i]!, dayOfYear = cycle.dayOfYear[i]!, dayLength = cycle.dayLength[i]!;
+          if (!clock.isSet) {
+            // 游戏代码没设过时钟：第一个日夜循环按自己的字段设
+            clock.set({ dayOfYear: Math.round(dayOfYear), hours: timeOfDay, rate: rateOf(dayLength) });
+          } else if (last) {
+            if (timeOfDay !== last.timeOfDay || dayOfYear !== last.dayOfYear) clock.set({ dayOfYear: Math.round(dayOfYear), hours: timeOfDay });
+            if (dayLength !== last.dayLength) clock.set({ rate: rateOf(dayLength) });
           }
+          if (last && clock.day !== last.day) cycle.moonPhase[i] = (((cycle.moonPhase[i]! + (clock.day - last.day) / SYNODIC_MONTH) % 1) + 1) % 1;
+          cycle.timeOfDay[i] = clock.timeOfDay;
+          cycle.dayOfYear[i] = clock.dayOfYear;
+          seen.set(id, { timeOfDay: cycle.timeOfDay[i]!, dayOfYear: cycle.dayOfYear[i]!, dayLength, day: clock.day });
         }
         const state = celestialState(cycle.timeOfDay[i]!, cycle.dayOfYear[i]!, cycle.latitude[i]!, cycle.north[i]!, cycle.moonPhase[i]!);
         turn(ids[i]!, state.rotation);
         turn(atmosphere.sun[i]!, lightRotationTowards(state.sun));
         turn(atmosphere.moon[i]!, lightRotationTowards(state.moon));
       }
+      written = seen;
     },
   });
 }

@@ -620,6 +620,8 @@ export class StrideImporter {
       gravity: component['Gravity'] !== false,
       sleepThreshold: asNumber(component['SleepThreshold'], 0.01),
       interpolated: component['InterpolationMode'] === 'Interpolated',
+      // Passive（Bepu 里让别的物体扫着它）Jolt 没有，按不开算
+      ...(component['ContinuousDetectionMode'] === 'Continuous' ? { continuous: true } : {}),
     };
   }
 

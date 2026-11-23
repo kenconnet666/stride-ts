@@ -139,6 +139,7 @@ export class Simulation {
         interpolated: b.interpolated[i] !== 0,
         gravity: b.gravity[i] !== 0,
         neverSleep: b.sleepThreshold[i]! < 0,
+        continuous: b.continuous[i] !== 0,
         sensor: b.trigger[i] !== 0,
         contactEvents: b.trigger[i] !== 0,
       }));

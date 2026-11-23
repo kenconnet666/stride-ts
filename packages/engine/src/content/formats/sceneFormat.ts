@@ -76,6 +76,8 @@ export interface SceneBody extends SceneCollidable {
   /** SleepThreshold；负数一直醒着。 */
   readonly sleepThreshold: number;
   readonly interpolated: boolean;
+  /** ContinuousDetectionMode 是 Continuous：连续碰撞检测（Body.continuous）；没写是不开。 */
+  readonly continuous?: boolean;
 }
 
 /** Stride 的 CharacterComponent。 */

@@ -1,0 +1,21 @@
+{
+ "name": "DeliGreens",
+ "shape": "plate",
+ "size": [
+  0.24,
+  0.035,
+  0.18
+ ],
+ "pattern": "plain",
+ "surface": "ceramic",
+ "seed": 15,
+ "food": {
+  "color": "#3a7a28",
+  "accent": "#e0d8b0",
+  "level": 0.5,
+  "mound": 0.5,
+  "pieces": "strands",
+  "dropped": 50,
+  "pieceSize": 0.006
+ }
+}

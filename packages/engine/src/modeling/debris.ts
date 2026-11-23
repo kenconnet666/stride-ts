@@ -5,8 +5,8 @@
  */
 import type { DebrisFile, DebrisSide } from '../content/formats/debrisFormat.ts';
 import type { ProductFile } from '../content/formats/productFormat.ts';
-import { hash32, seededRandom } from '../data/hash.ts';
-import { randomRotation, type PileBoard } from './pile.ts';
+import { hash32, randomRotation, seededRandom } from '../data/hash.ts';
+import type { PileBoard } from './pile.ts';
 import { productFootprint } from './product.ts';
 import { ProductBatch, type MergedProducts, type PlacedProduct, type ProductSources } from './productBatch.ts';
 

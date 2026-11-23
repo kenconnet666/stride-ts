@@ -1,0 +1,20 @@
+{
+ "name": "DeliPotato",
+ "shape": "plate",
+ "size": [
+  0.24,
+  0.035,
+  0.18
+ ],
+ "pattern": "plain",
+ "surface": "ceramic",
+ "seed": 14,
+ "food": {
+  "color": "#e8c860",
+  "accent": "#d0301c",
+  "level": 0.5,
+  "mound": 0.6,
+  "pieces": "strands",
+  "dropped": 70
+ }
+}

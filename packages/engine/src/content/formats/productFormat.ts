@@ -32,6 +32,10 @@ export type ProductPattern = 'plain' | 'band' | 'stripes' | 'split' | 'wave' | '
  * 器皿里盛的一份菜：color 是主料的颜色，accent 是配料（红椒丝、葱花），sauce 是底下汤汁的颜色（没写按主料暗一些）；level 是菜面
  * 边上到内壁多高（0..1，按碗的深度），mound 是中间再鼓起多少（按器皿的高）；pieces 是菜的样子：块（红烧肉、炸鸡块）、丝（土豆丝、
  * 豆芽）、粒（花生、毛豆）、糊（土豆泥、蛋羹）——决定贴图上画什么和菜面起伏多大。
+ *
+ * dropped 是菜面上再一块块、一根根落下去堆起来的几份（真的几何，编辑器后端烘焙时用物理让它们落在菜面和碗壁上停下）：形状按
+ * pieces（块是不规则的小方块、丝是细长条、粒是小椭球；糊不落），pieceSize 是一块的大小（米：块的边长、丝的粗细、粒的长；默认
+ * 0.02、0.004、0.009）。没写或 0 时菜只画在菜面的贴图上。
  */
 export interface ProductFood {
   readonly color: string;
@@ -40,6 +44,8 @@ export interface ProductFood {
   readonly level?: number;
   readonly mound?: number;
   readonly pieces?: 'chunks' | 'strands' | 'beans' | 'smooth';
+  readonly dropped?: number;
+  readonly pieceSize?: number;
 }
 
 /** 标签的配色（sRGB 的 #rrggbb）：底色、图案的强调色、字的颜色、盖子的颜色、镶边（色带的金边、徽标）的颜色。 */

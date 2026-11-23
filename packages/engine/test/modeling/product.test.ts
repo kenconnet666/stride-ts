@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { ProductFile, ProductShape } from '../../src/content/formats/productFormat';
 import { isProduce, labelPixels, productDesign, productLabelSvg, productMaterial, productMesh, productSurfaceSvg, productText, productTransmission } from '../../src/modeling/product';
+import { foodPieces, foodSpawn } from '../../src/modeling/ware';
 
 const bottle: ProductFile = { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], text: '矿泉水', seed: 3 };
 const sizes: Readonly<Record<ProductShape, readonly [number, number, number]>> = {
@@ -66,6 +67,48 @@ describe('商品包装', () => {
     expect(svg).toContain('#8a3a1c');
     expect(productDesign(file).surface).toBe('ceramic');
     expect(productDesign({ name: 'Plate', shape: 'plate', size: [0.26, 0.035, 0.2] }).pattern).toBe('plain');
+  });
+
+  test('落下去的菜：块数、形状大小、落点在口沿以内；落定的位姿合进网格，菜面底下的不要；贴图四角有取色的色块', () => {
+    const file: ProductFile = { name: 'Pork', shape: 'bowl', size: [0.2, 0.08, 0], food: { color: '#8a3a1c', accent: '#2f8a2f', level: 0.6, pieces: 'chunks', dropped: 12 }, seed: 4 };
+    const pieces = foodPieces(file);
+    expect(pieces).toHaveLength(12);
+    // 块是边长 2 厘米上下的六面体：12 个三角形，外接球在 1～2.5 厘米
+    for (const { triangles, swatch } of pieces) {
+      expect(triangles).toHaveLength(12 * 9);
+      const radius = Math.max(...Array.from({ length: triangles.length / 3 }, (_, i) => Math.hypot(triangles[i * 3]!, triangles[i * 3 + 1]!, triangles[i * 3 + 2]!)));
+      expect(radius).toBeGreaterThan(0.01);
+      expect(radius).toBeLessThan(0.025);
+      expect(swatch).toBeGreaterThanOrEqual(0);
+      expect(swatch).toBeLessThan(4);
+    }
+    expect(foodPieces({ ...file, food: { ...file.food!, pieces: 'smooth' } })).toHaveLength(0);
+    expect(foodPieces({ ...file, food: { ...file.food!, dropped: 0 } })).toHaveLength(0);
+    const spawn = foodSpawn(file, pieces);
+    for (const { position } of spawn) {
+      expect(Math.hypot(position[0], position[2])).toBeLessThan(0.1);
+      expect(position[1]).toBeGreaterThan(0.04);
+    }
+    // 一层放不下的分批
+    expect(Math.max(...foodSpawn({ ...file, food: { ...file.food!, dropped: 200 } }, foodPieces({ ...file, food: { ...file.food!, dropped: 200 } })).map((s) => s.wave))).toBeGreaterThan(0);
+    // 丝一把把落：同一批同样高、并排（批里两根的连线和丝垂直），分好几批
+    const strands: ProductFile = { ...file, food: { ...file.food!, pieces: 'strands', dropped: 40 } };
+    const handful = foodSpawn(strands, foodPieces(strands));
+    expect(Math.max(...handful.map((spawn) => spawn.wave))).toBeGreaterThan(1);
+    const [a, b] = handful.filter((spawn) => spawn.wave === 0);
+    expect(a!.position[1]).toBe(b!.position[1]);
+    const axis = (q: readonly number[]) => [2 * (q[0]! * q[2]! + q[3]! * q[1]!), 2 * (q[1]! * q[2]! - q[3]! * q[0]!), 1 - 2 * (q[0]! ** 2 + q[1]! ** 2)];
+    const along = axis(a!.rotation), across = [b!.position[0] - a!.position[0], 0, b!.position[2] - a!.position[2]];
+    expect(Math.abs(along[0]! * across[0]! + along[2]! * across[2]!) / Math.hypot(across[0]!, across[2]!)).toBeLessThan(0.01);
+    // 落定的位姿（这里直接用落点）合进网格：每块 12 个三角形；落到菜面底下的那块不要
+    const plain = productMesh(file);
+    const settled = spawn.map(({ position, rotation }, piece) => ({ piece, position: piece === 0 ? [0, 0.01, 0] as const : position, rotation }));
+    const withPieces = productMesh(file, file.name, undefined, settled);
+    expect((withPieces.indices.length - plain.indices.length) / 3).toBe(11 * 12);
+    // 贴图：菜面那块的四个角上各有一块色块（主料的亮、暗、配料、主料）
+    const svg = productLabelSvg(file, withPieces.labelSize, undefined);
+    expect(svg).toContain('#2f8a2f');
+    expect(svg.length).toBeGreaterThan(productLabelSvg({ ...file, food: { ...file.food!, dropped: 0 } }, plain.labelSize, undefined).length);
   });
 
   test('旋转体的法线朝外：侧面的法线和从轴出来的方向同向', () => {

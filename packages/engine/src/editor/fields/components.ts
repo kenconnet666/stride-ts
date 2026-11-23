@@ -428,7 +428,10 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
   },
   body: {
     label: 'Body',
-    type: object(fields<SceneBody>({ ...collidable, kinematic: bool, gravity: bool, sleepThreshold: number(), interpolated: bool })),
+    type: object(fields<SceneBody>({
+      ...collidable, kinematic: bool, gravity: bool, sleepThreshold: number(), interpolated: bool,
+      continuous: { type: bool, optional: true, default: false, description: 'continuous collision detection: sweeps the motion of each step so fast small bodies (bullets, debris) do not pass through thin walls; costs more' },
+    })),
     initial: { shapes: [{ type: 'box', size: [1, 1, 1], position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }], layer: 0, friction: 1, kinematic: false, gravity: true, sleepThreshold: 0.01, interpolated: true },
   },
   character: {

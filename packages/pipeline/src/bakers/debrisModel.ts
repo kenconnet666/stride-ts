@@ -8,12 +8,12 @@ import { debrisBoards, debrisModel, debrisSpawn } from '@stride-ts/engine/modeli
 import type { StrideTools } from '@stride-ts/native/tools';
 import type { BakedFile } from './productModel.ts';
 import { mergedFiles } from './mergedFiles.ts';
-import { loadFonts, productFontTexts, readProducts, settleProducts } from './settle.ts';
+import { loadFonts, productFontTexts, readProducts, settleFood, settleProducts } from './settle.ts';
 
 /** 生成 path（杂物的内容路径）同名的模型、两张图集和材质。商品读不到、范围不对时报错。 */
 export async function bakeDebris(tools: StrideTools, file: DebrisFile, path: string, readContent: (path: string) => Promise<Uint8Array>, where = file.name): Promise<BakedFile[]> {
   const products = await readProducts(file.items.map((item) => item.product), readContent, where);
   const fonts = await loadFonts(productFontTexts(file.items.map((item) => [products.get(item.product)!, item.variants ?? 3] as const)), readContent, where);
   const settled = await settleProducts(debrisBoards(file), products, debrisSpawn(file, products, where));
-  return mergedFiles(tools, file.name, path, debrisModel(file, { products, font: (font) => fonts.get(font) }, settled, where));
+  return mergedFiles(tools, file.name, path, debrisModel(file, { products, font: (font) => fonts.get(font), food: await settleFood(products) }, settled, where));
 }

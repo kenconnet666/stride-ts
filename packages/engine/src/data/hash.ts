@@ -24,3 +24,10 @@ export function seededRandom(seed: number): () => number {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/** 均匀分布的随机朝向（Shoemake，四元数 xyzw）：random 是 [0, 1) 的随机数。 */
+export function randomRotation(random: () => number): [number, number, number, number] {
+  const u1 = random(), u2 = random() * 2 * Math.PI, u3 = random() * 2 * Math.PI;
+  const a = Math.sqrt(1 - u1), b = Math.sqrt(u1);
+  return [a * Math.sin(u2), a * Math.cos(u2), b * Math.sin(u3), b * Math.cos(u3)];
+}

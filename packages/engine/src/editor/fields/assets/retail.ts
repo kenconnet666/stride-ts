@@ -37,6 +37,8 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
       level: { type: number(), optional: true, default: 0.7, description: 'how high the food reaches the wall (0..1 of the inner depth)' },
       mound: { type: number(), optional: true, default: 0.15, description: 'how much the middle heaps up (fraction of the ware height)' },
       pieces: { type: oneOf('chunks', 'strands', 'beans', 'smooth'), optional: true, default: 'chunks', description: 'what the food looks like: chunks (braised pork, fried chicken), strands (shredded potato, bean sprouts), beans (peanuts, soybeans), smooth (mashed, custard)' },
+      dropped: { type: number(), optional: true, default: 0, description: 'how many real pieces (by pieces: chunks, strands, beans; not smooth) are dropped on top and settled with physics when baking; 0 draws the food only on the surface texture' },
+      pieceSize: { type: number(), optional: true, description: 'size of one dropped piece in meters: chunk edge, strand thickness (strands are 10..16 times as long), bean length; 0.02, 0.004, 0.009 when missing' },
     })),
     optional: true,
     description: 'a dish of food in a bowl or plate; empty ware when missing',

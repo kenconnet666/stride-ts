@@ -11,12 +11,15 @@ import type { MaterialFile } from '../content/formats/assetFormat.ts';
 import type { ProductFile } from '../content/formats/productFormat.ts';
 import { packPages } from '../data/rectPacking.ts';
 import { PACKAGE_TRANSMISSION, productDesign, productFootprint, productLabelShapes, productMesh, productSurface, productTransmission, svgNumber, type ProductMesh } from './product.ts';
+import type { FoodPiecePose } from './ware.ts';
 import type { TextFont } from './textOutline.ts';
 
 /** 生成要的别的资源：商品文件（按内容路径）和字体。 */
 export interface ProductSources {
   readonly products: ReadonlyMap<string, ProductFile>;
   readonly font: (path: string) => TextFont | undefined;
+  /** 器皿里落定的菜块（商品路径 → 位姿，pipeline 的 settleFood 跑物理得到）；没有的器皿只有菜面。 */
+  readonly food?: ReadonlyMap<string, readonly FoodPiecePose[]>;
 }
 
 /** 摆好的一件商品：哪个商品文件、第几个变体，底面中心的位置、朝向（四元数），细不细（后排、堆在下面的给少一点面，也不透光）。 */
@@ -267,7 +270,7 @@ export class ProductBatch {
     if (!mesh) {
       const product = this.#sources.products.get(path)!;
       const segments = fine ? undefined : Math.max(...productFootprint(product)) < TINY ? TINY_SEGMENTS : COARSE_SEGMENTS;
-      this.#meshes.set(key, mesh = productMesh(product, `${this.#where}: ${path}`, segments));
+      this.#meshes.set(key, mesh = productMesh(product, `${this.#where}: ${path}`, segments, this.#sources.food?.get(path)));
     }
     return mesh;
   }

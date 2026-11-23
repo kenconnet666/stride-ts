@@ -11,6 +11,7 @@ export * from './tree.ts';
 export * from './building.ts';
 export * from './city.ts';
 export * from './product.ts';
+export { foodPieces, foodSpawn, type FoodPiece, type FoodPiecePose, type FoodSpawn } from './ware.ts';
 export * from './shelf.ts';
 export * from './productBatch.ts';
 export * from './pile.ts';

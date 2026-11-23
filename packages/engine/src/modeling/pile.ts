@@ -5,7 +5,7 @@
  */
 import type { PileFile, PileHeapFile } from '../content/formats/pileFormat.ts';
 import type { ProductFile } from '../content/formats/productFormat.ts';
-import { hash32, seededRandom } from '../data/hash.ts';
+import { hash32, randomRotation, seededRandom } from '../data/hash.ts';
 import { productFootprint, svgNumber } from './product.ts';
 import { ProductBatch, type Cell, type MergedProducts, type PlacedProduct, type ProductSources } from './productBatch.ts';
 
@@ -92,13 +92,6 @@ export function pileSpawn(file: PileFile, products: ReadonlyMap<string, ProductF
       return { ...entry, position: [x, h + 0.02 + layer * size, z] as const, rotation: randomRotation(random), fine: true };
     });
   });
-}
-
-/** 均匀分布的随机朝向（Shoemake）。 */
-export function randomRotation(random: () => number): [number, number, number, number] {
-  const u1 = random(), u2 = random() * 2 * Math.PI, u3 = random() * 2 * Math.PI;
-  const a = Math.sqrt(1 - u1), b = Math.sqrt(u1);
-  return [a * Math.sin(u2), a * Math.cos(u2), b * Math.sin(u3), b * Math.cos(u3)];
 }
 
 /** 落定的东西（settled，物理跑完的位姿）连同容器合成一个模型；落到容器外面的不要。 */

@@ -1,0 +1,22 @@
+{
+ "name": "DeliChicken",
+ "shape": "bowl",
+ "size": [
+  0.18,
+  0.075,
+  0
+ ],
+ "pattern": "floral",
+ "surface": "ceramic",
+ "seed": 12,
+ "food": {
+  "color": "#c47a2a",
+  "accent": "#d8b040",
+  "sauce": "#8a4a14",
+  "level": 0.55,
+  "mound": 0.15,
+  "pieces": "chunks",
+  "dropped": 40,
+  "pieceSize": 0.024
+ }
+}

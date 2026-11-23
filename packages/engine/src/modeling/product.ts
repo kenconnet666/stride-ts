@@ -14,7 +14,7 @@ import { hash32, seededRandom } from '../data/hash.ts';
 import { MeshBuilder } from './meshBuilder.ts';
 import { cross, finish, latheMesh, normalize, smoothNormals, sub, type ProductMesh, type ProfilePoint } from './lathe.ts';
 import { svgNumber } from './svg.ts';
-import { WARE_COBALT, WARE_GLAZE, wareMesh, wareSkin } from './ware.ts';
+import { WARE_COBALT, WARE_GLAZE, wareMesh, wareSkin, type FoodPiecePose } from './ware.ts';
 import { textContours, type TextFont } from './textOutline.ts';
 
 export type { ProductMesh } from './lathe.ts';
@@ -112,13 +112,16 @@ function checkSize(file: ProductFile, where: string): void {
   if ((file.shape === 'box' || file.shape === 'pouch') && !(d > 0)) throw new Error(`${where}: a ${file.shape} needs a depth greater than 0`);
 }
 
-/** 外形的网格；segments 是旋转体绕一圈分几段（默认 20，看不清的地方给少一点）。 */
-export function productMesh(file: ProductFile, where = file.name, segments = RADIAL_SEGMENTS): ProductMesh {
+/**
+ * 外形的网格；segments 是旋转体绕一圈分几段（默认 20，看不清的地方给少一点）。food 是器皿里落定的菜块（ware.ts 的 foodSpawn
+ * 经物理跑完的位姿），没给时只有菜面。
+ */
+export function productMesh(file: ProductFile, where = file.name, segments = RADIAL_SEGMENTS, food?: readonly FoodPiecePose[]): ProductMesh {
   checkSize(file, where);
   if (file.shape === 'box') return boxMesh(file.size);
   if (file.shape === 'pouch') return pouchMesh(file.size);
   const radial = Math.max(3, Math.round(segments));
-  if (isWare(file.shape)) return wareMesh(file, radial * 2);
+  if (isWare(file.shape)) return wareMesh(file, radial * 2, food);
   if (file.shape === 'leaf') return leafMesh(file);
   if (isProduce(file.shape)) return produceMesh(file, radial);
   if (file.shape === 'jug') return jugMesh(file, radial);

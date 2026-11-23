@@ -8,7 +8,7 @@ import { shelfModel } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
 import type { BakedFile } from './productModel.ts';
 import { mergedFiles } from './mergedFiles.ts';
-import { loadFonts, productFontTexts, readProducts } from './settle.ts';
+import { loadFonts, productFontTexts, readProducts, settleFood } from './settle.ts';
 
 /** 生成 path（货架的内容路径）同名的模型、两张图集和材质。商品读不到、规则不对时报错。 */
 export async function bakeShelf(tools: StrideTools, file: ShelfFile, path: string, readContent: (path: string) => Promise<Uint8Array>, where = file.name): Promise<BakedFile[]> {
@@ -17,5 +17,5 @@ export async function bakeShelf(tools: StrideTools, file: ShelfFile, path: strin
   const variants = file.stock?.variants ?? 3;
   const texts = productFontTexts([...products.values()].map((product) => [product, variants] as const), [[file.font, `0123456789.${file.header ?? ''}`]]);
   const fonts = await loadFonts(texts, readContent, where);
-  return mergedFiles(tools, file.name, path, shelfModel(file, { products, font: (font) => fonts.get(font) }, where));
+  return mergedFiles(tools, file.name, path, shelfModel(file, { products, font: (font) => fonts.get(font), food: await settleFood(products) }, where));
 }

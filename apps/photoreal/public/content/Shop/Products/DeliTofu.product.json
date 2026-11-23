@@ -1,0 +1,22 @@
+{
+ "name": "DeliTofu",
+ "shape": "bowl",
+ "size": [
+  0.18,
+  0.075,
+  0
+ ],
+ "pattern": "floral",
+ "surface": "ceramic",
+ "seed": 13,
+ "food": {
+  "color": "#e8d9a8",
+  "accent": "#c0281c",
+  "sauce": "#a0401a",
+  "level": 0.6,
+  "mound": 0.1,
+  "pieces": "chunks",
+  "dropped": 30,
+  "pieceSize": 0.022
+ }
+}

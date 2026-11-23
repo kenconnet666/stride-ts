@@ -1,0 +1,21 @@
+{
+ "name": "DeliPork",
+ "shape": "bowl",
+ "size": [
+  0.18,
+  0.075,
+  0
+ ],
+ "pattern": "floral",
+ "surface": "ceramic",
+ "seed": 11,
+ "food": {
+  "color": "#7a2c12",
+  "accent": "#2f8a2f",
+  "sauce": "#4a1608",
+  "level": 0.55,
+  "mound": 0.15,
+  "pieces": "chunks",
+  "dropped": 36
+ }
+}

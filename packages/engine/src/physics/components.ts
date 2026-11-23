@@ -38,6 +38,11 @@ export const Body = component('Body', {
   /** SleepThreshold：负数一直醒着；其余用 Jolt 的全局睡眠阈值（和 Stride 不同：Bepu 按物体设）。 */
   sleepThreshold: prop.f32().default(0.01),
   interpolated: prop.bool().default(false),
+  /**
+   * 连续碰撞检测（Stride 的 ContinuousDetectionMode.Continuous）：沿这一步的位移扫过去找碰撞，快的小东西（子弹、碎块）不穿过
+   * 薄墙。和 Stride 不同：Jolt 没有 Passive（让别的物体扫着它），Passive 按不开算。
+   */
+  continuous: prop.bool().default(false),
 });
 
 /** 角色（Stride 的 CharacterComponent）：不转动的动态刚体，按移动输入和起跳请求走。 */

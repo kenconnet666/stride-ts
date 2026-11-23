@@ -35,12 +35,12 @@
 
 | 工具 | 旧机器上的版本 | 用途 |
 |---|---|---|
-| Node.js | 26.13.1（仓库根的 `.node-version`，CI 的 setup-node 照它装同一个版本；要 26 以上；装在 CLion 的 node/versions 下，用户 PATH 指着它；pnpm 等全局包用它的 npm 装，Node 26 不带 corepack） | 构建、导入器、调试 CLI（Node 直接跑 TS） |
+| Node.js | 26.13.1（仓库根的 `.node-version`；要 26 以上；装在 CLion 的 node/versions 下，用户 PATH 指着它；pnpm 等全局包用它的 npm 装，Node 26 不带 corepack） | 构建、导入器、调试 CLI（Node 直接跑 TS） |
 | pnpm | 10.34.5 | monorepo |
 | PowerShell | 7.6（`pwsh`，不是 Windows PowerShell 5.1） | `tools/*.ps1`：验证、回归、停后台进程 |
 | Git Bash | Git for Windows 自带 | 日常命令 |
 | Python 3 | 3.14（带 Pillow） | 改文件的脚本、截图裁切比较 |
-| GitHub CLI `gh` | keyring 登录（没有设 `GITHUB_TOKEN`） | 看 CI、发 Release |
+| GitHub CLI `gh` | keyring 登录（没有设 `GITHUB_TOKEN`） | 发 Release |
 | Chrome | 稳定版，WebGPU 开着 | 跑游戏、验收画面 |
 | 改原生部分时 | emsdk、CMake、Ninja（见 fork 的 `StrideNative/README.md`） | `StrideNative/Scripts/build-wasm.ps1` |
 | 截图比对桌面 Stride 时 | .NET 8+、Stride 4.4.2 | `tools/stride-capture` |
@@ -154,7 +154,7 @@
 
 > 【无人值守续跑】继续执行 stride-ts 的路线图 docs/roadmap.md（取舍已全部按推荐定，见 docs/stages.md 的第四节；只有 D10 里"停下来问"的事才停下问用户）。用中文和用户沟通。
 > 做法：读 docs/roadmap.md 的总表和"正在做和下一步"，按顺序做第一项没做完的；做完在总表里打钩、写结论（细节进 docs/stages.md）。先读相关代码和参考实现再动手（调研自己做）。做完更新"进度"、docs/decisions.md、docs/progress-log.md 和 CLAUDE.md 的现状。
-> 提交和测试：提交前 pnpm typecheck、pnpm test（失败了不提交）；提交后 git pull --rebase origin main 再推 origin main（不强推）；推送后在验证工作树里跑 pwsh tools/verify.ps1 -Changed -Base <推送前的提交>（回归按 WebGPU 默认上限开页面），失败了修好再推；看 CI（gh run list）的失败并修。在 Chrome 里实际看过、量过耗时才算完成。开发服务器、无头 Chrome 用完就停（pwsh tools/stop-dev.ps1）。改源码里带反引号或 ${} 的文字用 Edit 工具或写成脚本文件，不用 PowerShell 的字符串替换。耗时的命令放后台跑。
+> 提交和测试：提交了直接推（先 git pull --rebase origin main，不强推），不在本地等测试；推送后在测试槽（验证工作树）里跑 pwsh tools/verify.ps1 -Changed -Base <推送前的提交>（类型检查、单测、lint、改动相关的回归，回归按 WebGPU 默认上限开页面），有问题回头修好再推。不用 GitHub 的 CI（用户 2026-11-23 定）。
 > 调试难时先升级调试 CLI（packages/cli，stride debug 下断点），再用 CLion 的 JS 调试器（MCP 的 xdebug_*）和电脑控制（CLion 点击级、Chrome 只读）。
 > 【主动改进】用户 2026-11-21 定：不用提醒，每次除了路线图，也主动改善环境——整理代码和文档（整理和功能分开提交）、需要时克隆参考仓库到 C:\code\refs、想办法加快测试（回归、验证、CI 的耗时）、优化工具和流程、改善 agent 调试代码的体验（调试 CLI、stride debug、调试桥、MCP）；做了什么记进 progress-log。
 > 【单会话】用户 2026-11-20 定：不再多个会话并行，除非用户主动通知；不开子会话、不提议开。../stride-ts-verify-1、-2、-3 是验证位（分离头指针、没有没提交的改动）。

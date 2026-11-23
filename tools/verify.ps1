@@ -1,6 +1,6 @@
-# 耗时的验证放进单独的 git 工作树里跑，主检出可以接着改代码（开发服务器的热重载不会打断它）。全量冒烟交给 CI（软件 WebGPU），
-# 这里跑 CI 验证不了的：真实显卡上的回归、截图比对、测量（tools/measure.ps1）。先在主检出提交，再用这个脚本让工作树切到那个
-# 提交、装依赖、跑脚本。
+# 测试都在这里（用户 2026-11-23 定：不用 GitHub 的 CI，提交了直接推送，测试后置，有问题回头修）：单独的 git 工作树里先跑类型
+# 检查、单测、lint，再跑脚本（默认真实显卡上的回归，也可以是截图比对、测量 tools/measure.ps1），主检出可以接着改代码（开发服务器
+# 的热重载不会打断它）。先在主检出提交，再用这个脚本让工作树切到那个提交、装依赖、跑。
 #   pwsh tools/verify.ps1                                  # 槽位 3 的工作树切到 HEAD，跑 tools/regress.ps1
 #   pwsh tools/verify.ps1 -Ref abc123 -Apps jumpy-jet,physics-sample   # 认不出的参数原样转给脚本
 #   pwsh tools/verify.ps1 -Script tools/measure.ps1
@@ -15,6 +15,8 @@ param(
     [string]$Ref = 'HEAD',
     [string]$Path,
     [string]$Script = 'tools/regress.ps1',
+    # 不跑类型检查、单测、lint（只跑脚本：测帧时间这类不需要的时候）
+    [switch]$NoChecks,
     [Parameter(ValueFromRemainingArguments)][string[]]$Arguments = @()
 )
 $ErrorActionPreference = 'Stop'
@@ -58,8 +60,23 @@ try {
     }
     # 脚本失败时照它的退出码退出，不抛异常
     $PSNativeCommandUseErrorActionPreference = $false
+    # 测试后置（用户 2026-11-23 定：不用 GitHub 的 CI，提交了直接推，在这里测，有问题回头修）：先类型检查、单测、lint，失败的
+    # 记下、不打断，接着跑脚本，最后一起报
+    $failed = @()
+    if (-not $NoChecks) {
+        foreach ($check in 'typecheck', 'test', 'lint') {
+            Write-Host "== pnpm $check"
+            pnpm $check
+            if ($LASTEXITCODE -ne 0) { $failed += "pnpm $check" }
+        }
+    }
     pwsh -NoProfile -File (Join-Path $Path $Script) @Arguments
-    exit $LASTEXITCODE
+    if ($LASTEXITCODE -ne 0) { $failed += $Script }
+    if ($failed.Count -gt 0) {
+        Write-Host "FAILED: $($failed -join ', ')"
+        exit 1
+    }
+    exit 0
 } finally {
     Pop-Location
 }

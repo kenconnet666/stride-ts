@@ -2,6 +2,12 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+### 不用 GitHub 的 CI，测试后置在测试槽（2026-11-23）
+
+- 用户 2026-11-23 定：取消靠 GitHub CI/CD 的测试，提交了直接推，在测试槽（验证工作树）里测，测试后置，有问题回头修。
+- 删了 `.github/workflows/ci.yml` 和只给它算缓存键的 `tools/content-key.ts`。`tools/verify.ps1` 在跑回归（或 `-Script` 给的脚本）之前先跑 `pnpm typecheck`、`pnpm test`、`pnpm lint`，失败的不打断、最后一起报、退出码 1；`-NoChecks` 只跑脚本（测帧时间时）。
+- 推送不再等本地的测试：`git pull --rebase` 以后直接推，接着 `pwsh tools/verify.ps1 -Changed -Base <推送前的提交>` 挂后台。CLAUDE.md 的测试一条、tools/README.md、交接文档里定时任务的提示词跟着改。
+
 ### 有类型的内容文件：模式、货架试点、给 IDE 的 JSON Schema、新建默认 `.jsonc`（2026-11-23）
 
 - 用户 2026-11-23 定：以后默认首选 `.jsonc` 加有类型的模式；已有的 `.json` 资源不批量改（类型检查对两种一样，改扩展名本身没有收益；搭建脚本写出来的资源重搭就覆盖，注释该写在脚本里）。

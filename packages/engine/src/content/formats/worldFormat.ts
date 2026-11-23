@@ -16,6 +16,11 @@ export interface WorldLayer {
   readonly name: string;
   /** 流式源到格子（XZ 上的方块）的距离不超过它（米）就加载；超过它的 1.25 倍才卸载（免得在边上来回加载）。 */
   readonly loadRadius: number;
+  /**
+   * 格子还没读到时在地面上先画一块和格子一样大的平板（World 的加载骨架，world/WorldPlaceholders.ts）：y 是平板的高度（默认 0），
+   * color 是线性的颜色（默认中灰）。不写就不画：只给铺满的图层（地面）写，不知道高度的内容不乱画。
+   */
+  readonly placeholder?: { readonly y?: number; readonly color?: readonly [number, number, number] };
 }
 
 export interface WorldFile {
@@ -62,6 +67,7 @@ export function checkWorldFile(file: unknown, where: string): WorldFile {
     if (!LAYER_NAME.test(layer.name ?? '')) throw new Error(`${where}: layer name '${layer.name}' may only use letters, digits, '-' and '_'`);
     if (names.has(layer.name)) throw new Error(`${where}: layer '${layer.name}' is listed twice`);
     if (!(layer.loadRadius > 0)) throw new Error(`${where}: layer '${layer.name}' needs a positive loadRadius`);
+    if (layer.placeholder !== undefined && (typeof layer.placeholder !== 'object' || layer.placeholder === null || (layer.placeholder.color !== undefined && layer.placeholder.color.length !== 3))) throw new Error(`${where}: layer '${layer.name}': placeholder is { y?, color?: [r, g, b] }`);
     names.add(layer.name);
   }
   for (const [layer, cells] of Object.entries(world.cells ?? {})) {

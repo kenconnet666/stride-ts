@@ -5,7 +5,15 @@
  "layers": [
   {
    "name": "ground",
-   "loadRadius": 1024
+   "loadRadius": 1024,
+   "placeholder": {
+    "y": 0,
+    "color": [
+     0.25,
+     0.27,
+     0.3
+    ]
+   }
   },
   {
    "name": "props",

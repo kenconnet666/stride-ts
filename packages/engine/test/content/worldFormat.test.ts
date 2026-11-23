@@ -29,6 +29,17 @@ describe('世界的格子', () => {
   });
 });
 
+describe('图层的占位', () => {
+  test('placeholder 可选，写了要 { y?, color?: [r, g, b] }', () => {
+    const layers = (placeholder: unknown) => ({ ...world, layers: [{ name: 'ground', loadRadius: 800, placeholder }], cells: {} });
+    expect(checkWorldFile(layers({ y: 2, color: [0.2, 0.2, 0.2] }), 'w').layers[0]!.placeholder).toEqual({ y: 2, color: [0.2, 0.2, 0.2] });
+    expect(checkWorldFile(layers({}), 'w').layers[0]!.placeholder).toEqual({});
+    expect(() => checkWorldFile(layers({ color: [1, 1] }), 'w')).toThrow(/placeholder/);
+    expect(() => checkWorldFile(layers(5), 'w')).toThrow(/placeholder/);
+    expect(checkWorldFile(world, 'w').layers[0]!.placeholder).toBeUndefined();
+  });
+});
+
 describe('往世界里放实体', () => {
   const at = (id: string, parent: string | null, position: [number, number, number]) => ({ id, name: id, parent, position, rotation: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number], components: {} });
 

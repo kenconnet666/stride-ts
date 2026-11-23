@@ -17,6 +17,7 @@ import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
 import type { SceneInstance } from '../content/ContentManager';
 import { cellOrigin, distanceToCell, worldCellPath, type WorldFile } from '../content/formats/worldFormat';
+import { WorldPlaceholders } from './WorldPlaceholders';
 
 /** 流式源：世界的格子按它（和主画面的相机）附近加载。玩家、载具、要提前加载的远处的过场相机上放一个。 */
 export const StreamingSource = component('StreamingSource', {
@@ -36,6 +37,17 @@ interface CellState {
   readonly path: string;
   /** 加载好了是场景；还在读是 undefined。 */
   scene: SceneInstance | undefined;
+}
+
+/** 一个要的格子（流式源的加载半径里有内容的）和它现在的状态：排队（还没开始读，同时最多读 MAX_LOADING 个）、在读、好了。 */
+export interface WorldCellView {
+  readonly key: string;
+  readonly layer: string;
+  readonly x: number;
+  readonly z: number;
+  readonly state: 'queued' | 'loading' | 'ready';
+  /** 到最近的流式源的距离（米）。 */
+  readonly distance: number;
 }
 
 /** 一个流式源：XZ 上的位置和加载半径的倍数。 */
@@ -64,6 +76,20 @@ export class WorldStreaming {
   /** 一共加载、卸载了几次格子（统计）。 */
   loads = 0;
   unloads = 0;
+  /** 上一帧要的格子（近的在前）和它们的状态；加载骨架、进度显示、调试命令读它。 */
+  cellStates: readonly WorldCellView[] = [];
+  readonly #placeholders = new WorldPlaceholders();
+
+  /** 要的格子里：好了几个、在读几个、排队几个，和占位的个数。 */
+  get stats(): { wanted: number; ready: number; loading: number; queued: number; placeholders: number } {
+    let ready = 0, loading = 0, queued = 0;
+    for (const cell of this.cellStates) {
+      if (cell.state === 'ready') ready++;
+      else if (cell.state === 'loading') loading++;
+      else queued++;
+    }
+    return { wanted: this.cellStates.length, ready, loading, queued, placeholders: this.#placeholders.count };
+  }
 
   readonly #collectSources = system('WorldStreaming.sources', {
     with: { source: StreamingSource, transform: Transform },
@@ -125,6 +151,8 @@ export class WorldStreaming {
     this.#generation++;
     for (const cell of this.#cells.values()) if (cell.scene) game.unloadScene(cell.scene);
     this.#cells.clear();
+    this.cellStates = [];
+    this.#placeholders.clear();
     this.file = undefined;
     this.path = undefined;
     this.root = undefined;
@@ -194,6 +222,12 @@ export class WorldStreaming {
       loading++;
       this.#loadCell(game, cell.key, cell.layer, cell.x, cell.z);
     }
+    // 状态给界面和占位用：要的格子，近的在前
+    this.cellStates = wanted.map((cell): WorldCellView => {
+      const state = this.#cells.get(cell.key);
+      return { key: cell.key, layer: cell.layer, x: cell.x, z: cell.z, distance: cell.distance, state: state?.scene ? 'ready' : state ? 'loading' : 'queued' };
+    });
+    this.#placeholders.sync(game, file, this.cellStates.map((cell) => ({ key: cell.key, layer: cell.layer, x: cell.x, z: cell.z, ready: cell.state === 'ready' })));
   }
 
   #loadCell(game: Game, key: string, layer: string, x: number, z: number): void {

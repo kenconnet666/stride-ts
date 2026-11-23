@@ -31,7 +31,8 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
     return {
       world: world.path ?? null, cellSize: world.file?.cellSize, layers: world.file?.layers,
       loaded: world.loaded, loading: world.loading, sources: world.sources.map((source) => [Math.round(source.x), Math.round(source.z)]),
-      loads: world.loads, unloads: world.unloads,
+      loads: world.loads, unloads: world.unloads, stats: world.stats,
+      ...(args['cells'] === true ? { cells: world.cellStates.map((cell) => `${cell.state} ${cell.key} ${Math.round(cell.distance)}m`) } : {}),
     };
   });
   debug.command('terrain', 'Vector terrain (game.terrain, Terrain components): per terrain entity, how many tiles are drawn, cached and being evaluated. args: height ([x, z] in world coordinates) also reports the ground height there for the first terrain.', (args) => {

@@ -56,7 +56,7 @@ export interface EditorMessages {
   readonly exitFullscreen: string;
   readonly openDocuments: string;
   readonly selectedCount: (n: number) => string;
-  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string; readonly library: string; readonly uv: string };
+  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string; readonly library: string; readonly uv: string; readonly table: string };
   readonly language: string;
   readonly frameGuide: string;
   readonly frameGuideOff: string;
@@ -240,6 +240,15 @@ export interface EditorMessages {
   readonly particlePause: string;
   readonly particleRestart: string;
   readonly particleSpeed: string;
+  readonly tableNone: string;
+  readonly tableNoColumns: string;
+  readonly tableToolbar: string;
+  readonly tableAddRow: string;
+  readonly tableDeleteRows: (count: number) => string;
+  readonly tableCount: (rows: number, columns: number) => string;
+  readonly tableCell: string;
+  readonly tableIdEmpty: string;
+  readonly tableIdTaken: (id: string) => string;
   readonly particleSolo: string;
   readonly particleSoloHint: string;
   readonly particleNoSystem: string;
@@ -367,7 +376,7 @@ const zhCN: EditorMessages = {
   exitFullscreen: '退出全屏',
   openDocuments: '打开的文档',
   selectedCount: (n) => `选中 ${n} 个`,
-  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表', library: '库', uv: 'UV' },
+  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表', library: '库', uv: 'UV', table: '数据表' },
   language: '界面语言',
   frameGuide: '画幅参考线（视口上框出画幅和安全框，构图用）',
   frameGuideOff: '画幅：关',
@@ -541,6 +550,15 @@ const zhCN: EditorMessages = {
   particlePause: '暂停',
   particleRestart: '从头放',
   particleSpeed: '播放速度',
+  tableNone: '在资源浏览器里选一张数据表',
+  tableNoColumns: '这张表还没有列：在属性面板的"列"里加',
+  tableToolbar: '数据表',
+  tableAddRow: '加一行',
+  tableDeleteRows: (count) => (count > 0 ? `删掉 ${count} 行` : '删掉勾选的行'),
+  tableCount: (rows, columns) => `${rows} 行 × ${columns} 列`,
+  tableCell: '格子的值',
+  tableIdEmpty: 'id 不能是空的',
+  tableIdTaken: (id) => `id "${id}" 已经有了`,
   particleSolo: '只看这个',
   particleSoloHint: '视口里只放正在编辑的这个发射器',
   particleNoSystem: '选中一个有粒子系统的实体，在属性面板上点"粒子编辑器"',
@@ -680,7 +698,7 @@ const enUS: EditorMessages = {
   exitFullscreen: 'Exit full screen',
   openDocuments: 'Open documents',
   selectedCount: (n) => `${n} selected`,
-  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet', library: 'Library', uv: 'UV' },
+  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet', library: 'Library', uv: 'UV', table: 'Data table' },
   language: 'Interface language',
   frameGuide: 'Frame guide (the frame and safe areas over the viewport, for composing shots)',
   frameGuideOff: 'Frame: off',
@@ -854,6 +872,15 @@ const enUS: EditorMessages = {
   particlePause: 'Pause',
   particleRestart: 'Start over',
   particleSpeed: 'Playback speed',
+  tableNone: 'Pick a data table in the asset browser',
+  tableNoColumns: 'This table has no columns yet: add them under Columns in the inspector',
+  tableToolbar: 'Data table',
+  tableAddRow: 'Add row',
+  tableDeleteRows: (count) => (count > 0 ? `Delete ${count} row${count === 1 ? '' : 's'}` : 'Delete checked rows'),
+  tableCount: (rows, columns) => `${rows} rows × ${columns} columns`,
+  tableCell: 'Cell value',
+  tableIdEmpty: 'The id must not be empty',
+  tableIdTaken: (id) => `The id "${id}" is already used`,
   particleSolo: 'Solo',
   particleSoloHint: 'Play only the emitter being edited',
   particleNoSystem: 'Select an entity with a particle system and click "Particle editor" in the inspector',

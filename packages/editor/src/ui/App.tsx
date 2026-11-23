@@ -1,4 +1,4 @@
-import { Clapperboard, FolderTree, Grid2x2, Images, Library, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
+import { Clapperboard, FolderTree, Grid2x2, Images, Library, ListTree, SlidersHorizontal, Sparkles, Table2, Workflow } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Flex, usePersistentState } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -13,6 +13,7 @@ import { LibraryPanel } from './panels/LibraryPanel';
 import { ParticlePanel } from './editors/ParticlePanel';
 import { SceneTree } from './panels/SceneTree';
 import { SpriteSheetPanel } from './editors/SpriteSheetPanel';
+import { TablePanel } from './editors/TablePanel';
 import type { EditorSession } from './session/EditorSession';
 import { TimelinePanel } from './editors/TimelinePanel';
 import { DocumentTabs, MainToolbar, StatusBar, ViewportToolbar } from './workbench/Toolbars';
@@ -138,6 +139,11 @@ export const App = _component(({ session }: { session: EditorSession }) => {
       id: 'sprites', title: t.toolWindows.sprites, icon: Images, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
       available: session.inspected.value?.kind === 'spriteSheet', ...(session.inspected.value ? { detail: session.inspected.value.path } : {}),
       content: () => <SpriteSheetPanel session={session} />,
+    },
+    {
+      id: 'table', title: t.toolWindows.table, icon: Table2, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
+      available: session.inspected.value?.kind === 'table', ...(session.inspected.value ? { detail: session.inspected.value.path } : {}),
+      content: () => <TablePanel session={session} />,
     },
     {
       id: 'uv', title: t.toolWindows.uv, icon: Grid2x2, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,

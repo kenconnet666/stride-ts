@@ -27,9 +27,9 @@ export const TABLE_COLUMN = s.union('type', {
 
 export const TABLE = s.object({
   name: s.string(),
-  columns: s.list(TABLE_COLUMN),
+  columns: s.list(TABLE_COLUMN).label('Table columns'),
   /** 每行：id 加各列的值。 */
-  rows: s.list(s.record()),
+  rows: s.list(s.record()).label('Table rows'),
 });
 
 export type TableFile = InputOf<typeof TABLE>;
@@ -59,7 +59,7 @@ export function checkTable(input: unknown, where: string): { readonly name: stri
     for (const column of file.columns) {
       const value = row[column.name] ?? column.default;
       if (value === undefined) throw new Error(`${at}: '${column.name}' is missing and the column has no default`);
-      const problem = columnProblem(column, value);
+      const problem = tableValueProblem(column, value);
       if (problem) throw new Error(`${at}: '${column.name}' ${problem}`);
       out[column.name] = value;
     }
@@ -68,8 +68,8 @@ export function checkTable(input: unknown, where: string): { readonly name: stri
   return { name: file.name, columns: file.columns, rows };
 }
 
-/** 值不合列的类型时说哪里不对，合适时是 undefined。 */
-function columnProblem(column: TableColumn, value: unknown): string | undefined {
+/** 值不合列的类型时说哪里不对（"should be a number, got …"），合适时是 undefined。编辑器的表格面板改格子时也用它。 */
+export function tableValueProblem(column: TableColumn, value: unknown): string | undefined {
   const isNumber = typeof value === 'number' && Number.isFinite(value);
   switch (column.type) {
     case 'number':

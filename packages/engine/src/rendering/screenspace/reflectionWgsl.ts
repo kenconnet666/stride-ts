@@ -16,6 +16,15 @@ struct Ssr {
   size: vec4f,
 };
 
+/**
+ * 半分辨率的第 t 条反射光线是从哪个整像素出发的：每帧在 2×2 里换一个（屏幕空间的追踪和光追的反射同一套），时间上的累积把四个
+ * 都用上。
+ */
+fn rayPixel(ssr: Ssr, t: vec2i) -> vec2i {
+  let frame = u32(ssr.eye.w);
+  return min(t * 2 + vec2i(i32(frame & 1u), i32((frame >> 1u) & 1u)), vec2i(ssr.size.xy) - 1);
+}
+
 fn worldPosition(ssr: Ssr, uv: vec2f, depth: f32) -> vec3f {
   let clip = ssr.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
   return clip.xyz / clip.w;

@@ -83,24 +83,10 @@ fn rtDirectLight(p: vec3f, n: vec3f) -> vec3f {
     if (rtOccluded(origin, l, ${SHADOW_DISTANCE})) { continue; }
     light += rtLighting.lightColors[i].rgb * nDotL;
   }
-  // 射程里、朝着表面的：先数有几盏
+  // 点光聚光：一遍走完所有的灯，同时做两件事——记下照得到的前几盏（不超过 EXACT 盏时逐盏打阴影射线精确算），和按不算遮挡时的
+  // 贡献加权抽一盏（蓄水池抽样，一个随机数一路缩放着用；多了只给抽中的打阴影射线，乘"总权重 / 它的权重"，期望不变）
   var lit = 0u;
-  for (var i = 0u; i < rtLighting.counts.y; i++) {
-    let local = localLight(i);
-    let at = localLightAt(local, p);
-    if (at.w > 0.0 && dot(n, at.xyz) > 0.0) { lit++; }
-  }
-  if (lit <= ${EXACT_LOCAL_LIGHTS}u) {
-    for (var i = 0u; i < rtLighting.counts.y; i++) {
-      let local = localLight(i);
-      let at = localLightAt(local, p);
-      let nDotL = dot(n, at.xyz);
-      if (at.w <= 0.0 || nDotL <= 0.0) { continue; }
-      if (rtOccluded(origin, at.xyz, distance(local.position.xyz, p) - 1e-3)) { continue; }
-      light += local.color.rgb * nDotL * at.w;
-    }
-    return light;
-  }
+  var exact = array<u32, ${EXACT_LOCAL_LIGHTS}>();
   var u = rtRandom(p);
   var total = 0.0;
   var chosen = 0u;
@@ -111,6 +97,8 @@ fn rtDirectLight(p: vec3f, n: vec3f) -> vec3f {
     let at = localLightAt(local, p);
     let nDotL = dot(n, at.xyz);
     if (at.w <= 0.0 || nDotL <= 0.0) { continue; }
+    if (lit < ${EXACT_LOCAL_LIGHTS}u) { exact[lit] = i; }
+    lit++;
     let c = local.color.rgb * nDotL * at.w;
     let w = max(dot(c, vec3f(0.2126, 0.7152, 0.0722)), 1e-8);
     total += w;
@@ -124,6 +112,15 @@ fn rtDirectLight(p: vec3f, n: vec3f) -> vec3f {
     } else {
       u = (u - keep) / (1.0 - keep);
     }
+  }
+  if (lit <= ${EXACT_LOCAL_LIGHTS}u) {
+    for (var k = 0u; k < lit; k++) {
+      let local = localLight(exact[k]);
+      let at = localLightAt(local, p);
+      if (rtOccluded(origin, at.xyz, distance(local.position.xyz, p) - 1e-3)) { continue; }
+      light += local.color.rgb * dot(n, at.xyz) * at.w;
+    }
+    return light;
   }
   if (chosenWeight > 0.0) {
     let local = localLight(chosen);

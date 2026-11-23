@@ -27,7 +27,9 @@ function traverse(nodes: Uint32Array, triangles: Float32Array, o: number[], d: n
   const words = new Uint32Array(triangles.buffer, triangles.byteOffset, triangles.length);
   let best = { t: Infinity, triangle: -1 };
   const stack = [0];
-  while (stack.length > 0) {
+  // 布局对不上时下标会指回去、死循环：同步的循环 vitest 的超时打断不了，自己限步数
+  for (let steps = 0; stack.length > 0; steps++) {
+    if (steps > 100_000) throw new Error('BVH traversal did not finish: node layout does not match');
     const at = stack.pop()! * 32;
     for (let c = 0; c < 4; c++) {
       if (f[at + c]! > f[at + 12 + c]!) continue;

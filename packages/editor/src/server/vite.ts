@@ -7,7 +7,11 @@
  *   所以和游戏页面同源——界面把游戏页面嵌在 iframe 里，直接拿它的 `game.editor`。第二个服务器第一次有人打开编辑器时才建：
  *   界面用 Vue 和 vue-tsx-pro 的编译插件，游戏页面不经过它，不开编辑器的时候一点开销也没有。
  */
+import { existsSync } from 'node:fs';
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { stripJsonc } from '@stride-ts/engine/content-format';
 import type { Plugin, ViteDevServer } from 'vite';
 import { EDITOR_ASSETS_EVENT, EDITOR_UI_PATH } from '../shared/protocol.ts';
 import { EditorBackend } from './backend/EditorBackend.ts';
@@ -53,6 +57,46 @@ export function strideAssetPackages(): Plugin {
     async configResolved(config) {
       const project = await loadProject(config.root);
       await syncAssetPackages(project.root, project.contentDir);
+    },
+  };
+}
+
+/**
+ * 带注释的 JSON 资源（`.jsonc`，人手写的）给页面时换成标准的 JSON：运行时只按 `.json` 读。开发服务器上，请求的 `.json` 不在、
+ * 同名的 `.jsonc` 在时，去掉注释、尾逗号发出去；构建完把输出目录里的 `.jsonc` 换成同名的 `.json`（在压缩之前，压缩看得到它）。
+ */
+export function strideJsonc(): Plugin {
+  let outDir = '';
+  return {
+    name: 'stride-jsonc',
+    configResolved(config) {
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const url = request.url?.split('?')[0];
+        if (!url?.endsWith('.json') || !server.config.publicDir) return next();
+        // Vite 的 publicDir 是正斜杠的，统一成本机的写法再比（别让 .. 跑出静态目录）
+        const root = path.resolve(server.config.publicDir), file = path.resolve(root, `.${decodeURIComponent(url)}`);
+        if (!file.startsWith(root + path.sep) || existsSync(file) || !existsSync(`${file}c`)) return next();
+        readFile(`${file}c`, 'utf8').then((text) => {
+          response.setHeader('Content-Type', 'application/json');
+          response.end(stripJsonc(text));
+        }, next);
+      });
+    },
+    closeBundle: {
+      order: 'pre',
+      sequential: true,
+      async handler() {
+        const entries = await readdir(outDir, { recursive: true, withFileTypes: true }).catch(() => []);
+        for (const entry of entries) {
+          if (!entry.isFile() || !entry.name.endsWith('.jsonc')) continue;
+          const file = path.join(entry.parentPath, entry.name);
+          if (!existsSync(file.slice(0, -1))) await writeFile(file.slice(0, -1), stripJsonc(await readFile(file, 'utf8')));
+          await rm(file);
+        }
+      },
     },
   };
 }

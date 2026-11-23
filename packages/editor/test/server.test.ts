@@ -99,6 +99,10 @@ describe('资源数据库', () => {
     expect(classifyAssetFile('a/Body.37.glyphs')).toEqual({ kind: 'font', path: 'a/Body', part: true });
     expect(classifyAssetFile('a/Jump.ogg')).toEqual({ kind: 'audio', path: 'a/Jump', part: false });
     expect([classifyAssetFile('a/notes.txt'), classifyAssetFile('a/plain.json'), classifyAssetFile('.model')]).toEqual([undefined, undefined, undefined]);
+    // 人手写、带注释的 JSON 资源（.jsonc）同样认
+    expect(classifyAssetFile('Game/Main.scene.jsonc')).toEqual({ kind: 'scene', path: 'Game/Main', part: false });
+    expect(classifyAssetFile('Shop/Deli.shelf.jsonc')).toEqual({ kind: 'shelf', path: 'Shop/Deli', part: false });
+    expect(classifyAssetFile('a/B.modelc')).toBeUndefined();
   });
 
   test('扫目录：资源、它的文件、谁引用了谁、指向不存在的资源的引用；读不了的记下原因', async () => {
@@ -264,6 +268,19 @@ describe('后端（EditorBackend）', () => {
     const created = await api('/asset?kind=prefab&path=Game/Prefabs/Bullet', { method: 'PUT', body: JSON.stringify({ name: 'Bullet', entities: [] }) });
     expect(created.status).toBe(200);
     expect(await readFile(path.join(directory, 'src', 'assets.gen.ts'), 'utf8')).toContain("Bullet: assetRef<'prefab', Prefab0>('prefab', \"Game/Prefabs/Bullet\"),");
+  });
+
+  test('带注释的 .jsonc 资源：读得出来（注释、尾逗号去掉）、引用照算，存回去还是那个 .jsonc（注释不留），不另建 .json', async () => {
+    const file = path.join(directory, 'public/content/Game/Notes.material.jsonc');
+    await writeFile(file, '{\n  // 给人看的说明\n  "name": "Notes", /* 红 */\n  "baseColor": [1, 0, 0, 1],\n}\n');
+    backend.fileChanged(file);
+    await backend.settled();
+    expect(backend.database.get('material', 'Game/Notes')?.files).toEqual(['Game/Notes.material.jsonc']);
+    expect(await (await api('/asset?kind=material&path=Game/Notes')).json()).toEqual({ name: 'Notes', baseColor: [1, 0, 0, 1] });
+    const saved = await api('/asset?kind=material&path=Game/Notes', { method: 'PUT', body: JSON.stringify({ name: 'Notes', baseColor: [0, 1, 0, 1] }) });
+    expect(saved.status).toBe(200);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ name: 'Notes', baseColor: [0, 1, 0, 1] });
+    expect(existsSync(path.join(directory, 'public/content/Game/Notes.material.json'))).toBe(false);
   });
 
   test('新建资源（create=1）：已经有了的不覆盖（409）；JSON 写的模型能建、能读回来，参数不对的拒绝', async () => {

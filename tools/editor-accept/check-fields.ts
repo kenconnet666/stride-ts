@@ -5,13 +5,13 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkEntity, checkFields, SCENE_FIELDS } from '@stride-ts/engine/editor-fields';
-import type { SceneEntityFile } from '@stride-ts/engine/content-format';
+import { parseJsonc, type SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS } from '@stride-ts/engine/editor-document';
 
 const apps = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps');
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
   const full = path.join(dir, name);
-  return statSync(full).isDirectory() ? walk(full) : /\.(scene|prefab)\.json$/.test(name) ? [full] : [];
+  return statSync(full).isDirectory() ? walk(full) : /\.(scene|prefab)\.jsonc?$/.test(name) ? [full] : [];
 });
 
 const wanted = process.argv.slice(2);
@@ -28,7 +28,7 @@ for (const app of readdirSync(apps)) {
   const issues: string[] = [];
   let entities = 0;
   for (const file of files) {
-    const json = JSON.parse(readFileSync(file, 'utf8')) as { entities: SceneEntityFile[] } & Record<string, unknown>;
+    const json = parseJsonc(readFileSync(file, 'utf8'), file) as { entities: SceneEntityFile[] } & Record<string, unknown>;
     for (const entity of json.entities) {
       entities++;
       for (const issue of checkEntity(entity)) issues.push(`${path.relative(content, file)}: ${issue}`);

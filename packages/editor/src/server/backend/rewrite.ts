@@ -4,7 +4,7 @@
  * 只改那几处；JSON 照导入器的格式（缩进 1 格）写回。
  */
 import { readFile } from 'node:fs/promises';
-import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, isProceduralModel, parseProceduralModel, type TextureEncoding } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, isProceduralModel, parseProceduralModel, type TextureEncoding, parseJsonc } from '@stride-ts/engine/content-format';
 import { assetReferenceSlots, type AssetKind } from '@stride-ts/engine/content-references';
 import { assetKey, ownBuffer } from './AssetDatabase.ts';
 
@@ -33,8 +33,8 @@ export async function rewriteReferences(kind: AssetKind, file: string, changes: 
     const animation = { ...decodeAnimation(ownBuffer(await readFile(file)), file) };
     return apply(kind, animation, changes) ? encodeAnimation(animation) : undefined;
   }
-  if (!file.endsWith('.json')) return undefined;
-  const content: unknown = JSON.parse(await readFile(file, 'utf8'));
+  if (!/\.jsonc?$/.test(file)) return undefined;
+  const content = parseJsonc(await readFile(file, 'utf8'), file);
   return apply(kind, content, changes) ? JSON.stringify(content, null, 1) : undefined;
 }
 
@@ -43,8 +43,8 @@ export async function rewriteReferences(kind: AssetKind, file: string, changes: 
  * 返回改好的内容，没有要改的是 undefined。没写编码的引用按 KTX2 算（TextureRef 的默认）。
  */
 export async function rewriteImageEncoding(kind: AssetKind, file: string, imagePath: string, encoding: TextureEncoding): Promise<string | undefined> {
-  if (!file.endsWith('.json')) return undefined;
-  const content: unknown = JSON.parse(await readFile(file, 'utf8'));
+  if (!/\.jsonc?$/.test(file)) return undefined;
+  const content = parseJsonc(await readFile(file, 'utf8'), file);
   let changed = false;
   for (const slot of assetReferenceSlots(kind, content)) {
     if (slot.kind !== 'image' || slot.path !== imagePath) continue;

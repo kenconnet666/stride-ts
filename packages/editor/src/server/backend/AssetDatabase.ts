@@ -7,7 +7,7 @@
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { decodeAnimation, decodeModel, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, EXTENSIONS, isProceduralModel, parseJsonc, parseProceduralModel, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
 import { assetKindExtension, assetReferences, customAssetKinds, type AssetKind, type AssetReference } from '@stride-ts/engine/content-references';
 import type { AssetChanges, AssetRecord } from '../../shared/protocol.ts';
 
@@ -24,12 +24,17 @@ const BUILTIN_EXTENSIONS: readonly (readonly [extension: string, kind: AssetKind
   ...MODEL_SOURCE_EXTENSIONS.map((extension) => [extension, 'modelSource'] as const),
 ];
 
-/** 扩展名 → 种类（内置的加上登记的自定义种类），长的在前：`.material.json` 要先于别的 `.json` 认出来。登记变了重建。 */
+/**
+ * 扩展名 → 种类（内置的加上登记的自定义种类），长的在前：`.material.json` 要先于别的 `.json` 认出来。JSON 的种类也认 `.jsonc`
+ * （人手写、带注释的，`.shelf.jsonc`）。登记变了重建。
+ */
 let kindByExtension: { readonly custom: number; readonly table: readonly (readonly [string, AssetKind])[] } | undefined;
 function extensionTable(): readonly (readonly [string, AssetKind])[] {
   const custom = customAssetKinds();
   if (kindByExtension?.custom !== custom.size) {
-    const table = [...BUILTIN_EXTENSIONS, ...[...custom].map(([kind, { extension }]) => [extension, kind as AssetKind] as const)].sort((a, b) => b[0].length - a[0].length);
+    const table = [...BUILTIN_EXTENSIONS, ...[...custom].map(([kind, { extension }]) => [extension, kind as AssetKind] as const)]
+      .flatMap(([extension, kind]) => (extension.endsWith('.json') ? [[extension, kind], [`${extension}c`, kind]] as const : [[extension, kind]] as const))
+      .sort((a, b) => b[0].length - a[0].length);
     kindByExtension = { custom: custom.size, table };
   }
   return kindByExtension.table;
@@ -85,6 +90,11 @@ export class AssetDatabase {
 
   get size(): number {
     return this.#entries.size;
+  }
+
+  /** 一个资源的主文件（相对内容目录）：`.json` 和 `.jsonc` 是哪个就是哪个；没有这个资源、没有主文件时是 undefined。 */
+  mainFile(kind: AssetKind, assetPath: string): string | undefined {
+    return this.#entries.get(assetKey(kind, assetPath))?.main;
   }
 
   get(kind: AssetKind, assetPath: string): AssetRecord | undefined {
@@ -211,8 +221,8 @@ export class AssetDatabase {
         entry.references = assetReferences('model', entry.path, model);
       } else if (entry.kind === 'animation') {
         entry.references = assetReferences('animation', entry.path, decodeAnimation(ownBuffer(await readFile(absolute)), absolute));
-      } else if (entry.main!.endsWith('.json')) {
-        const file: unknown = JSON.parse(await readFile(absolute, 'utf8'));
+      } else if (/\.jsonc?$/.test(entry.main!)) {
+        const file: unknown = parseJsonc(await readFile(absolute, 'utf8'), absolute);
         entry.references = assetReferences(entry.kind, entry.path, file);
         if (entry.kind === 'ui') entry.handle = (file as UIFile).root !== undefined ? 'uiPage' : 'uiLibrary';
       }

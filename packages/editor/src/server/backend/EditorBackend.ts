@@ -9,7 +9,7 @@ import { mkdir, readdir, readFile, rename, rm, rmdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { checkWorldFile, placeInCells, worldCellPath, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type SplatEditFile, type TextureEncoding, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type SplatEditFile, type TextureEncoding, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer, parseJsonc } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { alignSplats, concatSplats, decodeSplatSource, partTransform, transformSplats, type SplatTransform } from '@stride-ts/engine/splat-edit';
 import { brushToPoly, importSourceModel } from '@stride-ts/pipeline';
@@ -95,7 +95,7 @@ export class EditorBackend {
       if (!isBakedKind(kind) || kind === 'modelImport' || kind === 'imageImport') continue;
       const key = `${kind}:${record.path}`;
       try {
-        const content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
+        const content = await this.#readJson(kind, record.path);
         const hash = this.#bakeHash(content), known = this.#bakeHashes[key];
         // 生成的模型不在（包装、货架这类生成的大文件不进 git，新检出里没有）：源文件没变也要烘
         const exists = this.#generatedExists(kind, record.path);
@@ -272,7 +272,7 @@ export class EditorBackend {
     try {
       const bytes = await readFile(file);
       if (kind === 'model' && !isProceduralModel(bytes)) throw new HttpError(400, `model ${assetPath} is a binary model (imported); only JSON models (procedural shapes) can be read and saved`);
-      return JSON.parse(bytes.toString('utf8')) as unknown;
+      return parseJsonc(bytes.toString('utf8'), file);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new HttpError(404, `no ${kind} asset ${assetPath}`);
       throw error;
@@ -536,10 +536,20 @@ export class EditorBackend {
     return { path: path.relative(this.project.root, file).split(path.sep).join('/'), bytes: bytes.length };
   }
 
-  /** 一个 JSON 资源的主文件（绝对路径）；种类不对、路径想跑出内容目录时报错。 */
+  /**
+   * 一个 JSON 资源的主文件（绝对路径）：已有的是 `.json` 还是 `.jsonc` 就用哪个（存回 `.jsonc` 时注释不保留），没有的是 `.json`；
+   * 种类不对、路径想跑出内容目录时报错。
+   */
   #jsonFile(kind: AssetKind, assetPath: string): string {
     if (!isJsonAssetKind(kind)) throw new HttpError(400, `${kind} assets cannot be read or saved through the editor API (not a JSON asset)`);
-    return path.join(this.project.contentDir, assetFileName(kind as Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, checkContentPath(assetPath)));
+    const checked = checkContentPath(assetPath);
+    return path.join(this.project.contentDir, this.database.mainFile(kind, checked) ?? assetFileName(kind as Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, checked));
+  }
+
+  /** 读一个 JSON 资源（`.json` 或带注释的 `.jsonc`）。 */
+  async #readJson(kind: AssetKind, assetPath: string): Promise<unknown> {
+    const file = this.#jsonFile(kind, assetPath);
+    return parseJsonc(await readFile(file, 'utf8'), file);
   }
 
   #relative(file: string): string {
@@ -557,7 +567,7 @@ export class EditorBackend {
       const kind = record.kind;
       if (!isBakedKind(kind)) continue;
       try {
-        const key = `${kind}:${record.path}`, content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
+        const key = `${kind}:${record.path}`, content = await this.#readJson(kind, record.path);
         if (JSON.stringify(content) === this.#bakes.get(key)) continue;
         if (await this.#bakedElsewhere(key, kind, record.path, content)) {
           this.#bakes.set(key, JSON.stringify(content));
@@ -578,8 +588,7 @@ export class EditorBackend {
       // REBAKE_WITH 里列的都是有主文件、会烘的种类
       const bakedKind = kind as BakedKind;
       try {
-        const text = await readFile(path.join(this.project.contentDir, assetFileName(bakedKind, user)), 'utf8');
-        baked.push(...(await this.#bake(bakedKind, user, JSON.parse(text))).files);
+        baked.push(...(await this.#bake(bakedKind, user, await this.#readJson(bakedKind, user))).files);
       } catch (error) {
         console.warn(`[stride-editor] ${kind} ${user}: ${(error as Error).message}; its model is left as it was`);
       }
@@ -613,7 +622,11 @@ export class EditorBackend {
       await this.#recordBake(`${kind}:${assetPath}`, content);
       return { files: written, warnings, animations };
     }
-    const read = (file: string) => readFile(path.join(this.project.contentDir, file));
+    // 读 `.json` 时没有就找同名的 `.jsonc`（人手写、带注释的），烘焙器那边用 parseJsonc 解
+    const read = (file: string) => readFile(path.join(this.project.contentDir, file)).catch(async (error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT' || !file.endsWith('.json')) throw error;
+      return readFile(path.join(this.project.contentDir, `${file}c`)).catch(() => Promise.reject(error));
+    });
     const generator = generatorFor(kind);
     if (!generator) throw new Error(`${where}: no baker for asset kind '${kind}'`);
     const files = await generator.bake({ tools, read }, content, assetPath, where);

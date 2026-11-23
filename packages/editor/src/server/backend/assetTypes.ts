@@ -20,6 +20,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { scriptKey } from '@stride-ts/engine/content-prefabs';
 import type { PrefabFile, SceneEntityFile } from '@stride-ts/engine/content-format';
+import { parseJsonc } from '@stride-ts/engine/content-format';
 import type { AssetRecord } from '../../shared/protocol.ts';
 
 /**
@@ -214,7 +215,7 @@ async function readStructures(file: string, assets: readonly AssetRecord[], cont
   for (const asset of assets) {
     if (asset.handle !== 'prefab' || asset.files[0] === undefined) continue;
     try {
-      prefabs.set(asset.path, JSON.parse(await readFile(path.join(contentDir, asset.files[0]), 'utf8')) as PrefabFile);
+      prefabs.set(asset.path, parseJsonc(await readFile(path.join(contentDir, asset.files[0]!), 'utf8'), asset.files[0]) as PrefabFile);
     } catch {
       // 写坏了的预制体：数据库会报，句柄照常生成，只是不带结构
     }

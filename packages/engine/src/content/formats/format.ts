@@ -10,7 +10,9 @@
  * - 贴图：`<路径>.ktx2`（KTX2 加 Basis，运行时按设备转码，显存最省），或者下载最小的 `.svg`（矢量，加载时按指定尺寸
  *   栅格化）、`.png`/`.jpg`（浏览器解码），后两种在 GPU 上生成 mip。用哪种写在材质的贴图槽里（TextureSlot.encoding）。
  * - 材质 `<路径>.material.json`、天空盒 `<路径>.skybox.json`、场景 `<路径>.scene.json`、预制体 `<路径>.prefab.json`：
- *   JSON。场景以后改成二进制，物理部分直接是原生能读的布局。
+ *   JSON。场景以后改成二进制，物理部分直接是原生能读的布局。人手写的 JSON 资源也可以是 `.jsonc`（`<路径>.scene.jsonc`：允许
+ *   注释、尾逗号，parseJsonc 解）：Node 那边读的时候两种都认，开发服务器、构建把 `.jsonc` 换成同名的 `.json`
+ *   给页面，运行时只读 `.json`。
  *
  * 分成三个文件，这里汇总导出：binaryFormat.ts（二进制容器和顶点布局）、assetFormat.ts（材质、贴图、精灵表、字体、UI 这些
  * JSON 的资源）、sceneFormat.ts（场景、预制体、实体的组件、场景级的设置），modelFile.ts（.model 的两种写法）。
@@ -36,3 +38,4 @@ export * from './splatEditFormat.ts';
 export * from './signFormat.ts';
 export * from './ceilingFormat.ts';
 export * from './fixtureFormat.ts';
+export * from '../../data/jsonc.ts';

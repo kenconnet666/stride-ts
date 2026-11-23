@@ -5,6 +5,7 @@
  * - 调试中枢（@stride-ts/cli 的 strideDebug）：游戏打开 debug 后连上来，`stride` 命令就能查看和操作它；
  * - 编辑器（@stride-ts/editor 的 strideEditor，只在开发服务器上）：界面在 `/__stride/editor/`；资源数据库、保存接口，按内容目录生成
  *   `src/assets.gen.ts`；依赖的资源包（@stride-ts/assets）开发时由编辑器后端、构建前由 strideAssetPackages 同步进内容目录；
+ * - 带注释的 JSON 资源（`.jsonc`）开发服务器、构建都换成同名的 `.json` 给页面（strideJsonc）；
  * - 构建后给 dist 里每个压得小的文件旁边写 .br 和 .gz（precompress）。静态服务器打开预压缩文件的支持
  *   （nginx 的 brotli_static/gzip_static、Caddy 的 precompressed 等）就直接发它们，不依赖托管平台在线压缩。
  */
@@ -13,7 +14,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { brotliCompress, constants, gzip } from 'node:zlib';
 import { strideDebug } from '@stride-ts/cli/vite';
-import { strideAssetPackages, strideEditor } from '@stride-ts/editor/vite';
+import { strideAssetPackages, strideEditor, strideJsonc } from '@stride-ts/editor/vite';
 import { defineConfig, mergeConfig, type Plugin, type UserConfig } from 'vite';
 
 const crossOriginIsolation = {
@@ -29,7 +30,7 @@ export function strideApp(port: number, extra: UserConfig = {}): UserConfig {
     worker: { format: 'es' },
     optimizeDeps: { exclude: ['@stride-ts/native'] },
     build: { target: 'es2024' },
-    plugins: [strideDebug(), strideEditor(), strideAssetPackages(), precompress()],
+    plugins: [strideDebug(), strideEditor(), strideAssetPackages(), strideJsonc(), precompress()],
   }), extra);
 }
 

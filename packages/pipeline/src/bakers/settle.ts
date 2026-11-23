@@ -5,7 +5,7 @@
  */
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
-import { EXTENSIONS, type ProductFile } from '@stride-ts/engine/content-format';
+import { EXTENSIONS, parseJsonc, type ProductFile } from '@stride-ts/engine/content-format';
 import { foodPieces, foodSpawn, productDesign, productMesh, productText, type FoodPiecePose, type PileBoard, type PlacedProduct, type TextFont } from '@stride-ts/engine/modeling';
 import { loadTextFont } from './textFont.ts';
 
@@ -23,7 +23,7 @@ export async function readProducts(paths: Iterable<string>, readContent: (path: 
   for (const path of paths) {
     if (products.has(path)) continue;
     try {
-      products.set(path, JSON.parse(new TextDecoder().decode(await readContent(path + EXTENSIONS.product))) as ProductFile);
+      products.set(path, parseJsonc(new TextDecoder().decode(await readContent(path + EXTENSIONS.product)), path + EXTENSIONS.product) as ProductFile);
     } catch (error) {
       throw new Error(`${where}: cannot read the product ${path}: ${(error as Error).message}`, { cause: error });
     }

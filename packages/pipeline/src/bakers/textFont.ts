@@ -1,14 +1,14 @@
 /**
  * 烘焙时读字体资源（3D 文字、包装的标签共用）：字体的 FontFile 加上要用到的字形块，从内容目录读，换成引擎排版用的 TextFont。
  */
-import { decodeGlyphBlock, EXTENSIONS, type FontFile, type GlyphBlock } from '@stride-ts/engine/content-format';
+import { decodeGlyphBlock, EXTENSIONS, parseJsonc, type FontFile, type GlyphBlock } from '@stride-ts/engine/content-format';
 import type { TextFont } from '@stride-ts/engine/modeling';
 
 /** 读字体 font（内容路径）和 text 里的字所在的字形块（加上默认字符的）；读不到时报错（where 是报错的前缀）。 */
 export async function loadTextFont(font: string, text: string, readContent: (path: string) => Promise<Uint8Array>, where: string): Promise<TextFont> {
   let file: FontFile;
   try {
-    file = JSON.parse(new TextDecoder().decode(await readContent(font + EXTENSIONS.font))) as FontFile;
+    file = parseJsonc(new TextDecoder().decode(await readContent(font + EXTENSIONS.font)), font + EXTENSIONS.font) as FontFile;
   } catch (error) {
     throw new Error(`${where}: cannot read the font ${font}: ${(error as Error).message}`, { cause: error });
   }

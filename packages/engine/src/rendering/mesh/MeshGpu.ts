@@ -92,6 +92,8 @@ interface GpuMesh {
   effectVersion: number;
   readonly bindGroup: GPUBindGroup;
   readonly vertices: GPUBuffer;
+  /** 上传的顶点是网格的第几版（动态网格改了就重新上传）。 */
+  vertexVersion: number;
   readonly indices: GPUBuffer;
   readonly indexFormat: GPUIndexFormat;
   readonly indexCount: number;
@@ -863,12 +865,18 @@ export class MeshGpu {
             { binding: 1, resource: { buffer: mesh.data.morph ? this.#createFilled(`${mesh.name} morph`, GPUBufferUsage.STORAGE, mesh.data.morph) : this.#noMorph } },
           ],
         }),
-        vertices: this.#createFilled(`${mesh.name} vertices`, GPUBufferUsage.VERTEX, vertices),
+        vertices: this.#createFilled(`${mesh.name} vertices`, GPUBufferUsage.VERTEX | (mesh.dynamic ? GPUBufferUsage.COPY_DST : 0), vertices),
+        vertexVersion: mesh.vertexVersion,
         indices: this.#createFilled(`${mesh.name} indices`, GPUBufferUsage.INDEX, indices),
         indexFormat: indices instanceof Uint16Array ? 'uint16' : 'uint32',
         indexCount: indices.length,
       };
       this.#meshes.set(mesh, gpu);
+    }
+    if (gpu.vertexVersion !== mesh.vertexVersion) {
+      const { vertices } = mesh.data;
+      this.device.queue.writeBuffer(gpu.vertices, 0, vertices.buffer, vertices.byteOffset, vertices.byteLength);
+      gpu.vertexVersion = mesh.vertexVersion;
     }
     if (effect && (gpu.effect !== effect || gpu.effectVersion !== mesh.effectVersion)) {
       // 网格改过的参数盖在效果的默认值上（NaN 是没改）

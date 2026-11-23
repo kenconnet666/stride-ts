@@ -8,7 +8,7 @@
  * 约束用 `addConstraint`（Stride.BepuPhysics 的约束组件的参数，语义照 Bepu；Bepu 的约束都是软的，这里除了伺服、马达和
  * 距离限制都是刚性的）。每个物理步之前调 `onStep` 登记的回调（Stride 的 ISimulationUpdate.SimulationUpdate）。
  */
-import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore, VehicleDesc, VehicleState, AnimationInstance, RagdollPartDesc } from '@stride-ts/native';
+import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore, VehicleDesc, VehicleState, AnimationInstance, RagdollPartDesc, SoftBodyDesc } from '@stride-ts/native';
 import { PhysicsHit } from '@stride-ts/native';
 import type { Commands } from '../engine/Commands';
 import type { EntityId } from '../data/prop';
@@ -62,6 +62,17 @@ export interface RagdollHandle {
   pose(instance: AnimationInstance, modelToWorld: Float64Array, parents: Int32Array): void;
   /** 给一部分加冲量（世界空间）；-1 是所有部分。 */
   impulse(part: number, impulse: readonly [number, number, number]): void;
+  remove(): void;
+}
+
+/** addSoftBody 建的软体（布料）。 */
+export interface SoftBodyHandle {
+  /** 现在的顶点写进 out（每个顶点 stride 个 float：位置、法线；位置相对返回的原点——质心的世界位置，双精度）。 */
+  vertices(out: Float32Array, stride: number): [number, number, number];
+  /** 固定点这一步走到哪（targets 每个顶点三个数，世界位置）；速度保持到下一次设，跟着锚走的每个物理步都要设（onStep 里）。 */
+  pin(vertices: Uint32Array, targets: Float64Array, timeStep: number): void;
+  /** 这一步的风（米/秒，世界空间）；drag 是 ½·空气密度·阻力系数，约 0.6。每个物理步之前设。 */
+  wind(velocity: readonly [number, number, number], drag: number, timeStep: number): void;
   remove(): void;
 }
 
@@ -407,6 +418,30 @@ export class Simulation {
         removed = true;
         // 车身先被移除（实体销毁）时原生已经一起移除了，这里再移除是空操作
         if (this.#world === world) world.removeVehicle(id);
+      },
+    };
+  }
+
+  /**
+   * 加一个软体（Jolt 的 SoftBody：布料、软的东西），不属于哪个实体：画它的网格由调用的人每帧按 vertices() 更新。一般经 Cloth 脚本用
+   * （physics/Cloth.ts）。
+   */
+  addSoftBody(desc: SoftBodyDesc): SoftBodyHandle {
+    const world = this.#worldOrCreate();
+    const id = world.addSoftBody(desc);
+    let removed = false;
+    return {
+      vertices: (out, stride) => world.softBodyVertices(id, out, stride),
+      pin: (vertices, targets, timeStep) => {
+        if (!removed) world.softBodyPin(id, vertices, targets, timeStep);
+      },
+      wind: (velocity, drag, timeStep) => {
+        if (!removed) world.softBodyWind(id, velocity, drag, timeStep);
+      },
+      remove: () => {
+        if (removed) return;
+        removed = true;
+        if (this.#world === world) world.removeBodies([id]);
       },
     };
   }

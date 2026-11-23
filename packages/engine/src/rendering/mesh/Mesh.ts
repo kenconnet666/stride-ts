@@ -37,6 +37,11 @@ export interface MeshData {
    * vsImpostor 按相机把卡片转过来、按方向选图集里的一格。剔除用的包围盒由建它的人设（卡片转到哪个方向都要包住）。
    */
   readonly impostor?: boolean;
+  /**
+   * 顶点在 CPU 上会变（布料、软体每帧）：改了 vertices 以后调 Mesh.updateVertices，GPU 那边重新上传、包围盒重算。不进光追场景、
+   * 天空遮挡这些按静止网格烘的东西的网格才用。
+   */
+  readonly dynamic?: boolean;
 }
 
 /** 轴对齐包围盒，模型空间。 */
@@ -57,7 +62,7 @@ export class Mesh {
   readonly dequantize: Dequantize;
   /** 顶点的字节数。 */
   readonly vertexStride: number;
-  readonly bounds: Bounds;
+  #bounds: Bounds;
   /** 剔除用的包围盒，默认就是 bounds；蒙皮网格由内容管理放大到动画会到的范围。 */
   cullBounds: Bounds;
   /** 网格效果的参数里改过的值（Stride 的 Mesh.Parameters），NaN 的用效果的默认值；没改过时是 undefined。 */
@@ -68,6 +73,10 @@ export class Mesh {
   readonly heightfield: boolean;
   /** 见 MeshData.impostor。 */
   readonly impostor: boolean;
+  /** 见 MeshData.dynamic。 */
+  readonly dynamic: boolean;
+  /** 顶点改过几次（updateVertices）；GPU 那边按它重新上传。 */
+  vertexVersion = 0;
   #uvBounds: readonly [number, number, number, number] | undefined;
 
   constructor(name: string, data: MeshData) {
@@ -78,8 +87,9 @@ export class Mesh {
     if (data.indices.length % 3 !== 0) throw new RangeError(`mesh '${name}': indices must form triangles`);
     this.name = name;
     this.data = data;
-    this.bounds = boundsOf(data.vertices, this.layout, this.dequantize, this.vertexStride);
-    this.cullBounds = this.bounds;
+    this.#bounds = boundsOf(data.vertices, this.layout, this.dequantize, this.vertexStride);
+    this.cullBounds = this.#bounds;
+    this.dynamic = data.dynamic === true;
     this.heightfield = data.heightfield === true;
     this.impostor = data.impostor === true;
     this.id = meshes.add(this) as MeshId;
@@ -94,6 +104,20 @@ export class Mesh {
     this.effectParameters ??= new Float32Array(MESH_EFFECT_PARAMETERS).fill(NaN);
     this.effectParameters.set(values, offset);
     this.effectVersion++;
+  }
+
+  /** 模型空间的包围盒；动态网格的跟着 updateVertices 变。 */
+  get bounds(): Bounds {
+    return this.#bounds;
+  }
+
+  /**
+   * 动态网格（MeshData.dynamic）的顶点在原地改过了：下次画时重新上传，包围盒（剔除用的也是）重算。不是动态网格时报错。
+   */
+  updateVertices(): void {
+    if (!this.dynamic) throw new Error(`mesh '${this.name}' is not dynamic (create it with MeshData.dynamic to update its vertices)`);
+    this.#bounds = this.cullBounds = boundsOf(this.data.vertices, this.layout, this.dequantize, this.vertexStride);
+    this.vertexVersion++;
   }
 
   /** 形变增量的最大长度（米），剔除时包围盒按它放大。没有形变时是 0。 */

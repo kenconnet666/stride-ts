@@ -79,6 +79,8 @@ export interface MeshBatch {
    * 批，静止的像素按深度重投影，结果一样。
    */
   movedAt: number;
+  /** @internal 上次算包围盒时网格的顶点是第几版（动态网格的顶点变了也要重算）。 */
+  vertexVersion: number;
   /** @internal 各阶段上次用的管线（材质改了、输出格式或网格效果换了才重新查，不用每次画都拼管线的键）。 */
   readonly pipelines: Map<RenderStage, CachedPipeline>;
 }
@@ -238,6 +240,10 @@ export class MeshRenderFeature extends RootRenderFeature {
         batch.bounds.slots = batch.slots.slice(0, batch.count);
         batch.bounds.dirty = true;
         this.#batchOfSlotStale = true;
+      }
+      if (batch.vertexVersion !== batch.mesh.vertexVersion) {
+        batch.vertexVersion = batch.mesh.vertexVersion;
+        batch.bounds.dirty = true;
       }
     });
     if (update !== this.#boundsUpdate + 1) {
@@ -675,7 +681,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       if (!mesh) throw new Error(`Model refers to mesh ${meshId}, which does not exist`);
       if (!material) throw new Error(`Model refers to material ${materialId}, which does not exist`);
       if (skinned && !mesh.layout.joints) throw new Error(`mesh '${mesh.name}' is drawn skinned but has no joints and weights`);
-      batch = { ready: true, mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) }, movedAt: Infinity };
+      batch = { ready: true, mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) }, movedAt: Infinity, vertexVersion: mesh.vertexVersion };
       this.#batchByKey.set(key, batch);
       this.batches.push(batch);
       this.#prepareBatch(batch);

@@ -30,6 +30,12 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
     if (Object.values(change).some((value) => value !== undefined)) clock.set(Object.fromEntries(Object.entries(change).filter(([, value]) => value !== undefined)));
     return { time: clock.time, rate: clock.rate, set: clock.isSet, year: clock.year, dayOfYear: clock.dayOfYear, timeOfDay: +clock.timeOfDay.toFixed(4), weekday: clock.weekday, running: !game.editing };
   });
+  debug.command('physics-lod', 'Physics level of detail (simulation.lod): awake dynamic bodies and soft bodies farther than sleepDistance from the main camera are frozen, frozen ones within wakeDistance wake up; checked every interval seconds. args: sleepDistance (m, 0 turns it off), wakeDistance (m), interval (s). Reports the settings, the focus and how many bodies are frozen.', (args) => {
+    const simulation = game.simulation;
+    if (!simulation) throw new Error('the game has no physics (nativeFeatures has no physics)');
+    for (const key of ['sleepDistance', 'wakeDistance', 'interval'] as const) if (typeof args[key] === 'number') simulation.lod[key] = args[key];
+    return { ...simulation.lod, focus: simulation.focus, ...simulation.lodStats };
+  });
   debug.command('weather', `Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
     const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Weather));
     if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Weather', components: [Transform, Weather, Precipitation] }));

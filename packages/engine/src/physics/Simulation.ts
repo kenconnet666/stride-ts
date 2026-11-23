@@ -69,6 +69,8 @@ export interface RagdollHandle {
 export interface SoftBodyHandle {
   /** 现在的顶点写进 out（每个顶点 stride 个 float：位置、法线；位置相对返回的原点——质心的世界位置，双精度）。 */
   vertices(out: Float32Array, stride: number): [number, number, number];
+  /** 醒着（睡下、被远处物理的降级冻结时顶点不再变）。 */
+  awake(): boolean;
   /** 固定点这一步走到哪（targets 每个顶点三个数，世界位置）；速度保持到下一次设，跟着锚走的每个物理步都要设（onStep 里）。 */
   pin(vertices: Uint32Array, targets: Float64Array, timeStep: number): void;
   /** 这一步的风（米/秒，世界空间）；drag 是 ½·空气密度·阻力系数，约 0.6。每个物理步之前设。 */
@@ -120,6 +122,17 @@ export class Simulation {
    * 网格形状多的场景会慢。
    */
   showColliders = false;
+  /**
+   * 远处物理的降级（Stride 没有）：每隔 interval 秒，醒着的动态物体、软体离关注点（focus，Game 每帧给主相机的位置）超过
+   * sleepDistance 米的冻结（睡下，布料的钉子、风也不叫醒它），冻结着的回到 wakeDistance 米以内时叫醒。sleepDistance 为 0 时关掉。
+   * 冻结的东西停在原处（半空中的也停着），回来时接着动。
+   */
+  readonly lod = { sleepDistance: 250, wakeDistance: 200, interval: 0.25 };
+  /** 降级的关注点（世界位置）；没有时不降级。 */
+  focus: readonly [number, number, number] | undefined;
+  /** 上一次降级：冻结着的个数、那次冻上的、叫醒的。 */
+  lodStats = { frozen: 0, slept: 0, woken: 0 };
+  #lodTimer = 0;
   readonly settings: SimulationSettings = { gravity: [0, -9.8, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60, maximumTimeToProcess: 0.25, dropPostponedTicks: false };
   readonly #native: StrideNative;
   readonly #transforms: TransformStore;
@@ -317,6 +330,7 @@ export class Simulation {
     const entities = this.#entities;
     if (!this.#world || !this.enabled) return;
     entities.run(this.#moveCharacters, time);
+    this.#updateLod(time.elapsed);
     const { fixedTimeStep: step, maximumTimeToProcess, dropPostponedTicks } = this.settings;
     // 容差：0.25 / (1 / 60) 这类商在浮点里可能差一点点不到整数
     const maxSteps = Math.floor(maximumTimeToProcess / step + 1e-6);
@@ -333,6 +347,15 @@ export class Simulation {
     // 还有没补完的整步时（留到后面的帧），画最新的一步，不往前外推
     this.#world.interpolate(Math.min(this.#remaining / step, 1));
     entities.run(this.#readGrounded, time);
+  }
+
+  #updateLod(elapsed: number): void {
+    const { sleepDistance, wakeDistance, interval } = this.lod;
+    if (!this.focus || !(sleepDistance > 0)) return;
+    this.#lodTimer += elapsed;
+    if (this.#lodTimer < interval) return;
+    this.#lodTimer = 0;
+    this.lodStats = this.#world!.lod(this.focus, sleepDistance, Math.min(wakeDistance, sleepDistance));
   }
 
   /**
@@ -432,6 +455,7 @@ export class Simulation {
     let removed = false;
     return {
       vertices: (out, stride) => world.softBodyVertices(id, out, stride),
+      awake: () => !removed && world.isAwake(id),
       pin: (vertices, targets, timeStep) => {
         if (!removed) world.softBodyPin(id, vertices, targets, timeStep);
       },

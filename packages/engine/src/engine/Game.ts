@@ -730,6 +730,8 @@ export class Game {
 
   /** 运行脚本、系统和物理仿真（在物理前和物理后两组系统之间）；重写时要调用 super.update(time)。 */
   protected update(time: GameTime): void {
+    // 远处物理的降级按主相机（上一帧的视图）的位置
+    if (this.simulation) this.simulation.focus = this.terrain.eyeWorld();
     this.entities.update(time, this.simulation ? (t) => this.simulation!.update(t) : undefined);
   }
 

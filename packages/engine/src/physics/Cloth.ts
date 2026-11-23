@@ -47,6 +47,8 @@ export class Cloth extends SyncScript.props('Cloth', {
   #pinnedLocal = new Float64Array(0);
   #targets = new Float64Array(0);
   #wind: [number, number, number] = [0, 0, 0];
+  /** 睡下以后已经抄过最后的顶点。 */
+  #settled = false;
 
   override start(): void {
     const simulation = this.game.simulation;
@@ -93,6 +95,10 @@ export class Cloth extends SyncScript.props('Cloth', {
 
   override update(): void {
     if (!this.#body || !this.#mesh) return;
+    // 睡着（或者离得远被冻结）的布顶点不变：睡下以后抄最后一次，之后不抄、不上传
+    const awake = this.#body.awake();
+    if (!awake && this.#settled) return;
+    this.#settled = !awake;
     this.#copyState();
     this.#placeSurface();
   }

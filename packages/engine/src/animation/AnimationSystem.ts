@@ -54,6 +54,8 @@ interface SkeletonState {
   readonly parts: readonly PartState[];
   /** 已经求过至少一次姿势。 */
   posed: boolean;
+  /** 姿势由别处写（布娃娃）：每帧调它写好关节矩阵，不求动画，只算蒙皮。 */
+  poseSource: (() => void) | undefined;
 }
 
 export class AnimationSystem {
@@ -170,7 +172,7 @@ export class AnimationSystem {
       partEntity.add(Skinned.with({ palette: base }));
       return { skin, palette: skin.createPalette(), base };
     });
-    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false };
+    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false, poseSource: undefined };
     const id = this.#freeStates.pop() ?? this.#states.length;
     this.#states[id] = state;
     entity.add(ModelSkeleton.with({ state: id }));
@@ -180,6 +182,23 @@ export class AnimationSystem {
   instanceOf(entity: Entity): AnimationInstance | undefined {
     const view = entity.get(ModelSkeleton);
     return view ? this.#states[view.state]?.instance : undefined;
+  }
+
+  /** 模型实体的骨架（关节的名字、父关节）；没有骨架时是 undefined。 */
+  skeletonOf(entity: Entity): Skeleton | undefined {
+    const view = entity.get(ModelSkeleton);
+    return view ? this.#states[view.state]?.skeleton : undefined;
+  }
+
+  /**
+   * 让别处写这个模型的姿势（布娃娃）：每帧调 source 写好关节矩阵（instanceOf 的 modelMatrices），动画组件不再求值，蒙皮照常；
+   * undefined 交还给动画。没有骨架时报错。
+   */
+  setPoseSource(entity: Entity, source: (() => void) | undefined): void {
+    const view = entity.get(ModelSkeleton);
+    const state = view ? this.#states[view.state] : undefined;
+    if (!state) throw new Error(`setPoseSource: entity '${entity.name}' has no skeleton`);
+    state.poseSource = source;
   }
 
   /**
@@ -206,6 +225,13 @@ export class AnimationSystem {
     const components: AnimationComponent[] = [];
     for (let i = 0; i < count; i++) {
       const state = this.#states[stateIds[i]!]!;
+      if (state.poseSource) {
+        state.poseSource();
+        batch.posed(state.instance);
+        state.posed = true;
+        for (const part of state.parts) batch.skin(part.skin, part.palette);
+        continue;
+      }
       const entity = this.#entities.entity(state.entity);
       const animation = entity.get(AnimationComponent);
       this.#stack.begin(state.skeleton, this.morphs(entity));

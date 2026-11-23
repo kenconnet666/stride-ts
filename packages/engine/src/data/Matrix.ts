@@ -190,7 +190,7 @@ export const Matrix = {
   },
 
   /** 平移、旋转（四元数 xyzw）、缩放拼成矩阵：先缩放，再旋转，再平移（Stride 的 Matrix.Transformation 的常用形式）。 */
-  compose(out: Matrix4, translation: ArrayLike<number>, rotation: ArrayLike<number>, scale: ArrayLike<number>): Matrix4 {
+  compose<Out extends Float32Array | Float64Array = Matrix4>(out: Out, translation: ArrayLike<number>, rotation: ArrayLike<number>, scale: ArrayLike<number>): Out {
     const [x, y, z, w] = [rotation[0]!, rotation[1]!, rotation[2]!, rotation[3]!];
     const [sx, sy, sz] = [scale[0]!, scale[1]!, scale[2]!];
     out[0] = (1 - 2 * (y * y + z * z)) * sx;

@@ -8,7 +8,7 @@
  * 约束用 `addConstraint`（Stride.BepuPhysics 的约束组件的参数，语义照 Bepu；Bepu 的约束都是软的，这里除了伺服、马达和
  * 距离限制都是刚性的）。每个物理步之前调 `onStep` 登记的回调（Stride 的 ISimulationUpdate.SimulationUpdate）。
  */
-import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore, VehicleDesc, VehicleState } from '@stride-ts/native';
+import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore, VehicleDesc, VehicleState, AnimationInstance, RagdollPartDesc } from '@stride-ts/native';
 import { PhysicsHit } from '@stride-ts/native';
 import type { Commands } from '../engine/Commands';
 import type { EntityId } from '../data/prop';
@@ -53,6 +53,17 @@ export type ConstraintSettings = ConstraintDesc extends infer D
 
 /** 某种约束的设置，比如 `ConstraintSettingsOf<'oneBodyLinearServo'>`。 */
 export type ConstraintSettingsOf<T extends ConstraintSettings['type']> = Extract<ConstraintSettings, { type: T }>;
+
+/** addRagdoll 建的布娃娃。 */
+export interface RagdollHandle {
+  /** 根部分的世界位姿：位置（双精度）、旋转 xyzw。 */
+  root(): { position: [number, number, number]; rotation: [number, number, number, number] };
+  /** 物理的姿势写进 instance 的关节矩阵（布娃娃的关节换成物体的位姿，别的跟着父关节）。 */
+  pose(instance: AnimationInstance, modelToWorld: Float64Array, parents: Int32Array): void;
+  /** 给一部分加冲量（世界空间）；-1 是所有部分。 */
+  impulse(part: number, impulse: readonly [number, number, number]): void;
+  remove(): void;
+}
 
 /** addVehicle 建的车。 */
 export interface VehicleHandle {
@@ -395,6 +406,25 @@ export class Simulation {
         removed = true;
         // 车身先被移除（实体销毁）时原生已经一起移除了，这里再移除是空操作
         if (this.#world === world) world.removeVehicle(id);
+      },
+    };
+  }
+
+  /**
+   * 按骨架现在的姿势建布娃娃（instance 的关节矩阵，modelToWorld 是模型到世界的矩阵）。一般经 Ragdoll 脚本用（physics/Ragdoll.ts）。
+   */
+  addRagdoll(parts: readonly RagdollPartDesc[], instance: AnimationInstance, modelToWorld: Float64Array, layer = 0): RagdollHandle {
+    const world = this.#worldOrCreate();
+    const id = world.addRagdoll(parts, instance, modelToWorld, layer);
+    let removed = false;
+    return {
+      root: () => world.ragdollRoot(id),
+      pose: (target, matrix, parents) => world.ragdollPose(id, target, matrix, parents),
+      impulse: (part, impulse) => world.ragdollImpulse(id, part, impulse),
+      remove: () => {
+        if (removed) return;
+        removed = true;
+        if (this.#world === world) world.removeRagdoll(id);
       },
     };
   }

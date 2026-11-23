@@ -304,12 +304,13 @@ const fixtureAt = (k: number, name: string, position: Vec3, yaw: number) => enti
 let shelfCount = 0;
 const shelfAt = (name: string, position: Vec3, yaw: number) => entity(sid(0x10 + shelfCount), `${name} ${shelfCount++}`, position, { model: { model: `Shop/Shelves/${name}`, materials: [] } }, euler(yaw));
 const WALL_X = 5.95, BACK_Z = -13.95, ROWS = [-3, 0, 3] as const;
-// 入口和结账出口之间的不锈钢围栏（用户 11-23）：从门口顺着 -Z 拦到第一个收银台前，进来的人走不到出口那边
+// 入口和结账出口之间的不锈钢围栏（用户 11-23 在截图上画的）：沿门口横着，从入口闸机右边拦到收银台那边，进店只能走闸机，
+// 出店走收银台外面
 await write('material', 'Shop/Materials/Railing', { name: 'Railing', baseColor: [0.82, 0.83, 0.84, 1], metalness: 1, roughness: 0.25 });
 await write('spline', 'Shop/Splines/CheckoutFence', {
   name: 'CheckoutFence', materials: ['Shop/Materials/Railing', 'Shop/Materials/Railing'],
   profile: { type: 'fence', height: 1.0, postSpacing: 1.1, rails: 2 },
-  points: [{ position: [1.95, 0, 5.95] }, { position: [1.95, 0, 2.6] }],
+  points: [{ position: [-3.15, 0, 5.9] }, { position: [2.0, 0, 5.9] }],
 });
 const shelfEntities = [
   // 左墙：粮油、酒、罐头调味、零食，从入口那头（z = 2.05）铺到后墙

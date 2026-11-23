@@ -108,7 +108,7 @@ const cylinder = (name: string, position: Vec3, height: number, radius: number, 
 const entity = (id: string, name: string, position: Vec3, components: object, rotation: Quat = [0, 0, 0, 1]) => ({ id, name, parent: null, position, rotation, scale: [1, 1, 1], components });
 // 机位按照片的透视估的：拐角的立柱在正前方约 3.1 米，屏蔽门那条线的消失点在画面左边约 22°（相机往轨道那边偏 22°），地平线
 // 在画面中心上面，相机往下俯约 7°；手机拿在 1.55 米高
-const eye: Vec3 = [3.45, 1.55, 0.86];
+const eye: Vec3 = [4.6, 2.0, 2.1];
 const sunAt: Vec3 = [-20, 25, 20];
 await write('scene', 'Subway', {
   name: 'Subway',

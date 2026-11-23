@@ -5,7 +5,7 @@
  */
 import { EXTENSIONS, type BrushFile, type BuildingFile, type CeilingFile, type FixtureFile, type PileFile, type DebrisFile, type SplatEditFile, type PolyMeshFile, type ProductFile, type SdfFile, type ShelfFile, type SignFile, type SplineFile, type TextModelFile, type TreeFile } from '@stride-ts/engine/content-format';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakeBuildingModel, bakeCeiling, bakeDebris, bakeFixture, bakePile, bakeSplatEdit, bakePolyModel, bakeProduct, bakeSdfModel, bakeShelf, bakeSign, bakeSplineModel, bakeTextModel, bakeTreeModel } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakeBuildingModel, bakeCeiling, bakeDebris, bakeFixture, bakePile, bakeSplatEdit, SPLAT_PROXY_SUFFIX, bakePolyModel, bakeProduct, bakeSdfModel, bakeShelf, bakeSign, bakeSplineModel, bakeTextModel, bakeTreeModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '../../shared/protocol.ts';
 import { extensionAssetKinds, extensionAssetKind } from '../../shared/extension.ts';
 
@@ -60,8 +60,8 @@ export const GENERATORS = {
   shelf: merged<ShelfFile>(({ tools, read }, file, assetPath, where) => bakeShelf(tools, file, assetPath, read, where)),
   pile: merged<PileFile>(({ tools, read }, file, assetPath, where) => bakePile(tools, file, assetPath, read, where)),
   debris: merged<DebrisFile>(({ tools, read }, file, assetPath, where) => bakeDebris(tools, file, assetPath, read, where)),
-  // 扫描场景的编辑：从源泼溅生成同名的泼溅
-  splatEdit: { bake: async ({ read }, content, assetPath, where) => (await bakeSplatEdit(content as SplatEditFile, assetPath, read, where)).files, outputs: [['splats', '']] },
+  // 扫描场景的编辑：从源泼溅生成同名的泼溅，写了 proxy 时还有代理网格的模型
+  splatEdit: { bake: async ({ read, tools }, content, assetPath, where) => (await bakeSplatEdit(content as SplatEditFile, assetPath, read, tools, where)).files, outputs: [['splats', ''], ['model', SPLAT_PROXY_SUFFIX]] },
   sign: merged<SignFile>(({ tools, read }, file, assetPath, where) => bakeSign(tools, file, assetPath, read, where)),
   ceiling: merged<CeilingFile>(({ tools }, file, assetPath, where) => bakeCeiling(tools, file, assetPath, where)),
   fixture: merged<FixtureFile>(({ tools, read }, file, assetPath, where) => bakeFixture(tools, file, assetPath, read, where)),

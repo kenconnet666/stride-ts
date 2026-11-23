@@ -85,6 +85,7 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, optional: true, default: [], description: 'one per material slot of the model; null keeps the model\'s own material; omitted keeps all of them' },
       isShadowCaster: optional(bool, true),
       visibleInRayTracing: { type: bool, optional: true, default: true, description: 'part of the ray-traced scene (indirect light, ray-traced reflections, path tracing); turn off for small clutter like debris on the ground' },
+      visibleInCamera: { type: bool, optional: true, default: true, description: 'drawn in camera views; turn off to only cast shadows and be part of ray tracing and sky occlusion (the proxy mesh of a scan, whose picture is the splats)' },
       renderGroup,
     })),
     initial: { model: '' },

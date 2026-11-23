@@ -1,4 +1,6 @@
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
+import { decodeModel } from '@stride-ts/engine/content-format';
 import { encodeSplats, type SplatSource } from '@stride-ts/engine/splats';
 import { applySplatEdit, decodeSplatSource, insideBox } from '@stride-ts/engine/splat-edit';
 import { buildSplatLod } from '../src/splatLod.ts';
@@ -25,6 +27,12 @@ function scene(n: number, loners: number): SplatSource {
 }
 
 describe('扫描场景的编辑', () => {
+  let tools: StrideTools;
+  beforeAll(async () => {
+    tools = await createStrideTools({ workerThreads: 2 });
+  });
+  afterAll(() => tools.shutdown());
+
   test('从 .splat 读回原样的泼溅：只要叶子，合并出来的粗级不要；值和量化前差在量化的精度里', () => {
     const original = scene(3000, 0);
     const bytes = encodeSplats(buildSplatLod(original));
@@ -79,11 +87,16 @@ describe('扫描场景的编辑', () => {
       if (path === 'Scans/Room.splat') return bytes;
       throw new Error('missing');
     };
-    const { files, stats } = await bakeSplatEdit({ name: 'RoomClean', source: 'Scans/Room', floaters: {} }, 'Scans/RoomClean', read);
+    const { files, stats } = await bakeSplatEdit({ name: 'RoomClean', source: 'Scans/Room', floaters: {} }, 'Scans/RoomClean', read, tools);
     expect(files.map((file) => file.path)).toEqual(['Scans/RoomClean.splat']);
     expect(stats.floaters).toBeGreaterThanOrEqual(2);
     expect(decodeSplatSource(files[0]!.bytes.buffer as ArrayBuffer).count).toBe(stats.kept);
-    await expect(bakeSplatEdit({ name: 'X', source: 'Scans/Nope' }, 'Scans/X', read)).rejects.toThrow(/cannot read the source splats/);
-    await expect(bakeSplatEdit({ name: 'X', source: 'Scans/X' }, 'Scans/X', read)).rejects.toThrow(/own output/);
+    // 代理网格：同名加 .proxy 的模型，地面那一层
+    const { files: withProxy } = await bakeSplatEdit({ name: 'RoomClean', source: 'Scans/Room', proxy: { cell: 0.2, minOpacity: 0, density: 0.5 } }, 'Scans/RoomClean', read, tools);
+    expect(withProxy.map((file) => file.path)).toEqual(['Scans/RoomClean.splat', 'Scans/RoomClean.proxy.model']);
+    const model = decodeModel(withProxy[1]!.bytes.buffer.slice(withProxy[1]!.bytes.byteOffset, withProxy[1]!.bytes.byteOffset + withProxy[1]!.bytes.byteLength) as ArrayBuffer);
+    expect(model.meshes.length).toBe(1);
+    await expect(bakeSplatEdit({ name: 'X', source: 'Scans/Nope' }, 'Scans/X', read, tools)).rejects.toThrow(/cannot read the source splats/);
+    await expect(bakeSplatEdit({ name: 'X', source: 'Scans/X' }, 'Scans/X', read, tools)).rejects.toThrow(/own output/);
   });
 });

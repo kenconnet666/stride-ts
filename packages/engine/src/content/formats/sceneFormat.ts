@@ -539,6 +539,8 @@ export interface SceneEntityFile {
       readonly isShadowCaster?: boolean;
       /** 进光追场景（间接光、光追反射）；没有时是 true。地上的杂物这类小零碎关掉。 */
       readonly visibleInRayTracing?: boolean;
+      /** 画进相机的画面；没有时是 true。关掉只投阴影、进光追和天空遮挡（扫描场景的代理网格）。 */
+      readonly visibleInCamera?: boolean;
       /** 渲染组（Stride 的 RenderGroup，0 到 31）；没写是 0。 */
       readonly renderGroup?: number;
     };

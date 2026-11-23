@@ -9,6 +9,7 @@ import { decodeSplats, shCoefficients, shWords, SPLAT_WORDS, type SplatSource } 
 
 // 几段扫描的合并、对齐也从这个入口（@stride-ts/engine/splat-edit）出去
 export * from './splatAlign.ts';
+export * from './splatProxy.ts';
 
 /** 删飞点的默认：格子边长（米）、周围最少几个、最低的不透明度。 */
 const FLOATER_CELL = 0.25;

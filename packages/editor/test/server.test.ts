@@ -490,6 +490,11 @@ describe('关卡白盒：存下就烘成同名的模型', () => {
     const bad = { ...room, brushes: [{ kind: 'box', operation: 'add', position: [0, 0, 0], size: [1, 1, 1], material: 5 }] };
     const error = await backend.saveAsset('brush', 'Game/Level/Room', bad).then(() => undefined, (e: Error & { status?: number }) => e);
     expect([error?.status, error?.message]).toEqual([400, 'brush Game/Level/Room: brush 0 uses material slot 5, but there are 2 slots']);
+    // 缺了字段时报字段（烘焙器只会说 undefined 怎么了）
+    const missing = { ...room, brushes: [{ kind: 'box', operation: 'add', size: [1, 1, 1] }] };
+    const fieldError = await backend.saveAsset('brush', 'Game/Level/Room', missing).then(() => undefined, (e: Error & { status?: number }) => e);
+    expect(fieldError?.status).toBe(400);
+    expect(fieldError?.message).toMatch(/position/);
     expect((JSON.parse(await readFile(path.join(contentDir, 'Game/Level/Room.brush.json'), 'utf8')) as BrushFile).brushes).toHaveLength(3);
     const moved = await backend.moveAssets({ assets: [{ kind: 'brush', from: 'Game/Level/Room', to: 'Game/Level/Hall' }] });
     expect(moved.moved.map((asset) => `${asset.kind} ${asset.path}`)).toEqual(['brush Game/Level/Hall', 'model Game/Level/Hall']);

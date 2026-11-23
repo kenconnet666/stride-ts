@@ -51,4 +51,14 @@ export const SPLAT_EDIT_FIELDS = fields<SplatEditFile>({
     optional: true,
     description: 'color adjustment of the scan (scans differ in exposure and white balance), in linear light',
   },
+  proxy: {
+    type: object(fields<NonNullable<SplatEditFile['proxy']>>({
+      cell: { type: number({ min: 0.01, step: 0.05, unit: 'm' }), optional: true, default: 0.1, description: 'voxel size; grows automatically for very large scans' },
+      minOpacity: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.3, description: 'splats more transparent than this are left out' },
+      density: { type: number({ min: 0, step: 0.25 }), optional: true, default: 1.5, description: 'opacity a voxel collects before it counts as solid (one lone opaque splat is not a wall)' },
+      minIsland: { type: integer(1, 100000), optional: true, default: 8, description: 'connected solid pieces with fewer voxels are dropped (floaters)' },
+    })),
+    optional: true,
+    description: 'also generate a simplified proxy mesh (<name>.proxy model) for collision, shadows, ray tracing and sky occlusion: give it a model component with visibleInCamera off and a static mesh collider; not generated when missing',
+  },
 });

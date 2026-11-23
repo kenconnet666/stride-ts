@@ -160,6 +160,7 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       <Separator orientation="vertical" />,
       <Button size="sm" variant={editing.file.floaters ? 'soft' : 'ghost'} tone="neutral" aria-pressed={editing.file.floaters !== undefined} onClick={() => tools.setSplatFloaters(!editing.file.floaters)}>{t.splatFloaters}</Button>,
       splatColor(editing.file.color ?? {}),
+      <Button size="sm" variant={editing.file.proxy ? 'soft' : 'ghost'} tone="neutral" aria-pressed={editing.file.proxy !== undefined} title={t.splatProxyHint} onClick={() => void tools.setSplatProxy(!editing.file.proxy)}>{t.splatProxy}</Button>,
       <Flex grow />,
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];

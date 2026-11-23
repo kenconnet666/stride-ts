@@ -287,6 +287,11 @@ export const Model = component('Model', {
    */
   visibleInRayTracing: prop.bool().default(true),
   /**
+   * 画进相机的画面（主画面、反射、渲染目标贴图的相机、点选；同 Unity 的 Shadows Only 反过来、Unreal 的 Hidden in Game 加 Cast
+   * Hidden Shadow）。关掉时只投阴影、进光追和天空遮挡：扫描场景的代理网格（画面上是泼溅，阴影、间接光、挡雨靠它）。
+   */
+  visibleInCamera: prop.bool().default(true),
+  /**
    * 渲染组（Stride 的 RenderGroup，0 到 31）：视图只画它的掩码（RenderView.cullingMask）里有的组。编辑器的辅助图形、
    * 只给某台相机看的东西放在自己的组里。
    */

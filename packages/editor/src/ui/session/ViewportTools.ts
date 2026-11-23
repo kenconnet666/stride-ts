@@ -11,6 +11,9 @@ import type { BrushFile, BrushShapeFile, PolyMeshFile, SdfFile, SdfShapeFile, Sp
 import { encodePng } from '@stride-ts/engine/png';
 import { freeAssetPath } from '../../shared/newAssets';
 import { t } from '../i18n/messages';
+
+/** 扫描场景的编辑生成的代理网格：同名加这个后缀的模型（pipeline 的 SPLAT_PROXY_SUFFIX）。 */
+const SPLAT_PROXY = '.proxy';
 import type { EditorSession } from './EditorSession';
 import { FileEditing } from './FileEditing';
 
@@ -614,6 +617,36 @@ export class ViewportTools {
     const { floaters: _, ...rest } = tool.file;
     tool.file = on ? { ...rest, floaters: {} } : rest;
     this.#commitSplat();
+  }
+
+  /**
+   * 代理网格开、关。开：文件写上 proxy（后端烘出 `<编辑>.proxy` 模型），烘好以后实体挂上画面里不画的模型组件（只投阴影、进光追
+   * 和天空遮挡）和静态的网格碰撞体（已经有的不动）。关：去掉 proxy 和引用代理网格的这两个组件。
+   */
+  async setSplatProxy(on: boolean): Promise<void> {
+    const tool = this.#splat, session = this.#session;
+    if (!tool) return;
+    const { proxy: _, ...rest } = tool.file;
+    tool.file = on ? { ...rest, proxy: {} } : rest;
+    this.#commitSplat();
+    const entity = tool.entity, proxy = tool.path + SPLAT_PROXY;
+    const components = () => session.expanded.find((candidate) => candidate.id === entity)?.components ?? {};
+    if (!on) {
+      if (components().model?.model === proxy) session.apply({ type: 'set', entity, path: ['components', 'model'], value: undefined });
+      if (components().static?.shapes.some((shape) => shape.type === 'mesh' && shape.model === proxy)) session.apply({ type: 'set', entity, path: ['components', 'static'], value: undefined });
+      session.commit();
+      return;
+    }
+    session.notice.value = t.splatProxyBaking;
+    // 等后端烘出代理网格（大的扫描要十几秒）：模型还没有时就引用，场景加载会报找不到
+    for (const started = Date.now(); !session.assets.value.some((asset) => asset.kind === 'model' && asset.path === proxy); ) {
+      if (Date.now() - started > 120_000 || this.#splat !== tool || !tool.file.proxy) return;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    if (!components().model) session.apply({ type: 'set', entity, path: ['components', 'model'], value: { model: proxy, visibleInCamera: false } });
+    if (!components().static) session.apply({ type: 'set', entity, path: ['components', 'static'], value: { shapes: [{ type: 'mesh', model: proxy }], layer: 0, friction: 0.5 } });
+    session.commit();
+    session.notice.value = t.splatProxyReady;
   }
 
   /** 扫描的调色（曝光、色温、品红绿、饱和度；都是默认值时去掉），存成一步。 */

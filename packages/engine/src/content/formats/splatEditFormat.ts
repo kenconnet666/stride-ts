@@ -54,4 +54,11 @@ export interface SplatEditFile {
    * 在线性空间里算，烘的时候改颜色和高阶球谐。
    */
   readonly color?: { readonly exposure?: number; readonly temperature?: number; readonly tint?: number; readonly saturation?: number };
+  /**
+   * 代理网格：编辑完的泼溅体素化、抽面、简化，生成同名加 `.proxy` 的模型（content/splatProxy.ts），碰撞（网格碰撞体）、投阴影、
+   * 进光追、天空遮挡用（模型组件关掉 visibleInViews，画面上照旧是泼溅）。cell 是格子的边长（米，默认 0.1），minOpacity 是算进去
+   * 的最低不透明度（默认 0.3），density 是一格攒到多少不透明度算实心（默认 1.5），minIsland 是去掉的碎块的格子数（默认 8）。
+   * 没写不生成。
+   */
+  readonly proxy?: { readonly cell?: number; readonly minOpacity?: number; readonly density?: number; readonly minIsland?: number };
 }

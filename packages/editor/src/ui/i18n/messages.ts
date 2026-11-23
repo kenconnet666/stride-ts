@@ -185,6 +185,10 @@ export interface EditorMessages {
   readonly splatColor: string;
   readonly splatColorFields: Readonly<Record<'exposure' | 'temperature' | 'tint' | 'saturation', string>>;
   readonly splatColorReset: string;
+  readonly splatProxy: string;
+  readonly splatProxyHint: string;
+  readonly splatProxyBaking: string;
+  readonly splatProxyReady: string;
   readonly splatAddPart: string;
   readonly splatAlign: string;
   readonly splatAligning: string;
@@ -462,6 +466,10 @@ const zhCN: EditorMessages = {
   splatColor: '调色',
   splatColorFields: { exposure: '曝光 EV', temperature: '色温 K', tint: '品红绿', saturation: '饱和度' },
   splatColorReset: '还原',
+  splatProxy: '代理网格',
+  splatProxyHint: '生成简化的网格：碰撞、投阴影、进光追和天空遮挡（画面上照旧是泼溅）',
+  splatProxyBaking: '正在生成代理网格……',
+  splatProxyReady: '代理网格好了：实体上挂了只投阴影的模型和网格碰撞体',
   splatAddPart: '合并一段',
   splatAlign: '自动对齐',
   splatAligning: '正在对齐（几秒）……',
@@ -749,6 +757,10 @@ const enUS: EditorMessages = {
   splatColor: 'Color',
   splatColorFields: { exposure: 'Exposure EV', temperature: 'Temperature K', tint: 'Tint', saturation: 'Saturation' },
   splatColorReset: 'Reset',
+  splatProxy: 'Proxy mesh',
+  splatProxyHint: 'Generate a simplified mesh for collision, shadows, ray tracing and sky occlusion (the picture stays the splats)',
+  splatProxyBaking: 'Generating the proxy mesh…',
+  splatProxyReady: 'Proxy mesh ready: the entity got a shadow-only model and a mesh collider',
   splatAddPart: 'Merge a scan',
   splatAlign: 'Auto-align',
   splatAligning: 'Aligning (a few seconds)…',

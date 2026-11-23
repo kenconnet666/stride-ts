@@ -483,7 +483,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   model: {
     add: (entity, model, { content, assets }) => {
       const overrides = (model.materials ?? []).map((path) => (path === null ? null : (assets.materials.get(path) ?? null)));
-      content.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true, visibleInRayTracing: model.visibleInRayTracing ?? true, renderGroup: model.renderGroup ?? 0 });
+      content.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true, visibleInRayTracing: model.visibleInRayTracing ?? true, visibleInCamera: model.visibleInCamera ?? true, renderGroup: model.renderGroup ?? 0 });
     },
     remove: (entity, { content }) => content.removeModel(entity),
   },

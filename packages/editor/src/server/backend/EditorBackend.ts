@@ -14,6 +14,7 @@ import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { alignSplats, concatSplats, decodeSplatSource, partTransform, transformSplats, type SplatTransform } from '@stride-ts/engine/splat-edit';
 import { brushToPoly, importSourceModel } from '@stride-ts/pipeline';
 import { isJsonAssetKind, type AssetKind } from '@stride-ts/engine/content-references';
+import { assetFields, checkFields, object } from '@stride-ts/engine/editor-fields';
 import { type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../../shared/protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
 import { rewriteImageEncoding, rewriteReferences } from './rewrite.ts';
@@ -346,7 +347,9 @@ export class EditorBackend {
       if (create && this.database.get(kind, assetPath)) throw new HttpError(409, `${kind} ${assetPath} already exists`);
       // 白盒、SDF、导入设置先烘：形状、设置不对时报错、什么也不写（不留一个烘不出模型的源文件）
       const baked = isBakedKind(kind) ? await this.#bake(kind, assetPath, content).catch((error: unknown) => {
-        throw new HttpError(400, (error as Error).message);
+        // 烘不出来时先照字段描述查：缺了字段、种类不对时报那个（烘焙器碰到缺的字段只会报 undefined 之类的）
+        const fields = assetFields(kind), issues = fields ? checkFields(content, object(fields), assetPath) : [];
+        throw new HttpError(400, issues.length > 0 ? issues.join('; ') : (error as Error).message);
       }) : undefined;
       await writeAtomically(file, JSON.stringify(content, null, 1));
       await this.#refresh([this.#relative(file), ...(baked?.files ?? [])]);

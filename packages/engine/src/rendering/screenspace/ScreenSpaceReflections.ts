@@ -3,11 +3,10 @@
  * Screen-Space Reflections", SIGGRAPH 2015）和 AMD FidelityFX SSSR 的分层步进：
  *
  * 1. Hi-Z：深度缓冲建一条"最近深度"的 mip 链（r32float）。
- * 2. 追踪（半分辨率：每个 2×2 每帧追一条，轮着换出发的像素，rayPixel；同 Frostbite、FidelityFX SSSR，4K 下少四分之三的光线）：
- *    按 GGX 的可见法线分布（Heitz 2018）随机取一个反射方向，在屏幕空间里沿 Hi-Z 分层步进——前面是空的就跳到
+ * 2. 追踪：每个像素按 GGX 的可见法线分布（Heitz 2018）随机取一个反射方向，在屏幕空间里沿 Hi-Z 分层步进——前面是空的就跳到
  *    更粗的一级、一次跨过一大片，碰到东西再退回细的一级——比 Stride 的定步长（默认 60 步）走得远、步数少，薄的东西也不容易
  *    穿过去。命中以后按深度差、离屏幕边缘多近、粗糙度定"把握"（0 到 1）。
- * 3. 解析（整分辨率）：先在空间上复用周围的光线（半分辨率里找；出发的像素在同一块表面上的，半径按粗糙度），命中处取这一帧画好的 HDR 颜色（反射里的反射晚
+ * 3. 解析：先在空间上复用周围像素的光线（同一块表面上的，半径按粗糙度），命中处取这一帧画好的 HDR 颜色（反射里的反射晚
  *    一帧，同 Stride）；再和上一帧的结果在时间上累积（按运动向量或深度重投影，夹在空间解析结果的邻域范围里），随机方向的
  *    噪声就平均掉了。粗糙的表面按锥角取颜色的 mip（Stachowiak 2015 的做法）：反射的波瓣是一个锥，命中处锥的截面有多大，就
  *    到颜色金字塔（这一帧的 HDR 画面一级级缩小的 mip 链，每级 4 个双线性样本的帐篷滤波）里取那么粗的一级，一个样本就是
@@ -140,8 +139,7 @@ fn hierarchicalMarch(origin: vec3f, direction: vec3f) -> vec4f {
 }
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  // 半分辨率：这一格追它 2×2 里这一帧轮到的那个像素
-  let pixel = rayPixel(ssr, vec2i(in.position.xy));
+  let pixel = vec2i(in.position.xy);
   let surfaceData = textureLoad(surface, pixel, 0);
   let roughness = surfaceData.z;
   let maxRoughness = ssr.params.x;
@@ -236,19 +234,19 @@ fn compress(color: vec3f) -> vec3f {
 }
 
 /**
- * 半分辨率的第 t 条光线的样本；cone 是这个表面的锥角正切，uv 是这个像素（锥从这里出发，到命中处的屏幕距离定截面多大）。屏幕上
- * 没找到（或者把握不足）的那部分用光追的（同一条光线，同一格）。
+ * 一条光线的样本；cone 是这个表面的锥角正切，uv 是这个像素（锥从这里出发，到命中处的屏幕距离定截面多大）。屏幕上没找到（或者
+ * 把握不足）的那部分用光追的（同一条光线）。
  */
-fn sampleAt(t: vec2i, uv: vec2f, cone: f32) -> vec4f {
-  let hit = textureLoad(trace, t, 0);
+fn sampleAt(pixel: vec2i, uv: vec2f, cone: f32) -> vec4f {
+  let hit = textureLoad(trace, pixel, 0);
   var sum = vec4f(0.0);
   if (hit.z > 0.0) {
     let radius = cone * length((hit.xy - uv) * ssr.size.xy);
     let mip = clamp(log2(max(radius, 1e-4)), 0.0, f32(textureNumLevels(pyramid)));
     sum = vec4f(compress(colorAt(hit.xy, mip)) * hit.z, hit.z);
   }
-  // 半分辨率的双线性（在这条光线出发的像素上）：一次取到周围四条光线的平均（光追的样本噪声大，粗糙的金属尤其）
-  let traced = textureSampleLevel(rayTraced, linearClamp, (vec2f(rayPixel(ssr, t)) + 0.5) / ssr.size.xy, 0.0);
+  // 半分辨率的双线性：一次取到周围四条光线的平均（光追的样本噪声大，粗糙的金属尤其）
+  let traced = textureSampleLevel(rayTraced, linearClamp, (vec2f(pixel) + 0.5) / ssr.size.xy, 0.0);
   if (traced.a > 0.0) {
     sum += vec4f(compress(traced.rgb) * traced.a, traced.a);
   }
@@ -268,27 +266,24 @@ fn sampleAt(t: vec2i, uv: vec2f, cone: f32) -> vec4f {
   let world = worldPosition(ssr, uv, z);
   let distanceToEye = length(ssr.eye.xyz - world);
   let cone = coneTangent(here.z, saturate(dot(n, (ssr.eye.xyz - world) / distanceToEye)));
-  // 半径（半分辨率的格子）：镜面（粗糙度 0）只看自己这一格附近，到最大粗糙度时 4 格（整分辨率 8 像素）
-  let radius = mix(0.75, 4.0, saturate(here.z / max(ssr.params.x, 0.0001)));
+  // 半径：镜面（粗糙度 0）只看自己附近 1 像素，到最大粗糙度时 8 像素
+  let radius = mix(1.0, 8.0, saturate(here.z / max(ssr.params.x, 0.0001)));
   let angle = fract(sin(dot(vec2f(pixel), vec2f(12.9898, 78.233)) + ssr.eye.w * 0.618) * 43758.547) * 6.2831853;
   let rotation = mat2x2f(cos(angle), sin(angle), -sin(angle), cos(angle));
-  let halfTexel = pixel / 2;
-  let halfSize = (size + 1) / 2;
-  var sum = vec4f(0.0);
-  var weight = 0.0;
-  // 自己这一格（2×2 里这一帧追的那条）和周围 8 格：只用出发的像素在同一块表面上的（法线相近、深度相近，按到相机的距离的比例）
-  for (var k = -1; k < 8; k++) {
-    let t = select(halfTexel + vec2i(round(rotation * DISK[max(k, 0)] * radius)), halfTexel, k < 0);
-    if (any(t < vec2i(0)) || any(t >= halfSize)) { continue; }
-    let p = rayPixel(ssr, t);
+  var sum = sampleAt(pixel, uv, cone);
+  var weight = 1.0;
+  for (var k = 0; k < 8; k++) {
+    let p = pixel + vec2i(round(rotation * DISK[k] * radius));
+    if (any(p < vec2i(0)) || any(p >= size)) { continue; }
+    // 只用同一块表面上的：法线相近、深度相近（按到相机的距离的比例）
     let other = textureLoad(surface, p, 0);
     if (other.w < 0.5 || dot(octahedralDecode(other.xy), n) < 0.9) { continue; }
     let otherWorld = worldPosition(ssr, (vec2f(p) + 0.5) / ssr.size.xy, textureLoad(depth, p, 0));
     if (abs(dot(otherWorld - world, n)) > 0.02 * distanceToEye) { continue; }
-    sum += sampleAt(t, uv, cone);
+    sum += sampleAt(p, uv, cone);
     weight += 1.0;
   }
-  return select(vec4f(0.0), sum / weight, weight > 0.0);
+  return sum / weight;
 }`;
 
 /** 时间上的解析：和上一帧的结果累积，上一帧的夹在这一帧空间解析结果的 3x3 邻域范围里（场景变了、遮挡变了时不拖影）。 */
@@ -350,7 +345,7 @@ const COMBINE_SHADER = /* wgsl */ `
   let base = textureLoad(color, pixel, 0);
   let r = textureLoad(reflection, pixel, 0);
   if (debug.x == 1.0) {
-    let hit = textureLoad(trace, pixel / 2, 0);
+    let hit = textureLoad(trace, pixel, 0);
     return vec4f(hit.z, r.a, 0.0, 1.0);
   }
   if (debug.x == 2.0) {
@@ -443,8 +438,7 @@ export class ScreenSpaceReflections {
 
     this.#recordHiz(frame, depth, hiz);
     const [normalRoughness, specularWeight, environment] = surfaces as [GraphTexture, GraphTexture, GraphTexture];
-    // 追踪半分辨率（每个 2×2 每帧一条光线，见文件头）
-    const trace = frame.acquire(Math.max(1, Math.ceil(width / 2)), Math.max(1, Math.ceil(height / 2)), TRACE_FORMAT, 'SSR trace');
+    const trace = frame.acquire(width, height, TRACE_FORMAT, 'SSR trace');
     this.#trace.draw(frame, trace, [parameters, depth, hiz, normalRoughness]);
     const traced = rayTraced && this.rayTraced ? this.#rayTraced.record(frame, parameters, trace, normalRoughness, depth, rayTraced) : undefined;
     const spatial = frame.acquire(width, height, REFLECTION_FORMAT, 'SSR spatial');

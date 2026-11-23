@@ -32,8 +32,8 @@ ${SSR_COMMON_WGSL}
 
 struct Here { valid: bool, n: vec3f, roughness: f32, world: vec3f, distance: f32 };
 
-fn here(halfTexel: vec2i) -> Here {
-  let pixel = min(halfTexel * 2, vec2i(ssr.size.xy) - 1);
+fn here(half: vec2i) -> Here {
+  let pixel = min(half * 2, vec2i(ssr.size.xy) - 1);
   let s = textureLoad(surface, pixel, 0);
   let uv = (vec2f(pixel) + 0.5) / ssr.size.xy;
   let world = worldPosition(ssr, uv, textureLoad(depth, pixel, 0));
@@ -148,17 +148,15 @@ ${rayTracedLightingWgsl(0, 9, 8)}
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let frame = u32(ssr.eye.w);
-  // 半分辨率的这个像素代表 2×2 里的哪一个：每帧换一个（同屏幕空间的追踪，rayPixel），时间上的累积把四个都用上
+  // 半分辨率的这个像素代表 2×2 里的哪一个：每帧换一个，时间上的累积把四个都用上
   let size = vec2i(ssr.size.xy);
-  let halfTexel = vec2i(in.position.xy);
-  let pixel = rayPixel(ssr, halfTexel);
+  let pixel = min(vec2i(in.position.xy) * 2 + vec2i(i32(frame & 1u), i32((frame >> 1u) & 1u)), size - 1);
   let surfaceData = textureLoad(surface, pixel, 0);
   let roughness = surfaceData.z;
   if (surfaceData.w < 0.5 || roughness > ssr.params.x) {
     return vec4f(0.0);
   }
-  // 屏幕空间的追踪也是半分辨率、同一条光线：同一个格子
-  let share = 1.0 - textureLoad(trace, halfTexel, 0).z;
+  let share = 1.0 - textureLoad(trace, pixel, 0).z;
   if (share <= 0.01) {
     return vec4f(0.0);
   }
@@ -235,8 +233,7 @@ export class RayTracedReflections {
     if (!ready) return undefined;
     const device = this.#device;
     const params = (this.#params ??= device.createBuffer({ label: 'RayTracedReflections params', size: this.#data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
-    // 和屏幕空间的追踪一样是半分辨率（同一条光线一个格子）
-    const width = trace.width, height = trace.height;
+    const width = Math.max(1, Math.ceil(trace.width / 2)), height = Math.max(1, Math.ceil(trace.height / 2));
     const output = frame.acquire(width, height, FORMAT, 'Ray traced reflections');
     this.#data.set(inputs.giVolume, 0);
     this.#data.set([inputs.specularLevels, 0, 0, 0], 16);

@@ -60,6 +60,8 @@ export type { MeshoptDecoder, MeshoptRequest } from './modelFile';
 import type { ProceduralModel } from '../rendering/mesh/procedural';
 import type { ModelData } from './formats/binaryFormat';
 import { INPUT_MAP, type InputMap } from './formats/inputFormat';
+import { ANIMATION_GRAPH, checkAnimationGraph } from './formats/animationGraphFormat';
+import type { AnimationGraph } from '../animation/AnimationGraph';
 import { checkTable } from './formats/tableFormat';
 import { DataTable } from './DataTable';
 import { checkSpline } from '../modeling/spline';
@@ -82,6 +84,7 @@ declare module '../data/prop' {
     spline: SplineFile;
     input: InputMap;
     table: DataTable;
+    animationGraph: AnimationGraph;
   }
 }
 
@@ -287,6 +290,7 @@ export class ContentManager {
     spline: (path) => this.loadSpline(path),
     input: (path) => this.loadInputMap(path),
     table: (path) => this.loadTable(path),
+    animationGraph: (path) => this.loadAnimationGraph(path),
   };
 
   constructor({ root = 'content/', read, readRange, manifest, shaderClass = () => undefined }: ContentOptions = {}) {
@@ -734,6 +738,16 @@ export class ContentManager {
   /** 输入映射（.input.json）：开它用 `game.input.actions.add(map)`，见 input/InputActions.ts。 */
   loadInputMap(path: string): Promise<InputMap> {
     return this.#once(path + EXTENSIONS.input, async (url) => INPUT_MAP.parse(this.#json<unknown>(await this.#read(url)), url.href));
+  }
+
+  /** 动画状态机（.animgraph.json）连同它引用的剪辑：名字都对得上才返回；见 animation/AnimationGraph.ts。 */
+  loadAnimationGraph(path: string): Promise<AnimationGraph> {
+    return this.#once(path + EXTENSIONS.animationGraph, async (url) => {
+      const data = checkAnimationGraph(ANIMATION_GRAPH.parse(this.#json<unknown>(await this.#read(url)), url.href), url.href);
+      const paths = [...new Set(data.states.flatMap(({ motion }) => (motion.type === 'clip' ? [motion.clip] : motion.points.map((point) => point.clip))))];
+      const clips = await Promise.all(paths.map((clip) => this.loadAnimation(clip)));
+      return { path, data, clips: new Map(paths.map((clip, i) => [clip, clips[i]!])) };
+    });
   }
 
   /** 数据表（.table.json）：按列检查过每一行、补好默认值；见 content/DataTable.ts。 */

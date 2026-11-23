@@ -90,6 +90,8 @@ export const EXTENSIONS = {
   input: '.input.json',
   /** 数据表（TableFile，content/formats/tableFormat.ts）：列和按 id 排的行，content/DataTable.ts。 */
   table: '.table.json',
+  /** 动画状态机（AnimationGraphFile，content/formats/animationGraphFormat.ts）：参数、状态、过渡，Animator 脚本按它放动画。 */
+  animationGraph: '.animgraph.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/stages.md 的 D9）。 */

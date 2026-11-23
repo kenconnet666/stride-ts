@@ -198,6 +198,13 @@
     },
     {
       "fileMatch": [
+        "*.animgraph.json",
+        "*.animgraph.jsonc"
+      ],
+      "url": "./schemas/animationGraph.schema.json"
+    },
+    {
+      "fileMatch": [
         "*.game.json",
         "*.game.jsonc"
       ],

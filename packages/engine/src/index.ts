@@ -221,6 +221,8 @@ export { Vehicle } from './physics/Vehicle';
 export { Ragdoll } from './physics/Ragdoll';
 export { Rope, ropePoints } from './physics/Rope';
 export { Breakable, solidOf } from './physics/Breakable';
+export { AnimationGraphInstance, type AnimationGraph } from './animation/AnimationGraph';
+export { Animator } from './animation/Animator';
 export { Cloth, clothGrid } from './physics/Cloth';
 export { SoftBody, weldModel } from './physics/SoftBody';
 export { Deformable, deformableCopy, subdivideMesh } from './physics/Deformable';

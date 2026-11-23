@@ -4,7 +4,7 @@
  * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  AnimationData, BuildingFile, BrushFile, CityFile, WaterFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, ProductFile, ShelfFile, PileFile, DebrisFile, FractureFile, ImageImportFile, SplatEditFile, SignFile, FixtureFile, TableFile, TextureRef, UIFile,
+  AnimationData, BuildingFile, BrushFile, CityFile, WaterFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, ProductFile, ShelfFile, PileFile, DebrisFile, FractureFile, ImageImportFile, SplatEditFile, SignFile, FixtureFile, TableFile, AnimationGraphFile, TextureRef, UIFile,
   UISpriteValue, SceneCompositor,
 } from './formats/format';
 import { textureRefs } from './loading.ts';
@@ -306,6 +306,14 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       const edit = file as SplatEditFile;
       if (edit.source) add('splats', edit, 'source');
       edit.merge?.forEach((part) => part.source && add('splats', part, 'source'));
+      break;
+    }
+    case 'animationGraph': {
+      const graph = file as AnimationGraphFile;
+      for (const state of graph.states) {
+        if (state.motion.type === 'clip') add('animation', state.motion, 'clip');
+        else state.motion.points.forEach((point) => add('animation', point, 'clip'));
+      }
       break;
     }
     case 'table': {

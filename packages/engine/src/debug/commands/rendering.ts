@@ -2,7 +2,7 @@
 import { Camera, Decal, Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../../rendering/components';
 import { cameraVerticalFieldOfView } from '../../rendering/cameraRays';
 import { DayNightCycle, lightRotationTowards } from '../../rendering/sky/DayNightCycle';
-import { Material, type MaterialTransmission } from '../../rendering/mesh/Material';
+import { Material, type MaterialDiffuseTransmission, type MaterialIridescence, type MaterialTransmission } from '../../rendering/mesh/Material';
 import { Transform } from '../../engine/transform';
 import { Texture, type TextureId } from '../../graphics/Texture';
 import type { Entity } from '../../engine/Entity';
@@ -303,7 +303,7 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
     const atlas = game.renderSystem.decals.atlas;
     return { decals: tests().length, drawn: game.renderSystem.decals.count, atlas: { size: atlas.width, layers: atlas.depthOrArrayLayers } };
   });
-  debug.command('material', 'Materials by name (part of it; without name lists them): extended shading. args: name; sheen [r, g, b, roughness] (null removes); anisotropy [strength, rotation in degrees] (null removes); transmission { factor, ior, thickness, attenuationColor, attenuationDistance } (null removes).', (args) => {
+  debug.command('material', 'Materials by name (part of it; without name lists them): extended shading. args: name; sheen [r, g, b, roughness] (null removes); anisotropy [strength, rotation in degrees] (null removes); transmission { factor, ior, thickness, attenuationColor, attenuationDistance } (null removes); iridescence { factor, ior, thickness } (null removes); diffuseTransmission { factor, color } (null removes).', (args) => {
     const all: Material[] = [];
     for (let id = 1; Material.byId(id); id++) all.push(Material.byId(id)!);
     const name = typeof args['name'] === 'string' ? args['name'] : undefined;
@@ -319,9 +319,15 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
         const transmission = args['transmission'] as MaterialTransmission | null | undefined;
         if (transmission === null) material.setTransmission(undefined);
         else if (transmission) material.setTransmission(transmission);
+        const iridescence = args['iridescence'] as MaterialIridescence | null | undefined;
+        if (iridescence === null) material.setIridescence(undefined);
+        else if (iridescence) material.setIridescence(iridescence);
+        const diffuseTransmission = args['diffuseTransmission'] as MaterialDiffuseTransmission | null | undefined;
+        if (diffuseTransmission === null) material.setDiffuseTransmission(undefined);
+        else if (diffuseTransmission) material.setDiffuseTransmission(diffuseTransmission);
       }
     }
-    return matched.map((material) => ({ id: material.id, name: material.name, metalness: material.metalness, roughness: material.roughness, sheen: material.sheen, anisotropy: material.anisotropy, transmission: material.transmission }));
+    return matched.map((material) => ({ id: material.id, name: material.name, metalness: material.metalness, roughness: material.roughness, sheen: material.sheen, anisotropy: material.anisotropy, transmission: material.transmission, iridescence: material.iridescence, diffuseTransmission: material.diffuseTransmission }));
   });
   debug.command('lights', 'Test point lights: an n x n grid of colored point lights 1 m above the ground, spacing m apart, around at [x, z] (default: below the camera). args: count (n; 0 removes them), radius (m), intensity, spacing (m), at.', (args) => {
     for (const entity of game.entities.ids().map((id) => game.entities.entity(id)).filter((e) => e.name === 'Test light')) entity.destroy();

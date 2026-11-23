@@ -81,6 +81,25 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   },
   vector: { type: string, optional: true, group: 'advanced', description: 'vector atlas (content path of <path>.vector): the base color texture drawn from its curves up close, sharp at any distance; written by the bakers of merged shelves and piles' },
   anisotropy: { type: object(fields<NonNullable<MaterialFile['anisotropy']>>({ strength: number({ min: -1, max: 1, step: 0.01 }), rotation: { type: number({ unit: 'rad' }), optional: true, default: 0 } })), optional: true, group: 'advanced' },
+  iridescence: {
+    type: object(fields<NonNullable<MaterialFile['iridescence']>>({
+      factor: number({ min: 0, max: 1, step: 0.01 }),
+      ior: { type: number({ min: 1, max: 3, step: 0.01 }), optional: true, default: 1.3 },
+      thickness: { type: number({ min: 0, max: 2000, step: 10, unit: 'nm' }), optional: true, default: 400 },
+    })),
+    optional: true,
+    group: 'advanced',
+    description: 'thin-film iridescence (soap bubbles, oil slicks, anodized titanium, beetle shells): the specular color shifts with the view angle',
+  },
+  diffuseTransmission: {
+    type: object(fields<NonNullable<MaterialFile['diffuseTransmission']>>({
+      factor: number({ min: 0, max: 1, step: 0.01 }),
+      color: { type: colorLinear3, optional: true, default: [1, 1, 1] },
+    })),
+    optional: true,
+    group: 'advanced',
+    description: 'thin translucency (leaves, paper, lampshades, curtains): light from behind comes through the surface, no refraction',
+  },
   transmission: {
     type: object(fields<NonNullable<MaterialFile['transmission']>>({
       factor: number({ min: 0, max: 1, step: 0.01 }),

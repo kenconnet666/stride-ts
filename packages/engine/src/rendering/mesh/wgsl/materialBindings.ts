@@ -53,6 +53,10 @@ struct Material {
   interiorLight: vec4f,
   // 视差遮挡（Material.normalMap.parallax）：最深处的深度（贴图坐标的单位，0 是没有）、正对时最多几层
   parallax: vec4f,
+  // 薄膜干涉（Material.iridescence）：比例（0 是没有）、膜的折射率、膜厚（纳米）
+  iridescence: vec4f,
+  // 漫透射（Material.diffuseTransmission）：透过去的颜色，比例（0 是没有）
+  diffuseTransmission: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;

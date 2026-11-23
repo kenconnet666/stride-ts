@@ -406,6 +406,63 @@
       ],
       "additionalProperties": false
     },
+    "iridescence": {
+      "type": "object",
+      "properties": {
+        "factor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ior": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3,
+          "default": 1.3
+        },
+        "thickness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "unit: nm",
+          "default": 400
+        }
+      },
+      "required": [
+        "factor"
+      ],
+      "additionalProperties": false,
+      "description": "thin-film iridescence (soap bubbles, oil slicks, anodized titanium, beetle shells): the specular color shifts with the view angle"
+    },
+    "diffuseTransmission": {
+      "type": "object",
+      "properties": {
+        "factor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "color": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "linear color, 0..1",
+          "default": [
+            1,
+            1,
+            1
+          ]
+        }
+      },
+      "required": [
+        "factor"
+      ],
+      "additionalProperties": false,
+      "description": "thin translucency (leaves, paper, lampshades, curtains): light from behind comes through the surface, no refraction"
+    },
     "transmission": {
       "type": "object",
       "properties": {

@@ -46,8 +46,8 @@ const VIEW_FLOATS = 328;
 const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
 const ORIGIN_PATTERN_PERIOD = 65536;
-/** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
-const MATERIAL_BYTES = 640;
+/** 材质 uniform：Material 结构（按 materialBindings.ts 的字段顺序），按 16 字节对齐。 */
+const MATERIAL_BYTES = 672;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 const DISTRIBUTION_CODES = { ggx: 0, beckmann: 1, blinnPhong: 2 } as const;
@@ -953,6 +953,9 @@ export class MeshGpu {
       floats.set(interior ? [...interior.room, interior.lit, interior.brightness, 0, 0, 0] : [0, 0, 0, 0, 0, 0, 0, 0], 84 + CEL_RAMP_STOPS * 8);
       const parallax = material.normalMap?.parallax;
       floats.set(parallax ? [parallax.depth, parallax.steps ?? 24, 0, 0] : [0, 0, 0, 0], 92 + CEL_RAMP_STOPS * 8);
+      const { iridescence, diffuseTransmission } = material;
+      floats.set(iridescence ? [iridescence.factor, iridescence.ior, iridescence.thickness, 0] : [0, 1.3, 400, 0], 96 + CEL_RAMP_STOPS * 8);
+      floats.set(diffuseTransmission ? [...diffuseTransmission.color, diffuseTransmission.factor] : [1, 1, 1, 0], 100 + CEL_RAMP_STOPS * 8);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

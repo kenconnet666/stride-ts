@@ -165,6 +165,10 @@ export interface MaterialDesc {
   readonly sheen?: MaterialSheen;
   /** 各向异性（拉丝金属、头发），默认没有。 */
   readonly anisotropy?: MaterialAnisotropy;
+  /** 薄膜干涉（肥皂泡、油膜、钛的彩虹色），默认没有。 */
+  readonly iridescence?: MaterialIridescence;
+  /** 漫透射（树叶、纸、灯罩背光时透光），默认没有。 */
+  readonly diffuseTransmission?: MaterialDiffuseTransmission;
   /** 透射（玻璃、水、冰，看得见后面折射过来的东西），默认没有；有它的材质画在透明阶段。 */
   readonly transmission?: MaterialTransmission;
   /** 植被的风（树、草在风里摆），默认没有。 */
@@ -244,6 +248,30 @@ export interface MaterialAnisotropy {
 }
 
 /**
+ * 薄膜干涉（Stride 没有；glTF 的 KHR_materials_iridescence，着色照 Belcour 和 Barla 2017 的薄膜模型，同 glTF Sample Viewer）：
+ * 镜面反射的 F0 按膜的上下两个界面反射光的相位差随视角变色。肥皂泡、油膜、阳极氧化的钛、甲虫壳。
+ */
+export interface MaterialIridescence {
+  /** 0 到 1：盖到镜面反射上的程度。 */
+  readonly factor: number;
+  /** 膜的折射率（默认 1.3，肥皂水）。 */
+  readonly ior?: number;
+  /** 膜厚（纳米，默认 400）：100 到 800 纳米色彩最丰富。 */
+  readonly thickness?: number;
+}
+
+/**
+ * 漫透射（Stride 没有；glTF 的 KHR_materials_diffuse_transmission、OpenPBR 的 translucent base）：薄的东西背光时，漫反射光
+ * 从另一面透出来（树叶、纸、灯罩、窗帘）。和折射的透射（MaterialTransmission）不同，没有折射、不看见后面的东西。
+ */
+export interface MaterialDiffuseTransmission {
+  /** 0 到 1：漫反射光里透过去的比例（同时把正面的漫反射乘 1 - factor）。 */
+  readonly factor: number;
+  /** 透过去的颜色（线性，默认白）。 */
+  readonly color?: readonly [number, number, number];
+}
+
+/**
  * 次表面散射（Stride 的 MaterialSubsurfaceScatteringFeature 和它的皮肤散射核）：光从表面进去、在里面散开、从旁边出来，
  * 皮肤、蜡、玉石这类东西的漫反射看起来柔和。着色后在屏幕空间按 Jimenez 的可分离核横竖各模糊一遍（SubsurfaceScattering.ts）。
  */
@@ -294,6 +322,9 @@ export class Material {
   /** 光泽、各向异性；改它们用 setSheen、setAnisotropy。 */
   sheen: MaterialSheen | undefined;
   anisotropy: Required<MaterialAnisotropy> | undefined;
+  /** 薄膜干涉、漫透射；改它们用 setIridescence、setDiffuseTransmission。 */
+  iridescence: Required<MaterialIridescence> | undefined;
+  diffuseTransmission: Required<MaterialDiffuseTransmission> | undefined;
   /** 透射；改它用 setTransmission。 */
   transmission: Required<MaterialTransmission> | undefined;
   /** 植被的风；改它用 setWind。 */
@@ -352,6 +383,8 @@ export class Material {
     this.subsurfaceScattering = desc.subsurfaceScattering && { ...SKIN_SUBSURFACE_SCATTERING, ...desc.subsurfaceScattering };
     this.sheen = desc.sheen;
     this.anisotropy = desc.anisotropy && { rotation: 0, ...desc.anisotropy };
+    this.iridescence = desc.iridescence && { ior: 1.3, thickness: 400, ...desc.iridescence };
+    this.diffuseTransmission = desc.diffuseTransmission && { color: [1, 1, 1], ...desc.diffuseTransmission };
     this.transmission = withTransmissionDefaults(desc.transmission);
     this.wind = desc.wind && { flutter: 0, mode: 'tree', ...desc.wind };
     this.interior = desc.interior && { lit: 0.35, brightness: 0.5, ...desc.interior };
@@ -374,6 +407,18 @@ export class Material {
   /** 加上、改掉或去掉各向异性，并让渲染特性重新上传。 */
   setAnisotropy(value: MaterialAnisotropy | undefined): void {
     this.anisotropy = value && { rotation: 0, ...value };
+    this.version++;
+  }
+
+  /** 加上、改掉或去掉薄膜干涉，并让渲染特性重新上传。 */
+  setIridescence(value: MaterialIridescence | undefined): void {
+    this.iridescence = value && { ior: 1.3, thickness: 400, ...value };
+    this.version++;
+  }
+
+  /** 加上、改掉或去掉漫透射，并让渲染特性重新上传。 */
+  setDiffuseTransmission(value: MaterialDiffuseTransmission | undefined): void {
+    this.diffuseTransmission = value && { color: [1, 1, 1], ...value };
     this.version++;
   }
 

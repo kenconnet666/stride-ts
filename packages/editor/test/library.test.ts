@@ -34,7 +34,8 @@ describe('材质库和特效库', () => {
       if (material.graph) {
         const compiler = new ColorTreeCompiler({ texture: () => undefined, shaderClass: () => undefined }, 3);
         const compiled = compileMaterialGraph(material.graph, compiler, () => undefined, id);
-        expect(compiled.code, id).toContain('graph_baseColor');
+        // 有的只写粗糙度、法线（冰、压花玻璃：基础色是透射的白）
+        expect(compiled.outputs.size, id).toBeGreaterThan(0);
         expect(material.graph.nodes.some((node) => node.type === 'texture'), id).toBe(false);
       }
     }

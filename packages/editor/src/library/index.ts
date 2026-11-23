@@ -2,25 +2,35 @@
  * 编辑器自带的材质库和特效库（S2，creation-tools.md 的"材质和贴图"第 4 条、"特效"）：常用的预设，用的时候拷一份进工程
  * （材质存成 `Materials/Library/<名字>`，特效变成场景里一个带粒子系统的实体），之后在工程里随便改，和库没有联系。
  *
- * 材质都不用贴图：纯参数的（金属、塑料、玻璃、霓虹）和材质节点图算出来的（混凝土、砖、石板、木头、大理石、布），下载量是零，
- * 放大不糊（vector-assets.md 的方向）。"智能材质"带着磨损、脏污的规则：按模型的棱边、缝（curvatureMask）和遮蔽（occlusionMask）
- * 自动长在该长的地方，用在什么模型上都对（要场景开环境光遮蔽）。特效是 Stride 格式的粒子系统组件（和粒子编辑器改的是同一种），柔和的圆点不用贴图。
+ * 材质按类别在 materials/ 下各一个文件（类别照 Poly Haven 的材质分类：金属、塑料橡胶、玻璃、石头、砖、混凝土沥青、陶瓷、木头、织物
+ * 皮革、纸和卡、有机、地面，加发光和智能材质），都不用贴图：纯参数的（金属、塑料、玻璃、霓虹）和材质节点图算出来的（混凝土、砖、
+ * 石板、木头、大理石、布……），下载量是零，放大不糊（vector-assets.md 的方向）。"智能材质"带着磨损、脏污的规则：按模型的棱边、缝
+ * （curvatureMask）和遮蔽（occlusionMask）自动长在该长的地方，用在什么模型上都对（要场景开环境光遮蔽）。特效是 Stride 格式的粒子系统
+ * 组件（和粒子编辑器改的是同一种），柔和的圆点
  *
  * 只有数据，没有 Node 和 DOM 的依赖：前端的库窗口、MCP 的 library 工具共用。缩略图是 thumbnails/ 下同 id 的图，由
  * tools/dev/library-thumbnails.ts 用引擎画出来（库变了重跑）。
  */
-import type { GraphFile, GraphNodeFile } from '@stride-ts/engine/node-graph';
-import type { MaterialFile, ParticleModuleFile } from '@stride-ts/engine/content-format';
+import type { ParticleModuleFile } from '@stride-ts/engine/content-format';
+import { type LibraryMaterial } from './define.ts';
+import { BRICK_MATERIALS } from './materials/brick.ts';
+import { CERAMIC_MATERIALS } from './materials/ceramic.ts';
+import { CONCRETE_MATERIALS } from './materials/concrete.ts';
+import { EMISSIVE_MATERIALS } from './materials/emissive.ts';
+import { FABRIC_MATERIALS } from './materials/fabric.ts';
+import { GLASS_MATERIALS } from './materials/glass.ts';
+import { METAL_MATERIALS } from './materials/metal.ts';
+import { ORGANIC_MATERIALS } from './materials/organic.ts';
+import { PAPER_MATERIALS } from './materials/paper.ts';
+import { PLASTIC_MATERIALS } from './materials/plastic.ts';
+import { SMART_MATERIALS } from './materials/smart.ts';
+import { STONE_MATERIALS } from './materials/stone.ts';
+import { TERRAIN_MATERIALS } from './materials/terrain.ts';
+import { WOOD_MATERIALS } from './materials/wood.ts';
 
-export type MaterialCategory = 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'wood' | 'fabric' | 'terrain' | 'smart';
+export { libraryAssetName, libraryMaterialPath, nodeGraph, type LibraryMaterial, type MaterialCategory, type NodeSpec } from './define.ts';
+
 export type EffectCategory = 'fire' | 'smoke' | 'sparks' | 'magic' | 'ambient' | 'water';
-
-export interface LibraryMaterial {
-  /** 小驼峰的 id：缩略图、翻译表、MCP 按它找；拷进工程时的名字是它的大驼峰。 */
-  readonly id: string;
-  readonly category: MaterialCategory;
-  readonly material: MaterialFile;
-}
 
 export interface LibraryEffect {
   readonly id: string;
@@ -29,201 +39,12 @@ export interface LibraryEffect {
   readonly particleSystem: ParticleModuleFile;
 }
 
-/** 拷进工程时的资源名：id 的大驼峰。 */
-export const libraryAssetName = (id: string): string => id[0]!.toUpperCase() + id.slice(1);
-/** 库里的材质拷进工程放在哪个内容路径。 */
-export const libraryMaterialPath = (id: string): string => `Materials/Library/${libraryAssetName(id)}`;
-
-// ---- 材质 ----
-
-/** 一个节点：id、种类、参数、输入（端口名 → 源节点 id 或 [节点 id, 输出名]）。不写位置：节点图面板按连线排。 */
-export type NodeSpec = readonly [id: string, type: string, params?: Record<string, unknown>, inputs?: Record<string, string | readonly [string, string]>];
-
-/**
- * 按简写建材质的节点图（材质文件的 graph）：节点列表加输出（材质的属性 → 源节点）。库里的材质、搭场景的脚本写节点图都用它。
- * 例：nodeGraph([['uv', 'uv'], ['spots', 'noise', { scale: 8 }, { uv: 'uv' }]], { roughness: 'spots' })
- */
-export function nodeGraph(nodes: readonly NodeSpec[], outputs: Record<string, string | readonly [string, string]>): GraphFile {
-  const link = (source: string | readonly [string, string]) => (typeof source === 'string' ? { node: source } : { node: source[0], output: source[1] });
-  return {
-    nodes: nodes.map(([id, type, params, inputs]): GraphNodeFile => ({
-      id, type,
-      ...(params ? { params } : {}),
-      ...(inputs ? { inputs: Object.fromEntries(Object.entries(inputs).map(([port, source]) => [port, link(source)])) } : {}),
-    })),
-    outputs: Object.fromEntries(Object.entries(outputs).map(([name, source]) => [name, link(source)])),
-  };
-}
-
-const plain = (id: string, category: MaterialCategory, material: Omit<MaterialFile, 'name'>): LibraryMaterial => ({ id, category, material: { name: libraryAssetName(id), ...material } });
-
-/** 金属的基础色是 F0（线性），取自常见的实测值（Filament、glTF 样例的金属表）。 */
+/** 材质库，按类别的顺序（库窗口的类别开关也按这个顺序）。 */
 export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
-  plain('gold', 'metal', { baseColor: [1, 0.766, 0.336, 1], metalness: 1, roughness: 0.25 }),
-  plain('copper', 'metal', { baseColor: [0.955, 0.638, 0.538, 1], metalness: 1, roughness: 0.3 }),
-  plain('chrome', 'metal', { baseColor: [0.55, 0.556, 0.554, 1], metalness: 1, roughness: 0.05 }),
-  plain('brushedSteel', 'metal', { baseColor: [0.56, 0.57, 0.58, 1], metalness: 1, roughness: 0.35, anisotropy: { strength: 0.8 } }),
-  plain('carPaint', 'plastic', { baseColor: [0.45, 0.01, 0.015, 1], metalness: 0, roughness: 0.2 }),
-  plain('glossyPlastic', 'plastic', { baseColor: [0.03, 0.25, 0.75, 1], metalness: 0, roughness: 0.25 }),
-  plain('mattePlastic', 'plastic', { baseColor: [0.75, 0.75, 0.72, 1], metalness: 0, roughness: 0.7 }),
-  plain('rubber', 'plastic', { baseColor: [0.02, 0.02, 0.02, 1], metalness: 0, roughness: 0.9 }),
-  // 玻璃：漫反射的颜色只当透过去的颜色（不算漫反射光照），同 Stride 的薄玻璃
-  plain('clearGlass', 'glass', { baseColor: [0.92, 0.96, 0.96, 1], metalness: 0, roughness: 0.03, glass: { refractiveIndex: 1.5 }, diffuseShading: false }),
-  // 透射（折射后面的东西）：磨砂玻璃是薄的面、按粗糙度糊；水晶是实心的，偏得多，带一点蓝绿的吸收
-  plain('frostedGlass', 'glass', { baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.35, transmission: { factor: 1, ior: 1.5 } }),
-  plain('crystal', 'glass', { baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.02, transmission: { factor: 1, ior: 1.6, thickness: 0.5, attenuationColor: [0.75, 0.92, 0.95], attenuationDistance: 0.6 } }),
-  plain('neonCyan', 'emissive', { baseColor: [0.02, 0.02, 0.02, 1], metalness: 0, roughness: 0.4, emissive: [0.2, 5, 6] }),
-  plain('neonMagenta', 'emissive', { baseColor: [0.02, 0.02, 0.02, 1], metalness: 0, roughness: 0.4, emissive: [6, 0.3, 4] }),
-  plain('concrete', 'stone', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9,
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['grain', 'noise', { scale: 40, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
-      ['stains', 'noise', { scale: 3, octaves: 3, seed: 4 }, { uv: 'uv' }],
-      ['tone', 'colorRamp', { from: [0.32, 0.31, 0.29], to: [0.55, 0.54, 0.52] }, { t: 'stains' }],
-      ['speckle', 'colorRamp', { from: [0.85, 0.85, 0.85], to: [1.1, 1.1, 1.1] }, { t: 'grain' }],
-      ['color', 'multiply', {}, { a: 'tone', b: 'speckle' }],
-      ['normal', 'normalFromHeight', { strength: 0.6 }, { height: 'grain', uv: 'uv' }],
-    ], { baseColor: 'color', normal: 'normal' }),
-  }),
-  plain('redBrick', 'stone', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.85,
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['bricks', 'bricks', { columns: 4, rows: 8, mortar: 0.03, shift: 0.5 }, { uv: 'uv' }],
-      ['variation', 'colorRamp', { from: [0.3, 0.07, 0.04], to: [0.55, 0.18, 0.1] }, { t: ['bricks', 'brick'] }],
-      ['mortar', 'color', { color: [0.55, 0.53, 0.5] }],
-      ['color', 'mix', {}, { a: 'mortar', b: 'variation', t: ['bricks', 'mask'] }],
-      ['normal', 'normalFromHeight', { strength: 2 }, { height: ['bricks', 'mask'], uv: 'uv' }],
-    ], { baseColor: 'color', normal: 'normal' }),
-  }),
-  // 方石板：不错缝的砖（每块一个色调）加表面的细噪声
-  plain('stoneTiles', 'stone', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.7,
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['tiles', 'bricks', { columns: 12, rows: 6, mortar: 0.015, shift: 0 }, { uv: 'uv' }],
-      ['tone', 'colorRamp', { from: [0.36, 0.35, 0.33], to: [0.6, 0.58, 0.54] }, { t: ['tiles', 'brick'] }],
-      ['grain', 'noise', { scale: 48, octaves: 4 }, { uv: 'uv' }],
-      ['speckle', 'colorRamp', { from: [0.85, 0.85, 0.85], to: [1.05, 1.05, 1.05] }, { t: 'grain' }],
-      ['surface', 'multiply', {}, { a: 'tone', b: 'speckle' }],
-      ['joint', 'color', { color: [0.2, 0.19, 0.18] }],
-      ['color', 'mix', {}, { a: 'joint', b: 'surface', t: ['tiles', 'mask'] }],
-      ['normal', 'normalFromHeight', { strength: 1.5 }, { height: ['tiles', 'mask'], uv: 'uv' }],
-    ], { baseColor: 'color', normal: 'normal' }),
-  }),
-  // 墙砖：白釉面的方砖（每米 4 块、不错缝，包柱、墙面），每块白得略有不同，浅灰的缝；釉面光滑、缝粗糙
-  plain('wallTiles', 'stone', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.12,
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['tiles', 'bricks', { columns: 4, rows: 4, mortar: 0.008, shift: 0 }, { uv: 'uv' }],
-      ['tone', 'colorRamp', { from: [0.78, 0.78, 0.76], to: [0.86, 0.86, 0.84] }, { t: ['tiles', 'brick'] }],
-      ['joint', 'color', { color: [0.42, 0.42, 0.4] }],
-      ['color', 'mix', {}, { a: 'joint', b: 'tone', t: ['tiles', 'mask'] }],
-      ['glaze', 'value', { value: 0.1 }],
-      ['grout', 'value', { value: 0.7 }],
-      ['roughness', 'mix', {}, { a: 'grout', b: 'glaze', t: ['tiles', 'mask'] }],
-      ['normal', 'normalFromHeight', { strength: 0.4 }, { height: ['tiles', 'mask'], uv: 'uv' }],
-    ], { baseColor: 'color', roughness: 'roughness', normal: 'normal' }),
-  }),
-  plain('wood', 'wood', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.6,
-    graph: nodeGraph([
-      ['uv', 'uv', { scale: [1, 12] }],
-      ['grain', 'noise', { scale: 6, octaves: 5, roughness: 0.55 }, { uv: 'uv' }],
-      ['color', 'colorRamp', { from: [0.18, 0.08, 0.03], to: [0.5, 0.27, 0.12] }, { t: 'grain' }],
-      ['normal', 'normalFromHeight', { strength: 0.5 }, { height: 'grain', uv: 'uv' }],
-    ], { baseColor: 'color', normal: 'normal' }),
-  }),
-  plain('marble', 'stone', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.15,
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['veins', 'noise', { scale: 4, octaves: 7, roughness: 0.6, seed: 2 }, { uv: 'uv' }],
-      // 纹路是噪声等于 0.5 的那条线：往上一段从 0 升到 1、往下一段从 1 降到 0，乘起来只在 0.5 附近是 1
-      ['rise', 'levels', { inMin: 0.46, inMax: 0.5 }, { in: 'veins' }],
-      ['fall', 'levels', { inMin: 0.5, inMax: 0.54, outMin: 1, outMax: 0 }, { in: 'veins' }],
-      ['vein', 'multiply', {}, { a: 'rise', b: 'fall' }],
-      ['color', 'colorRamp', { from: [0.93, 0.92, 0.89], to: [0.35, 0.35, 0.38] }, { t: 'vein' }],
-    ], { baseColor: 'color' }),
-  }),
-  // 地形（W2 的材质规则）：按世界坐标铺（每 20 米重复一次），平处是草、陡过 32° 是岩石、180 米以上较平的地方积雪；
-  // 遮罩是节点图的坡度、高度遮罩，换地形、挪地形都对
-  plain('alpineTerrain', 'terrain', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9,
-    graph: nodeGraph([
-      ['uv', 'worldUv', { scale: 0.05 }],
-      ['patches', 'noise', { scale: 6, octaves: 4, roughness: 0.55 }, { uv: 'uv' }],
-      ['grass', 'colorRamp', { from: [0.1, 0.17, 0.05], to: [0.24, 0.33, 0.11] }, { t: 'patches' }],
-      ['strata', 'noise', { scale: 14, octaves: 5, roughness: 0.6, seed: 3 }, { uv: 'uv' }],
-      ['rock', 'colorRamp', { from: [0.13, 0.12, 0.11], to: [0.3, 0.28, 0.25] }, { t: 'strata' }],
-      ['steep', 'slopeMask', { minAngle: 32, maxAngle: 90, blend: 10 }],
-      ['ground', 'mix', {}, { a: 'grass', b: 'rock', t: 'steep' }],
-      ['high', 'heightMask', { minHeight: 180, maxHeight: 100000, blend: 60 }],
-      ['flat', 'slopeMask', { minAngle: 0, maxAngle: 38, blend: 12 }],
-      ['snowCover', 'multiply', {}, { a: 'high', b: 'flat' }],
-      ['snow', 'color', { color: [0.86, 0.89, 0.93] }],
-      ['color', 'mix', {}, { a: 'ground', b: 'snow', t: 'snowCover' }],
-    ], { baseColor: 'color' }),
-  }),
-  // 智能材质：掉漆的金属——棱边上漆磨掉、露出钢（金属度跟着），缝里和被遮住的地方积灰；都用噪声打散
-  plain('wornPaint', 'smart', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5,
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['corners', 'curvatureMask', { from: 0.05, to: 0.25 }],
-      ['breakup', 'noise', { scale: 22, octaves: 4, roughness: 0.6, seed: 5 }, { uv: 'uv' }],
-      ['chipping', 'levels', { inMin: 0.35, inMax: 0.6 }, { in: 'breakup' }],
-      ['wear', 'multiply', {}, { a: ['corners', 'edges'], b: 'chipping' }],
-      ['shadowed', 'occlusionMask', { from: 0.15, to: 0.6 }],
-      ['grime', 'add', {}, { a: 'shadowed', b: ['corners', 'cavities'] }],
-      ['grimeBreakup', 'noise', { scale: 9, octaves: 3, seed: 11 }, { uv: 'uv' }],
-      ['dirt', 'multiply', {}, { a: 'grime', b: 'grimeBreakup' }],
-      ['paint', 'color', { color: [0.06, 0.22, 0.27] }],
-      ['steel', 'color', { color: [0.56, 0.57, 0.58] }],
-      ['dirtColor', 'color', { color: [0.07, 0.055, 0.04] }],
-      ['painted', 'mix', {}, { a: 'paint', b: 'steel', t: 'wear' }],
-      ['color', 'mix', {}, { a: 'painted', b: 'dirtColor', t: 'dirt' }],
-      ['paintRoughness', 'value', { value: 0.55 }],
-      ['steelRoughness', 'value', { value: 0.3 }],
-      ['roughness', 'mix', {}, { a: 'paintRoughness', b: 'steelRoughness', t: 'wear' }],
-    ], { baseColor: 'color', metalness: 'wear', roughness: 'roughness' }),
-  }),
-  // 智能材质：长青苔的石头——缝里、被遮住的地方和朝上的面长苔（成片的），棱边磨得发白
-  plain('mossyStone', 'smart', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.85,
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['grain', 'noise', { scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
-      ['blotch', 'noise', { scale: 4, octaves: 3, seed: 2 }, { uv: 'uv' }],
-      ['stone', 'colorRamp', { from: [0.2, 0.19, 0.17], to: [0.42, 0.4, 0.36] }, { t: 'blotch' }],
-      ['corners', 'curvatureMask', { from: 0.05, to: 0.3 }],
-      ['shadowed', 'occlusionMask', { from: 0.1, to: 0.5 }],
-      ['damp', 'add', {}, { a: 'shadowed', b: ['corners', 'cavities'] }],
-      // 朝上的面也长（雨水、落叶攒在上面）
-      ['top', 'slopeMask', { minAngle: 0, maxAngle: 25, blend: 15 }],
-      ['wet', 'add', {}, { a: 'damp', b: 'top' }],
-      ['patches', 'noise', { scale: 7, octaves: 4, seed: 9 }, { uv: 'uv' }],
-      ['spread', 'multiply', {}, { a: 'wet', b: 'patches' }],
-      ['mossCover', 'levels', { inMin: 0.2, inMax: 0.45 }, { in: 'spread' }],
-      ['moss', 'colorRamp', { from: [0.05, 0.09, 0.02], to: [0.14, 0.2, 0.05] }, { t: 'grain' }],
-      ['worn', 'color', { color: [0.55, 0.53, 0.49] }],
-      ['edged', 'mix', {}, { a: 'stone', b: 'worn', t: ['corners', 'edges'] }],
-      ['color', 'mix', {}, { a: 'edged', b: 'moss', t: 'mossCover' }],
-      ['normal', 'normalFromHeight', { strength: 0.8 }, { height: 'grain', uv: 'uv' }],
-    ], { baseColor: 'color', normal: 'normal' }),
-  }),
-  plain('fabric', 'fabric', {
-    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9, sheen: { color: [0.4, 0.45, 0.6], roughness: 0.5 },
-    graph: nodeGraph([
-      ['uv', 'uv'],
-      ['weave', 'checker', { scale: 24 }, { uv: 'uv' }],
-      ['fibers', 'noise', { scale: 30, octaves: 3 }, { uv: 'uv' }],
-      ['color', 'colorRamp', { from: [0.1, 0.13, 0.3], to: [0.16, 0.2, 0.42] }, { t: 'fibers' }],
-      ['normal', 'normalFromHeight', { strength: 0.3 }, { height: 'weave', uv: 'uv' }],
-    ], { baseColor: 'color', normal: 'normal' }),
-  }),
+  ...METAL_MATERIALS, ...PLASTIC_MATERIALS, ...GLASS_MATERIALS, ...EMISSIVE_MATERIALS,
+  ...STONE_MATERIALS, ...BRICK_MATERIALS, ...CONCRETE_MATERIALS, ...CERAMIC_MATERIALS,
+  ...WOOD_MATERIALS, ...FABRIC_MATERIALS, ...PAPER_MATERIALS, ...ORGANIC_MATERIALS,
+  ...TERRAIN_MATERIALS, ...SMART_MATERIALS,
 ];
 
 // ---- 特效 ----

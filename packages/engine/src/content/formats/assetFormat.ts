@@ -280,6 +280,18 @@ export interface MaterialFile {
   /** 各向异性（Stride 没有，glTF 的 KHR_materials_anisotropy）：强度 -1..1，方向绕法线转的角度（弧度）。 */
   readonly anisotropy?: { readonly strength: number; readonly rotation?: number };
   /**
+   * 薄膜干涉（Stride 没有，glTF 的 KHR_materials_iridescence、OpenPBR 的 thin film）：肥皂泡、油膜、阳极氧化的钛、甲虫壳随视角变色。
+   * factor 0..1 是盖到镜面反射上的程度，ior 是膜的折射率（默认 1.3），thickness 是膜厚（纳米，默认 400）。意思同
+   * rendering/mesh/Material.ts 的 MaterialIridescence。
+   */
+  readonly iridescence?: { readonly factor: number; readonly ior?: number; readonly thickness?: number };
+  /**
+   * 漫透射（Stride 没有，glTF 的 KHR_materials_diffuse_transmission、OpenPBR 的 translucent base）：薄的东西（树叶、纸、灯罩、窗帘）
+   * 背光时透出光来。factor 0..1 是漫反射光里透过去的比例，color 是透过去的颜色（默认白）。意思同
+   * rendering/mesh/Material.ts 的 MaterialDiffuseTransmission。
+   */
+  readonly diffuseTransmission?: { readonly factor: number; readonly color?: Vec3Tuple };
+  /**
    * 透射（Stride 没有，glTF 的 KHR_materials_transmission 加 volume）：比例 0..1、折射率（默认 1.5）、厚度（米，0 是薄的面）、
    * 吸收（走 attenuationDistance 米后剩下的颜色）。意思同 rendering/mesh/Material.ts 的 MaterialTransmission。
    */

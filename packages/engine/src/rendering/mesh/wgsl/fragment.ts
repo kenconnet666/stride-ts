@@ -328,6 +328,62 @@ fn environmentRadiance(world: vec3f, direction: vec3f, roughness: f32, cluster: 
 }
 
 /**
+ * 薄膜干涉（glTF 的 KHR_materials_iridescence、OpenPBR 的 thin film；Belcour 和 Barla 2017 的薄膜模型，写法同 glTF Sample Viewer 的
+ * iridescence）：空气 - 膜 - 底层两个界面反射的光按光程差（膜厚 × 折射率 × 视角）相消相长，只算前两阶干涉，光谱灵敏度用高斯拟合。
+ * 返回垂直入射换算以前的菲涅耳反射（RGB）；baseF0 是底层的 F0。
+ */
+const XYZ_TO_REC709 = mat3x3f(
+  vec3f(3.2404542, -0.9692660, 0.0556434),
+  vec3f(-1.5371385, 1.8760108, -0.2040259),
+  vec3f(-0.4985314, 0.0415560, 1.0572252));
+
+fn iridescenceFresnel0(transmittedIor: vec3f, incidentIor: f32) -> vec3f {
+  let r = (transmittedIor - vec3f(incidentIor)) / (transmittedIor + vec3f(incidentIor));
+  return r * r;
+}
+
+fn iridescenceSensitivity(opd: f32, shift: vec3f) -> vec3f {
+  let phase = 2.0 * PI * opd * 1.0e-9;
+  let amplitude = vec3f(5.4856e-13, 4.4201e-13, 5.2481e-13);
+  let position = vec3f(1.6810e+06, 1.7953e+06, 2.2084e+06);
+  let variance = vec3f(4.3278e+09, 9.3046e+09, 6.6121e+09);
+  var xyz = amplitude * sqrt(2.0 * PI * variance) * cos(position * phase + shift) * exp(-phase * phase * variance);
+  xyz.x += 9.7470e-14 * sqrt(2.0 * PI * 4.5282e+09) * cos(2.2399e+06 * phase + shift.x) * exp(-4.5282e+09 * phase * phase);
+  return XYZ_TO_REC709 * (xyz / 1.0685e-7);
+}
+
+fn iridescenceFresnel(outsideIor: f32, filmIor: f32, cosTheta1: f32, thickness: f32, baseF0: vec3f) -> vec3f {
+  // 膜厚趋近 0 时膜的折射率退回外面的（没有膜）
+  let iridescenceIor = mix(outsideIor, filmIor, smoothstep(0.0, 0.03, thickness));
+  let ratio = outsideIor / iridescenceIor;
+  let cosTheta2Sq = 1.0 - ratio * ratio * (1.0 - cosTheta1 * cosTheta1);
+  if (cosTheta2Sq < 0.0) { return vec3f(1.0); }
+  let cosTheta2 = sqrt(cosTheta2Sq);
+  let first = iridescenceFresnel0(vec3f(iridescenceIor), outsideIor).x;
+  let r12 = first + (1.0 - first) * pow(1.0 - cosTheta1, 5.0);
+  let t121 = 1.0 - r12;
+  let phi12 = select(0.0, PI, iridescenceIor < outsideIor);
+  let phi21 = PI - phi12;
+  let rootF0 = sqrt(clamp(baseF0, vec3f(0.0), vec3f(0.9999)));
+  let baseIor = (vec3f(1.0) + rootF0) / (vec3f(1.0) - rootF0);
+  let second = iridescenceFresnel0(baseIor, iridescenceIor);
+  let r23 = second + (vec3f(1.0) - second) * pow(1.0 - cosTheta2, 5.0);
+  let phi23 = select(vec3f(0.0), vec3f(PI), baseIor < vec3f(iridescenceIor));
+  let opd = 2.0 * iridescenceIor * thickness * cosTheta2;
+  let phi = vec3f(phi21) + phi23;
+  let r123 = clamp(r12 * r23, vec3f(1e-5), vec3f(0.9999));
+  let root = sqrt(r123);
+  let rs = (t121 * t121) * r23 / (vec3f(1.0) - r123);
+  var intensity = vec3f(r12) + rs;
+  var term = rs - vec3f(t121);
+  for (var m = 1; m <= 2; m++) {
+    term *= root;
+    intensity += term * 2.0 * iridescenceSensitivity(f32(m) * opd, f32(m) * phi);
+  }
+  return max(intensity, vec3f(0.0));
+}
+
+/**
  * 一个光源的直射光：Lambert 漫反射加微表面镜面（默认菲涅耳 Schlick、GGX、Smith-Schlick-GGX，材质可以换，见 Surface.microfacet；
  * Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet），卡通着色的材质两项各过渐变。l 是指向光源的单位向量；
  * attenuation 是距离、角度衰减，visibility 是阴影乘遮蔽（卡通着色只让衰减进渐变）。
@@ -627,7 +683,7 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   let isMetalness = workflow == 1u;
   let f0 = select(layered.specular, mix(vec3f(0.02), albedo, metalness), isMetalness);
   let visibleSpecular = select(vec3f(0.0), f0, workflow != 0u) * material.surface.w * material.blend.rgb * material.emissive.w;
-  let specular = select(vec3f(0.0), visibleSpecular, hasSpecular);
+  let plainSpecular = select(vec3f(0.0), visibleSpecular, hasSpecular);
   // 镜面颜色工作流默认能量守恒（Stride 的 IsEnergyConservative：MaterialSurfaceShadingDiffuseLambert 的漫反射乘 1 - 镜面）
   let conserved = select(vec3f(1.0), 1.0 - visibleSpecular, workflow == 3u);
   let litDiffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
@@ -645,6 +701,14 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   let roughness = layered.roughness;
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
+  // 薄膜干涉：镜面反射的 F0 换成这个视角的干涉色（glTF Sample Viewer：先算菲涅耳，再按 Schlick 反推 F0）
+  var specular = plainSpecular;
+  if (hasSpecular && material.iridescence.x > 0.0) {
+    let fresnel = iridescenceFresnel(1.0, material.iridescence.y, nDotV, material.iridescence.z, plainSpecular);
+    let x5 = pow(1.0 - nDotV, 5.0);
+    let iridescentF0 = clamp((fresnel - vec3f(x5)) / max(1.0 - x5, 1e-4), vec3f(0.0), vec3f(1.0));
+    specular = mix(plainSpecular, iridescentF0, material.iridescence.x);
+  }
 
   // 扩展材质（Stride 没有）：光泽在底下那层的上面，底下那层按光泽反射走的能量（查找表的 z）变暗
   let sheenColor = material.sheen.rgb;
@@ -656,7 +720,10 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   let sheenScaling = 1.0 - max(sheenColor.r, max(sheenColor.g, sheenColor.b)) * sheenDfg;
   // 透射的那部分光穿过去了，不走漫反射（Filament：Fd *= 1 - transmission）
   let transmission = material.transmission.x * transmissionScale;
-  let diffuse = baseDiffuse * sheenScaling * (1.0 - transmission);
+  // 漫透射：正面的漫反射让出一部分，从背面的光里透出来（树叶、纸、灯罩）
+  let thinFactor = material.diffuseTransmission.w;
+  let diffuse = baseDiffuse * sheenScaling * (1.0 - transmission) * (1.0 - thinFactor);
+  let backDiffuse = baseDiffuse * sheenScaling * (1.0 - transmission) * thinFactor * material.diffuseTransmission.rgb;
   // 各向异性的方向：顶点切线（没有时按贴图坐标的导数算），转材质给的角度。导数在按材质常量的分支里取（一致的控制流）
   let anisotropy = clamp(material.anisotropy.x, -0.99, 0.99);
   var anisotropicT = vec3f(1.0, 0.0, 0.0);
@@ -709,6 +776,14 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
     let lit = shadeLight(surface, l, view.lightColors[i].rgb, 1.0, shadow * directOcclusion);
     direct.diffuse += lit.diffuse;
     direct.specular += lit.specular;
+    if (thinFactor > 0.0) {
+      // 背面的光：阴影按反面的法线取（薄叶子在自己的阴影图里不能把自己遮住）
+      var backShadow = 1.0;
+      if (i32(i) == shadowLight) {
+        backShadow = computeShadow(in.world, -n, max(dot(-n, l), 0.0001), in.depth, in.position.xy);
+      }
+      direct.diffuse += backDiffuse / PI * view.lightColors[i].rgb * (backShadow * directOcclusion * max(dot(-n, l), 0.0));
+    }
   }
   // 点光、聚光：距离衰减（LightUtil.GetDistanceAttenuation），聚光再乘角度衰减（GetAngularAttenuation）
   // 分了簇时只看这一簇的光
@@ -771,6 +846,10 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
         environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, skyDirection(reflection), sqrt(alphaR) * view.sky.y).rgb * skyIntensity * (1.0 - probe.a);
       }
     }
+  }
+  // 漫透射的环境光：背面朝着的天空和环境光
+  if (thinFactor > 0.0) {
+    scattered += backDiffuse * (select(vec3f(0.0), view.ambientColor.rgb, hasAmbient) + select(vec3f(0.0), evaluateSH(skyDirection(-n)) * view.sky.x, hasSky)) * ao;
   }
   // 屏幕空间的间接光（近处表面反射过来的漫反射光；材质自己的遮蔽照样乘）
   scattered += diffuse * screen.xyz * occlusion.x;

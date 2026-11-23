@@ -107,6 +107,44 @@ describe('材质节点图', () => {
     expect(fails({ nodes: [], outputs: { baseColor: { node: 'missing' } } })).toThrow("bad: output baseColor is linked to node 'missing', which does not exist");
   });
 
+  test('程序化图案节点：圆点、划痕、六边形、编织、木纹、裂缝、波都编得过，库函数各登记一次，每个输出都能接', () => {
+    const c = compiler();
+    const graph: GraphFile = {
+      nodes: [
+        { id: 'uv', type: 'uv' },
+        { id: 'spots', type: 'spots', inputs: { uv: { node: 'uv' } } },
+        { id: 'scratches', type: 'scratches', inputs: { uv: { node: 'uv' } } },
+        { id: 'hex', type: 'hexTiles', inputs: { uv: { node: 'uv' } } },
+        { id: 'weave', type: 'weave', inputs: { uv: { node: 'uv' } }, params: { pattern: 'twill' } },
+        { id: 'wood', type: 'woodGrain', inputs: { uv: { node: 'uv' } } },
+        { id: 'cracks', type: 'cracks', inputs: { uv: { node: 'uv' } } },
+        { id: 'wave', type: 'wave', inputs: { uv: { node: 'uv' } }, params: { shape: 'triangle' } },
+        { id: 'cells', type: 'voronoi', inputs: { uv: { node: 'uv' } } },
+        { id: 'ridged', type: 'noise', inputs: { uv: { node: 'uv' } }, params: { ridged: 0.7 } },
+        { id: 'sweep', type: 'gradient', inputs: { uv: { node: 'uv' } }, params: { shape: 'angular' } },
+        { id: 'tint', type: 'adjustHsv', inputs: { in: { node: 'spots', output: 'id' } }, params: { hue: 0.2, saturation: 1.2 } },
+        { id: 'screen', type: 'blend', inputs: { a: { node: 'weave', output: 'height' }, b: { node: 'wood', output: 'rings' } }, params: { mode: 'softLight' } },
+        { id: 'shaped', type: 'function', inputs: { in: { node: 'wave' } }, params: { operation: 'smoothstep', a: 0.2, b: 0.8 } },
+        { id: 'sum', type: 'add', inputs: { a: { node: 'screen' }, b: { node: 'shaped' } } },
+        { id: 'more', type: 'add', inputs: { a: { node: 'sum' }, b: { node: 'tint' } } },
+        { id: 'height', type: 'add', inputs: { a: { node: 'more' }, b: { node: 'ridged' } } },
+        { id: 'a', type: 'add', inputs: { a: { node: 'height' }, b: { node: 'sweep' } } },
+        { id: 'b', type: 'add', inputs: { a: { node: 'a' }, b: { node: 'scratches', output: 'mask' } } },
+        { id: 'c', type: 'add', inputs: { a: { node: 'b' }, b: { node: 'hex', output: 'edge' } } },
+        { id: 'd', type: 'add', inputs: { a: { node: 'c' }, b: { node: 'cracks', output: 'height' } } },
+        { id: 'e', type: 'add', inputs: { a: { node: 'd' }, b: { node: 'cells', output: 'edge' } } },
+      ],
+      outputs: { baseColor: { node: 'e' } },
+    };
+    const { code } = compileMaterialGraph(graph, c, () => undefined, 'patterns');
+    for (const name of ['graphSpots', 'graphScratches', 'graphHex', 'graphWeave', 'graphVoronoi', 'graphRgbToHsv', 'graphBlend']) {
+      expect(c.declarations, name).toContain(`fn ${name}(`);
+    }
+    expect(c.declarations.match(/fn graphHash2\(/g)).toHaveLength(1);
+    expect(code).toContain('graphWeave(');
+    expect(code).toContain('1.0 - abs(');
+  });
+
   test('节点库：每种节点的参数都有默认值，类型不重复', () => {
     const types = MATERIAL_NODE_SPECS.map((spec) => spec.type);
     expect(new Set(types).size).toBe(types.length);

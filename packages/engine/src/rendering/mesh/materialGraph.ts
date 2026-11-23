@@ -94,19 +94,22 @@ fn graphFbm(p: vec2f, octaves: i32, roughness: f32) -> f32 {
   return clamp(sum / total * 0.85 + 0.5, 0.0, 1.0);
 }
 `;
-const VORONOI = `fn graphVoronoi(p: vec2f, randomness: f32) -> vec2f {
+/** x：到最近的点的距离，y：这个格子的随机数，z：到格子边界的距离（第二近减第一近的一半，裂缝、鹅卵石的缝用它）。 */
+const VORONOI = `fn graphVoronoi(p: vec2f, randomness: f32) -> vec3f {
   let i = floor(p);
   var best = 8.0;
+  var second = 8.0;
   var cell = 0.0;
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       let c = i + vec2f(f32(x), f32(y));
       let h = graphHash2(c);
       let d = length(c + 0.5 + (h - 0.5) * randomness - p);
-      if (d < best) { best = d; cell = h.x; }
+      if (d < best) { second = best; best = d; cell = h.x; }
+      else if (d < second) { second = d; }
     }
   }
-  return vec2f(best, cell);
+  return vec3f(best, cell, (second - best) * 0.5);
 }
 `;
 const BRICKS = `fn graphBricks(uv: vec2f, columns: f32, rows: f32, mortar: f32, shift: f32) -> vec2f {
@@ -118,6 +121,105 @@ const BRICKS = `fn graphBricks(uv: vec2f, columns: f32, rows: f32, mortar: f32, 
   let m = vec2f(mortar * columns, mortar * rows);
   let inside = step(m.x, f.x) * step(m.y, f.y) * step(f.x, 1.0 - m.x) * step(f.y, 1.0 - m.y);
   return vec2f(inside, graphHash2(cell).x);
+}
+`;
+/** 随机圆点：x 盖住的程度（圆里是 1），y 圆顶的高度（球冠），z 这个圆的随机数；size 是圆占格子的比例，density 是有圆的格子的比例。 */
+const SPOTS = `fn graphSpots(p: vec2f, size: f32, variation: f32, density: f32) -> vec3f {
+  let i = floor(p);
+  var best = vec3f(0.0);
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let c = i + vec2f(f32(x), f32(y));
+      let h = graphHash2(c);
+      let h2 = graphHash2(c + vec2f(37.7, 11.3));
+      if (h2.x > density) { continue; }
+      let radius = max(size * 0.5 * (1.0 - variation * h2.y), 1e-4);
+      let d = length(c + 0.2 + h * 0.6 - p) / radius;
+      let inside = 1.0 - smoothstep(0.8, 1.0, d);
+      if (inside > best.x) { best = vec3f(inside, sqrt(max(1.0 - d * d, 0.0)), h.y); }
+    }
+  }
+  return best;
+}
+`;
+/** 随机的划痕：每个格子（density 的比例）一条随机方向、长短的线段。 */
+const SCRATCHES = `fn graphSegmentDistance(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let pa = p - a;
+  let ba = b - a;
+  let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+fn graphScratches(p: vec2f, segment: f32, width: f32, angle: f32, spread: f32, density: f32) -> f32 {
+  let i = floor(p);
+  var m = 0.0;
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let c = i + vec2f(f32(x), f32(y));
+      let h = graphHash2(c);
+      let h2 = graphHash2(c + vec2f(11.3, 73.1));
+      if (h2.y > density) { continue; }
+      let a = angle + (h2.x - 0.5) * spread;
+      let half = vec2f(cos(a), sin(a)) * segment * (0.25 + 0.5 * h.x);
+      let d = graphSegmentDistance(p, c + h - half, c + h + half);
+      m = max(m, (1.0 - smoothstep(0.0, width, d)) * (0.35 + 0.65 * h2.x));
+    }
+  }
+  return m;
+}
+`;
+/** 六边形格子：x 到边的距离（中心 1、边 0），yz 格子的编号。 */
+const HEX = `fn graphHex(p: vec2f) -> vec3f {
+  let r = vec2f(1.0, 1.7320508);
+  let h = r * 0.5;
+  let a = p - r * floor(p / r) - h;
+  let q = p - h;
+  let b = q - r * floor(q / r) - h;
+  let gv = select(b, a, dot(a, a) < dot(b, b));
+  let g = abs(gv);
+  let c = max(dot(g, vec2f(0.5, 0.8660254)), g.x);
+  return vec3f((0.5 - c) * 2.0, p.x - gv.x, p.y - gv.y);
+}
+`;
+/** 编织：x 是这一格上面的线（经线 1、纬线 0），y 线的横截面高度（0..1），z 这根线的随机数；pattern 0 平纹，1 斜纹 2/2，2 篮纹 2/2。 */
+const WEAVE = `fn graphWeave(uv: vec2f, count: vec2f, pattern: i32) -> vec3f {
+  let p = uv * count;
+  let cell = floor(p);
+  let f = fract(p);
+  var over = 0.0;
+  if (pattern == 0) { over = select(0.0, 1.0, (cell.x + cell.y) % 2.0 < 1.0); }
+  else if (pattern == 1) { over = select(0.0, 1.0, (cell.x - cell.y + 400.0) % 4.0 < 2.0); }
+  else { over = select(0.0, 1.0, (floor(cell.x * 0.5) + floor(cell.y * 0.5)) % 2.0 < 1.0); }
+  let height = select(sin(3.1415927 * f.y), sin(3.1415927 * f.x), over > 0.5);
+  let thread = select(graphHash2(vec2f(0.0, cell.y)).x, graphHash2(vec2f(cell.x, 0.0)).x, over > 0.5);
+  return vec3f(over, height, thread);
+}
+`;
+/** HSV 和 RGB 互转（色相 0..1）。 */
+const HSV = `fn graphRgbToHsv(c: vec3f) -> vec3f {
+  let k = vec4f(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+  let p = mix(vec4f(c.b, c.g, k.w, k.z), vec4f(c.g, c.b, k.x, k.y), step(c.b, c.g));
+  let q = mix(vec4f(p.x, p.y, p.w, c.r), vec4f(c.r, p.y, p.z, p.x), step(p.x, c.r));
+  let d = q.x - min(q.w, q.y);
+  return vec3f(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+fn graphHsvToRgb(c: vec3f) -> vec3f {
+  let k = vec4f(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+  let p = abs(fract(c.xxx + k.xyz) * 6.0 - k.www);
+  return c.z * mix(k.xxx, clamp(p - k.xxx, vec3f(0.0), vec3f(1.0)), c.y);
+}
+`;
+/** 混合模式（Photoshop 的几种）：base 是下面的，top 是上面的。 */
+const BLEND = `fn graphBlend(base: vec3f, top: vec3f, mode: i32) -> vec3f {
+  switch (mode) {
+    case 0: { return 1.0 - (1.0 - base) * (1.0 - top); }
+    case 1: { return (1.0 - 2.0 * top) * base * base + 2.0 * top * base; }
+    case 2: { return select(1.0 - 2.0 * (1.0 - base) * (1.0 - top), 2.0 * base * top, top < vec3f(0.5)); }
+    case 3: { return abs(base - top); }
+    case 4: { return max(base, top); }
+    case 5: { return min(base, top); }
+    case 6: { return min(base / max(1.0 - top, vec3f(1e-3)), vec3f(1.0)); }
+    default: { return max(base + top - 1.0, vec3f(0.0)); }
+  }
 }
 `;
 /** 0..1：v 在 [lo, hi] 里是 1，两头各按 width 宽的平滑过渡（width 是 0 时是硬边）。 */
@@ -246,21 +348,22 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
   // 生成器
   {
     type: 'noise', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'value', type: 'float' }],
-    params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 8 }, { name: 'octaves', type: int(1, 8), default: 4 }, { name: 'roughness', type: num(0, 1), default: 0.5 }, { name: 'seed', type: num(), default: 0 }],
+    params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 8 }, { name: 'octaves', type: int(1, 8), default: 4 }, { name: 'roughness', type: num(0, 1), default: 0.5 }, { name: 'seed', type: num(), default: 0 }, { name: 'ridged', type: num(0, 1), default: 0, description: '0 smooth clouds .. 1 sharp ridges (veins, rock strata, cracks in dry earth)' }],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphFbm', NOISE);
-      return { value: `graphFbm(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${Math.round(Number(p['octaves']))}, ${f(p['roughness'])})` };
+      const n = `graphFbm(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${Math.round(Number(p['octaves']))}, ${f(p['roughness'])})`;
+      return { value: Number(p['ridged']) > 0 ? `mix(${n}, 1.0 - abs(${n} * 2.0 - 1.0), ${f(p['ridged'])})` : n };
     },
   },
   {
-    type: 'voronoi', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'distance', type: 'float' }, { name: 'cell', type: 'float' }],
+    type: 'voronoi', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'distance', type: 'float' }, { name: 'cell', type: 'float' }, { name: 'edge', type: 'float' }],
     params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 8 }, { name: 'randomness', type: num(0, 1), default: 1 }],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphVoronoi', VORONOI);
       const v = `graphVoronoi(${uv} * ${f(p['scale'])}, ${f(p['randomness'])})`;
-      return { distance: `${v}.x`, cell: `${v}.y` };
+      return { distance: `${v}.x`, cell: `${v}.y`, edge: `${v}.z` };
     },
   },
   {
@@ -280,9 +383,14 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
   },
   {
     type: 'gradient', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'value', type: 'float' }],
-    params: [{ name: 'angle', type: { kind: 'number', step: 5, unit: 'deg' }, default: 0 }],
+    params: [
+      { name: 'angle', type: { kind: 'number', step: 5, unit: 'deg' }, default: 0, description: 'linear: the direction; angular: where the sweep starts' },
+      { name: 'shape', type: { kind: 'enum', values: ['linear', 'radial', 'angular'] }, default: 'linear', description: 'straight, from the center out, or a sweep around the center' },
+    ],
     emit: ({ uv }, p) => {
       const a = (Number(p['angle']) * Math.PI) / 180;
+      if (p['shape'] === 'radial') return { value: `clamp(distance(${uv}, vec2f(0.5)) * 2.0, 0.0, 1.0)` };
+      if (p['shape'] === 'angular') return { value: `fract(atan2(${uv}.y - 0.5, ${uv}.x - 0.5) / 6.2831853 + 0.5 - ${f(a / (2 * Math.PI))})` };
       return { value: `clamp(dot(${uv} - 0.5, vec2f(${f(Math.cos(a))}, ${f(Math.sin(a))})) + 0.5, 0.0, 1.0)` };
     },
   },
@@ -290,6 +398,128 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
     type: 'circle', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'mask', type: 'float' }],
     params: [{ name: 'center', type: vec2, default: [0.5, 0.5] }, { name: 'radius', type: num(0), default: 0.3 }, { name: 'softness', type: num(0, undefined, 0.01), default: 0.02 }, { name: 'repeat', type: num(1, undefined, 1), default: 1 }],
     emit: ({ uv }, p) => ({ mask: `(1.0 - smoothstep(${f(p['radius'])} - ${f(p['softness'])}, ${f(p['radius'])} + ${f(p['softness'])}, distance(fract(${uv} * ${f(p['repeat'])}), ${v2(p['center'])})))` }),
+  },
+  {
+    // 随机的圆点：孔洞、石子、芝麻、麻点、雨滴。size 是圆占格子的比例，variation 是大小的差异，density 是有圆的格子的比例
+    type: 'spots', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'mask', type: 'float' }, { name: 'dome', type: 'float' }, { name: 'id', type: 'float' }],
+    params: [
+      { name: 'scale', type: num(0, undefined, 0.5), default: 12 },
+      { name: 'size', type: num(0, 1, 0.02), default: 0.5, description: 'how much of a cell a spot fills' },
+      { name: 'variation', type: num(0, 1, 0.05), default: 0.5, description: 'how much the sizes differ' },
+      { name: 'density', type: num(0, 1, 0.05), default: 1, description: 'share of cells that have a spot' },
+      { name: 'seed', type: num(), default: 0 },
+    ],
+    emit: ({ uv }, p, context) => {
+      context.addFunction('graphHash2', HASH);
+      context.addFunction('graphSpots', SPOTS);
+      const v = `graphSpots(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${f(p['size'])}, ${f(p['variation'])}, ${f(p['density'])})`;
+      return { mask: `${v}.x`, dome: `${v}.y`, id: `${v}.z` };
+    },
+  },
+  {
+    // 划痕：随机方向、长短的细线。scale 是每个方向上的格数（每格一条），length 是线段的长度（格子的倍数），angle 是主方向，
+    // spread 是方向散开多少（360 是各个方向）
+    type: 'scratches', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'mask', type: 'float' }],
+    params: [
+      { name: 'scale', type: num(0, undefined, 0.5), default: 10 },
+      { name: 'length', type: num(0, 2, 0.05), default: 1 },
+      { name: 'width', type: num(0, 0.5, 0.005), default: 0.03 },
+      { name: 'angle', type: { kind: 'number', step: 5, unit: 'deg' }, default: 0 },
+      { name: 'spread', type: { kind: 'number', step: 5, min: 0, max: 360, unit: 'deg' }, default: 40 },
+      { name: 'density', type: num(0, 1, 0.05), default: 0.6 },
+      { name: 'seed', type: num(), default: 0 },
+    ],
+    emit: ({ uv }, p, context) => {
+      context.addFunction('graphHash2', HASH);
+      context.addFunction('graphScratches', SCRATCHES);
+      const rad = (v: unknown) => f((Number(v) * Math.PI) / 180);
+      return { mask: `graphScratches(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${f(p['length'])}, ${f(p['width'])}, ${rad(p['angle'])}, ${rad(p['spread'])}, ${f(p['density'])})` };
+    },
+  },
+  {
+    // 六边形的砖：屋顶瓦、六角砖、蜂窝。gap 是缝的宽度（六边形中心到边的比例）
+    type: 'hexTiles', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'mask', type: 'float' }, { name: 'edge', type: 'float' }, { name: 'id', type: 'float' }],
+    params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 6 }, { name: 'gap', type: num(0, 0.5, 0.005), default: 0.04 }],
+    emit: ({ uv }, p, context) => {
+      context.addFunction('graphHash2', HASH);
+      context.addFunction('graphHex', HEX);
+      const v = `graphHex(${uv} * ${f(p['scale'])})`;
+      return { mask: `step(${f(p['gap'])}, ${v}.x)`, edge: `${v}.x`, id: `graphHash2(${v}.yz).x` };
+    },
+  },
+  {
+    // 编织：经线纬线交错（平纹、斜纹、篮纹）。count 是每个方向上的线数；warp 是这一格上面的线（经线 1、纬线 0），
+    // height 是线的横截面（给法线），thread 是这根线的随机数（每根线颜色略不同）
+    type: 'weave', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'warp', type: 'float' }, { name: 'height', type: 'float' }, { name: 'thread', type: 'float' }],
+    params: [
+      { name: 'count', type: vec2, default: [24, 24] },
+      { name: 'pattern', type: { kind: 'enum', values: ['plain', 'twill', 'basket'] }, default: 'plain' },
+    ],
+    emit: ({ uv }, p, context) => {
+      context.addFunction('graphHash2', HASH);
+      context.addFunction('graphWeave', WEAVE);
+      const v = `graphWeave(${uv}, ${v2(p['count'])}, ${Math.max(['plain', 'twill', 'basket'].indexOf(String(p['pattern'])), 0)})`;
+      return { warp: `${v}.x`, height: `${v}.y`, thread: `${v}.z` };
+    },
+  },
+  {
+    // 木纹：年轮（沿 U 的方向一圈一圈，锯齿形：春材渐变、秋材突然变深）加细纤维。rings 是 UV 里的年轮数，distortion 是年轮
+    // 歪多少，fiberScale 是纤维的细密。木板沿 V 方向长：UV 的 V 方向拉长（用"UV"节点的 scale）
+    type: 'woodGrain', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'rings', type: 'float' }, { name: 'fibers', type: 'float' }],
+    params: [
+      { name: 'rings', type: num(0, undefined, 0.5), default: 8 },
+      { name: 'distortion', type: num(0, undefined, 0.05), default: 1.2 },
+      { name: 'fiberScale', type: num(0, undefined, 1), default: 60 },
+      { name: 'seed', type: num(), default: 0 },
+    ],
+    emit: ({ uv }, p, context) => {
+      context.addFunction('graphHash2', HASH);
+      context.addFunction('graphFbm', NOISE);
+      const q = `(${uv} + vec2f(${f(p['seed'])} * 7.13, 0.0))`;
+      const warp = `(graphFbm(${q} * vec2f(3.0, 0.6), 4, 0.5) - 0.5) * ${f(p['distortion'])}`;
+      return {
+        rings: `fract(${q}.x * ${f(p['rings'])} + ${warp} * ${f(p['rings'])} * 0.35)`,
+        fibers: `graphFbm(${q} * vec2f(${f(p['fiberScale'])}, ${f(Number(p['fiberScale']) * 0.04)}), 3, 0.6)`,
+      };
+    },
+  },
+  {
+    // 裂缝：Voronoi 的格子边（先用噪声扭一下，裂得不规则）。mask 是缝（1 在缝里），height 是格子的高度（缝里低）
+    type: 'cracks', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'mask', type: 'float' }, { name: 'height', type: 'float' }],
+    params: [
+      { name: 'scale', type: num(0, undefined, 0.5), default: 5 },
+      { name: 'width', type: num(0, 0.5, 0.005), default: 0.03 },
+      { name: 'warp', type: num(0, undefined, 0.05), default: 0.6, description: 'how crooked the cracks run' },
+      { name: 'seed', type: num(), default: 0 },
+    ],
+    emit: ({ uv }, p, context) => {
+      context.addFunction('graphHash2', HASH);
+      context.addFunction('graphFbm', NOISE);
+      context.addFunction('graphVoronoi', VORONOI);
+      const bend = `(vec2f(graphFbm(${uv} * ${f(Number(p['scale']) * 1.7)} + vec2f(3.1, 8.2), 3, 0.5), graphFbm(${uv} * ${f(Number(p['scale']) * 1.7)} + vec2f(9.4, 1.7), 3, 0.5)) - 0.5) * ${f(p['warp'])}`;
+      const e = `graphVoronoi(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13) + ${bend}, 1.0).z`;
+      return { mask: `(1.0 - smoothstep(0.0, ${f(p['width'])}, ${e}))`, height: `smoothstep(0.0, ${f(Number(p['width']) * 2.5)}, ${e})` };
+    },
+  },
+  {
+    // 波：沿一个方向的周期图案，波纹铁皮、水波、条纹。frequency 是 UV 里的周期数
+    type: 'wave', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'value', type: 'float' }],
+    params: [
+      { name: 'frequency', type: num(0, undefined, 0.5), default: 8 },
+      { name: 'angle', type: { kind: 'number', step: 5, unit: 'deg' }, default: 0 },
+      { name: 'shape', type: { kind: 'enum', values: ['sine', 'triangle', 'square', 'sawtooth'] }, default: 'sine' },
+    ],
+    emit: ({ uv }, p) => {
+      const a = (Number(p['angle']) * Math.PI) / 180;
+      const t = `(dot(${uv}, vec2f(${f(Math.cos(a))}, ${f(Math.sin(a))})) * ${f(p['frequency'])})`;
+      const shapes: Record<string, string> = {
+        sine: `(0.5 + 0.5 * sin(${t} * 6.2831853))`,
+        triangle: `abs(fract(${t}) * 2.0 - 1.0)`,
+        square: `step(0.5, fract(${t}))`,
+        sawtooth: `fract(${t})`,
+      };
+      return { value: shapes[String(p['shape'])] ?? shapes['sine']! };
+    },
   },
   // 运算
   binary('add', '+'),
@@ -361,6 +591,54 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
       { name: 'far', type: num(0, undefined, 1), default: 20, description: 'distance where it reaches 0' },
     ],
     emit: (_, p) => ({ mask: `(1.0 - smoothstep(${f(p['near'])}, max(${f(p['far'])}, ${f(p['near'])} + 1e-3), distance(streams.world, view.eye.xyz)))` }),
+  },
+  {
+    // 调色（HSV）：色相偏移（0..1 一圈）、饱和度和明度的倍数
+    type: 'adjustHsv', category: 'math', inputs: [{ name: 'in', type: 'color', fallback: 'vec4f(0.5)' }], outputs: [{ name: 'out', type: 'color' }],
+    params: [{ name: 'hue', type: num(-1, 1, 0.01), default: 0 }, { name: 'saturation', type: num(0, undefined, 0.05), default: 1 }, { name: 'value', type: num(0, undefined, 0.05), default: 1 }],
+    emit: (i, p, context) => {
+      context.addFunction('graphHsv', HSV);
+      const hsv = `graphRgbToHsv(${i['in']}.rgb)`;
+      return { out: `vec4f(graphHsvToRgb(vec3f(fract(${hsv}.x + ${f(p['hue'])}), clamp(${hsv}.y * ${f(p['saturation'])}, 0.0, 1.0), ${hsv}.z * ${f(p['value'])})), ${i['in']}.a)` };
+    },
+  },
+  {
+    // 混合模式：上面的（b）按模式压在下面的（a）上，t 是压多少
+    type: 'blend', category: 'math',
+    inputs: [{ name: 'a', type: 'color', fallback: 'vec4f(0.5)' }, { name: 'b', type: 'color', fallback: 'vec4f(0.5)' }, { name: 't', type: 'float', fallback: '1.0' }],
+    outputs: [{ name: 'out', type: 'color' }],
+    params: [{ name: 'mode', type: { kind: 'enum', values: ['screen', 'softLight', 'hardLight', 'difference', 'lighten', 'darken', 'colorDodge', 'linearBurn'] }, default: 'screen' }],
+    emit: ({ a, b, t }, p, context) => {
+      context.addFunction('graphBlend', BLEND);
+      const mode = ['screen', 'softLight', 'hardLight', 'difference', 'lighten', 'darken', 'colorDodge', 'linearBurn'].indexOf(String(p['mode']));
+      return { out: `vec4f(mix(${a}.rgb, graphBlend(${a}.rgb, ${b}.rgb, ${Math.max(mode, 0)}), clamp(${t}, 0.0, 1.0)), ${a}.a)` };
+    },
+  },
+  {
+    // 函数：对输入的每个分量做一个小运算。a、b 是运算的参数（阶跃、平滑阶跃的边，波的频率……）
+    type: 'function', category: 'math', inputs: [{ name: 'in', type: 'color', fallback: 'vec4f(0.5)' }], outputs: [{ name: 'out', type: 'color' }],
+    params: [
+      { name: 'operation', type: { kind: 'enum', values: ['abs', 'sin', 'fract', 'floor', 'sqrt', 'square', 'step', 'smoothstep', 'triangle', 'clamp', 'remap'] }, default: 'smoothstep' },
+      { name: 'a', type: num(undefined, undefined, 0.05), default: 0.3, description: 'step: the edge; smoothstep and clamp: the low edge; sin: the frequency; remap: the new minimum' },
+      { name: 'b', type: num(undefined, undefined, 0.05), default: 0.7, description: 'smoothstep and clamp: the high edge; remap: the new maximum' },
+    ],
+    emit: (i, p) => {
+      const x = `${i['in']}.rgb`, a = f(p['a']), b = f(p['b']);
+      const ops: Record<string, string> = {
+        abs: `abs(${x})`,
+        sin: `(0.5 + 0.5 * sin(${x} * ${a} * 6.2831853))`,
+        fract: `fract(${x})`,
+        floor: `floor(${x})`,
+        sqrt: `sqrt(max(${x}, vec3f(0.0)))`,
+        square: `(${x} * ${x})`,
+        step: `step(vec3f(${a}), ${x})`,
+        smoothstep: `smoothstep(vec3f(${a}), vec3f(${b}), ${x})`,
+        triangle: `abs(fract(${x}) * 2.0 - 1.0)`,
+        clamp: `clamp(${x}, vec3f(${a}), vec3f(${b}))`,
+        remap: `mix(vec3f(${a}), vec3f(${b}), clamp(${x}, vec3f(0.0), vec3f(1.0)))`,
+      };
+      return { out: `vec4f(${ops[String(p['operation'])] ?? ops['smoothstep']!}, ${i['in']}.a)` };
+    },
   },
   {
     type: 'colorRamp', category: 'math', inputs: [{ name: 't', type: 'float', fallback: '0.5' }], outputs: [{ name: 'color', type: 'color' }],

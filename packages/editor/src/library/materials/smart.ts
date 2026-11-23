@@ -1,0 +1,143 @@
+/**
+ * 智能材质：带着磨损、脏污的规则，按模型的棱边、缝（curvatureMask）、遮蔽（occlusionMask）和朝向（slopeMask）自动长在该长的地方，
+ * 用在什么模型上都对（要场景开环境光遮蔽）。
+ */
+import { nodeGraph, plain, type LibraryMaterial } from '../define.ts';
+
+export const SMART_MATERIALS: readonly LibraryMaterial[] = [
+  // 掉漆的金属——棱边上漆磨掉、露出钢（金属度跟着），缝里和被遮住的地方积灰；都用噪声打散
+  plain('wornPaint', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5,
+    graph: nodeGraph([
+      ['uv', 'uv'],
+      ['corners', 'curvatureMask', { from: 0.05, to: 0.25 }],
+      ['breakup', 'noise', { scale: 22, octaves: 4, roughness: 0.6, seed: 5 }, { uv: 'uv' }],
+      ['chipping', 'levels', { inMin: 0.35, inMax: 0.6 }, { in: 'breakup' }],
+      ['wear', 'multiply', {}, { a: ['corners', 'edges'], b: 'chipping' }],
+      ['shadowed', 'occlusionMask', { from: 0.15, to: 0.6 }],
+      ['grime', 'add', {}, { a: 'shadowed', b: ['corners', 'cavities'] }],
+      ['grimeBreakup', 'noise', { scale: 9, octaves: 3, seed: 11 }, { uv: 'uv' }],
+      ['dirt', 'multiply', {}, { a: 'grime', b: 'grimeBreakup' }],
+      ['paint', 'color', { color: [0.06, 0.22, 0.27] }],
+      ['steel', 'color', { color: [0.56, 0.57, 0.58] }],
+      ['dirtColor', 'color', { color: [0.07, 0.055, 0.04] }],
+      ['painted', 'mix', {}, { a: 'paint', b: 'steel', t: 'wear' }],
+      ['color', 'mix', {}, { a: 'painted', b: 'dirtColor', t: 'dirt' }],
+      ['paintRoughness', 'value', { value: 0.55 }],
+      ['steelRoughness', 'value', { value: 0.3 }],
+      ['roughness', 'mix', {}, { a: 'paintRoughness', b: 'steelRoughness', t: 'wear' }],
+    ], { baseColor: 'color', metalness: 'wear', roughness: 'roughness' }),
+  }),
+  // 长青苔的石头——缝里、被遮住的地方和朝上的面长苔（成片的），棱边磨得发白
+  plain('mossyStone', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.85,
+    graph: nodeGraph([
+      ['uv', 'uv'],
+      ['grain', 'noise', { scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
+      ['blotch', 'noise', { scale: 4, octaves: 3, seed: 2 }, { uv: 'uv' }],
+      ['stone', 'colorRamp', { from: [0.2, 0.19, 0.17], to: [0.42, 0.4, 0.36] }, { t: 'blotch' }],
+      ['corners', 'curvatureMask', { from: 0.05, to: 0.3 }],
+      ['shadowed', 'occlusionMask', { from: 0.1, to: 0.5 }],
+      ['damp', 'add', {}, { a: 'shadowed', b: ['corners', 'cavities'] }],
+      // 朝上的面也长（雨水、落叶攒在上面）
+      ['top', 'slopeMask', { minAngle: 0, maxAngle: 25, blend: 15 }],
+      ['wet', 'add', {}, { a: 'damp', b: 'top' }],
+      ['patches', 'noise', { scale: 7, octaves: 4, seed: 9 }, { uv: 'uv' }],
+      ['spread', 'multiply', {}, { a: 'wet', b: 'patches' }],
+      ['mossCover', 'levels', { inMin: 0.2, inMax: 0.45 }, { in: 'spread' }],
+      ['moss', 'colorRamp', { from: [0.05, 0.09, 0.02], to: [0.14, 0.2, 0.05] }, { t: 'grain' }],
+      ['worn', 'color', { color: [0.55, 0.53, 0.49] }],
+      ['edged', 'mix', {}, { a: 'stone', b: 'worn', t: ['corners', 'edges'] }],
+      ['color', 'mix', {}, { a: 'edged', b: 'moss', t: 'mossCover' }],
+      ['normal', 'normalFromHeight', { strength: 0.8 }, { height: 'grain', uv: 'uv' }],
+    ], { baseColor: 'color', normal: 'normal' }),
+  }),
+  // 生锈的钢：锈从棱边、缝里和遮住的地方长出来，成片扩散；没锈的地方是亮钢
+  plain('rustingSteel', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 1, roughness: 0.4,
+    graph: nodeGraph([
+      ['uv', 'uv'],
+      ['corners', 'curvatureMask', { from: 0.05, to: 0.25 }],
+      ['shadowed', 'occlusionMask', { from: 0.1, to: 0.55 }],
+      ['start', 'add', {}, { a: ['corners', 'edges'], b: 'shadowed' }],
+      ['bloom', 'noise', { scale: 8, octaves: 5, roughness: 0.6, seed: 2 }, { uv: 'uv' }],
+      ['spread', 'multiply', {}, { a: 'start', b: 'bloom' }],
+      ['rust', 'levels', { inMin: 0.1, inMax: 0.35 }, { in: 'spread' }],
+      ['fine', 'noise', { scale: 60, octaves: 4, seed: 5 }, { uv: 'uv' }],
+      ['rustTone', 'colorRamp', { from: [0.14, 0.04, 0.01], to: [0.5, 0.2, 0.07] }, { t: 'fine' }],
+      ['steel', 'color', { color: [0.5, 0.5, 0.52] }],
+      ['color', 'mix', {}, { a: 'steel', b: 'rustTone', t: 'rust' }],
+      ['bright', 'value', { value: 1 }],
+      ['dull', 'value', { value: 0.05 }],
+      ['metalness', 'mix', {}, { a: 'bright', b: 'dull', t: 'rust' }],
+      ['smooth', 'value', { value: 0.38 }],
+      ['coarse', 'value', { value: 0.95 }],
+      ['roughness', 'mix', {}, { a: 'smooth', b: 'coarse', t: 'rust' }],
+      ['normal', 'normalFromHeight', { strength: 1 }, { height: 'fine', uv: 'uv' }],
+    ], { baseColor: 'color', metalness: 'metalness', roughness: 'roughness', normal: 'normal' }),
+  }),
+  // 脏混凝土：缝里和遮住的地方有黑的污垢，朝下的面有雨水冲出的竖条，棱边磕白
+  plain('dirtyConcrete', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9,
+    graph: nodeGraph([
+      ['uv', 'uv'],
+      ['grain', 'noise', { scale: 40, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
+      ['cloud', 'noise', { scale: 3, octaves: 4, seed: 6 }, { uv: 'uv' }],
+      ['tone', 'colorRamp', { from: [0.3, 0.3, 0.29], to: [0.55, 0.54, 0.52] }, { t: 'cloud' }],
+      ['shadowed', 'occlusionMask', { from: 0.1, to: 0.6 }],
+      ['corners', 'curvatureMask', { from: 0.05, to: 0.3 }],
+      ['grime', 'add', {}, { a: 'shadowed', b: ['corners', 'cavities'] }],
+      ['streakUv', 'uv', { scale: [30, 1] }],
+      ['streaks', 'noise', { scale: 4, octaves: 4, seed: 3 }, { uv: 'streakUv' }],
+      ['runoff', 'multiply', {}, { a: 'streaks', b: 'cloud' }],
+      ['dirt', 'add', {}, { a: 'grime', b: 'runoff' }],
+      ['dirtCover', 'levels', { inMin: 0.35, inMax: 0.9 }, { in: 'dirt' }],
+      ['soot', 'color', { color: [0.03, 0.028, 0.026] }],
+      ['soiled', 'mix', {}, { a: 'tone', b: 'soot', t: 'dirtCover' }],
+      ['chalk', 'color', { color: [0.7, 0.69, 0.66] }],
+      ['color', 'mix', {}, { a: 'soiled', b: 'chalk', t: ['corners', 'edges'] }],
+      ['normal', 'normalFromHeight', { strength: 0.7 }, { height: 'grain', uv: 'uv' }],
+    ], { baseColor: 'color', normal: 'normal' }),
+  }),
+  // 积雪的岩石：朝上、不太陡的面积雪，缝里的雪厚一点，陡处和棱边露出黑岩
+  plain('snowyRock', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.8,
+    graph: nodeGraph([
+      ['uv', 'uv'],
+      ['strata', 'noise', { scale: 6, octaves: 6, roughness: 0.6, ridged: 0.6, seed: 5 }, { uv: 'uv' }],
+      ['rock', 'colorRamp', { from: [0.04, 0.04, 0.045], to: [0.2, 0.19, 0.18] }, { t: 'strata' }],
+      ['top', 'slopeMask', { minAngle: 0, maxAngle: 45, blend: 20 }],
+      ['drifts', 'noise', { scale: 5, octaves: 5, seed: 8 }, { uv: 'uv' }],
+      ['cover', 'multiply', {}, { a: 'top', b: 'drifts' }],
+      ['snowCover', 'levels', { inMin: 0.2, inMax: 0.45 }, { in: 'cover' }],
+      ['corners', 'curvatureMask', { from: 0.1, to: 0.4 }],
+      ['bare', 'multiply', {}, { a: 'snowCover', b: ['corners', 'edges'] }],
+      ['snow', 'color', { color: [0.86, 0.89, 0.94] }],
+      ['capped', 'mix', {}, { a: 'rock', b: 'snow', t: 'snowCover' }],
+      ['color', 'mix', {}, { a: 'capped', b: 'rock', t: 'bare' }],
+      ['relief', 'add', {}, { a: 'strata', b: 'snowCover' }],
+      ['normal', 'normalFromHeight', { strength: 2 }, { height: 'relief', uv: 'uv' }],
+    ], { baseColor: 'color', normal: 'normal' }),
+  }),
+  // 剥落的漆：棱边和成片的地方漆起皮，露出下面灰泥的底
+  plain('peelingPaint', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.7,
+    graph: nodeGraph([
+      ['uv', 'uv'],
+      ['flakes', 'noise', { scale: 9, octaves: 6, roughness: 0.6, ridged: 0.5, seed: 4 }, { uv: 'uv' }],
+      ['corners', 'curvatureMask', { from: 0.05, to: 0.25 }],
+      ['damp', 'occlusionMask', { from: 0.1, to: 0.5 }],
+      ['stress', 'add', {}, { a: ['corners', 'edges'], b: 'damp' }],
+      ['gone', 'multiply', {}, { a: 'stress', b: 'flakes' }],
+      ['bare', 'levels', { inMin: 0.2, inMax: 0.3 }, { in: 'gone' }],
+      ['paint', 'color', { color: [0.12, 0.32, 0.3] }],
+      ['plaster', 'color', { color: [0.55, 0.5, 0.42] }],
+      ['color', 'mix', {}, { a: 'paint', b: 'plaster', t: 'bare' }],
+      ['gloss', 'value', { value: 0.35 }],
+      ['dull', 'value', { value: 0.9 }],
+      ['roughness', 'mix', {}, { a: 'gloss', b: 'dull', t: 'bare' }],
+      ['lift', 'subtract', {}, { a: 'flakes', b: 'bare' }],
+      ['normal', 'normalFromHeight', { strength: 2 }, { height: 'lift', uv: 'uv' }],
+    ], { baseColor: 'color', roughness: 'roughness', normal: 'normal' }),
+  }),
+];

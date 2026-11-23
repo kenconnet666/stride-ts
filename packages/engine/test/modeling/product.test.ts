@@ -177,7 +177,8 @@ describe('商品包装', () => {
     // 塑料：粗糙度 0.32（82）、金属度 0；瓶身 R = 0.6 × 255
     expect(svg).toContain('fill="rgb(153,82,0)"');
     expect(svg).toContain('<g filter="url(#print-82-0)">');
-    expect(productTransmission({ ...oil, transmission: 3 })).toBe(1);
+    // 超出 0..1 的过不了模式（读文件时就报出来）
+    expect(() => productTransmission({ ...oil, transmission: 3 })).toThrow(/transmission: expected a number in 0\.\.1/);
     expect(productTransmission({ name: 'Tomato', shape: 'round', size: [0.08, 0.07, 0], transmission: 1 })).toBe(0);
   });
 

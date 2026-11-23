@@ -12,7 +12,7 @@
  *   它们落定（bakers/settle.ts 的 settleFood），停下的位姿交回 wareMesh 合进网格。块的颜色取菜面那块正方形四个角上的色块
  *   （圆的菜面用不到四个角）。
  */
-import type { ProductFile, ProductFood } from '../content/formats/productFormat.ts';
+import { PRODUCT, type Product, type ProductFile, type ProductFood } from '../content/formats/productFormat.ts';
 import { hash32, randomRotation, seededRandom } from '../data/hash.ts';
 import { latheMesh, smoothNormals, type ProductMesh, type ProfilePoint } from './lathe.ts';
 import { MeshBuilder } from './meshBuilder.ts';
@@ -35,7 +35,7 @@ interface WareProfile {
   readonly floorY: number;
 }
 
-function wareProfile(file: ProductFile): WareProfile {
+function wareProfile(file: Product): WareProfile {
   const R = file.size[0] / 2, h = file.size[1];
   const plate = file.shape === 'plate';
   // 圈足：碗的小、盘的大；壁厚按口径
@@ -76,7 +76,7 @@ function wareProfile(file: ProductFile): WareProfile {
 }
 
 /** 方盘的超椭圆：圆周上 u 处的半径倍数，按宽、深压成圆角的方形（n 越大越方）。 */
-function plateDeform(file: ProductFile): ((x: number, y: number, z: number) => readonly [number, number, number]) | undefined {
+function plateDeform(file: Product): ((x: number, y: number, z: number) => readonly [number, number, number]) | undefined {
   if (file.shape !== 'plate') return undefined;
   const rx = 1, rz = (file.size[2] > 0 ? file.size[2] : file.size[0]) / file.size[0];
   const n = 5;
@@ -90,14 +90,14 @@ function plateDeform(file: ProductFile): ((x: number, y: number, z: number) => r
 }
 
 /** 菜面的贴图那块（正方形，毫米）的边长：内口径。 */
-const foodSide = (file: ProductFile) => file.size[0] * 1000;
+const foodSide = (file: Product) => file.size[0] * 1000;
 
 /** 器皿的网格（见文件开头）：贴图的上面一段是轮廓线展开，盛了菜时下面接菜面的那一块。 */
 /**
  * 器皿（盛了菜时加菜面）的网格；settled 是落定的菜块（food.dropped，ware.ts 的 foodPieces 里的第几块和它的位姿），给了就合进来——
  * 没给（物理还没跑，或者正拿它当碰撞体）时只有器皿和菜面。
  */
-export function wareMesh(file: ProductFile, radial: number, settled?: readonly FoodPiecePose[]): ProductMesh {
+export function wareMesh(file: Product, radial: number, settled?: readonly FoodPiecePose[]): ProductMesh {
   const profile = wareProfile(file);
   const deform = plateDeform(file);
   const lathe = latheMesh(profile.points, radial, deform ? (x, y, z) => deform(x, y, z) : undefined);
@@ -142,11 +142,15 @@ export interface FoodPiece {
 const PIECE_SIZE = { chunks: 0.02, strands: 0.004, beans: 0.009 } as const;
 
 /** 落下去的那些菜块的形状（food.dropped 块，按种子；没盛菜、dropped 是 0、糊的时候是空的）。 */
-export function foodPieces(file: ProductFile): FoodPiece[] {
+export function foodPieces(input: ProductFile): FoodPiece[] {
+  return piecesOf(PRODUCT.parse(input, input.name));
+}
+
+function piecesOf(file: Product): FoodPiece[] {
   const food = file.food, pieces = food?.pieces ?? 'chunks';
   if (!food || pieces === 'smooth') return [];
-  const count = Math.max(0, Math.round(food.dropped ?? 0)), size = food.pieceSize ?? PIECE_SIZE[pieces];
-  const random = seededRandom(hash32(file.seed ?? 1, 4447));
+  const count = Math.max(0, Math.round(food.dropped)), size = food.pieceSize ?? PIECE_SIZE[pieces];
+  const random = seededRandom(hash32(file.seed, 4447));
   return Array.from({ length: count }, () => {
     const swatch = random() < 0.8 ? [0, 1, 3][Math.floor(random() * 3)]! : 2;
     if (pieces === 'beans') return { triangles: ellipsoid([size * 0.55, size * 0.42, size * 0.42].map((r) => r * (0.85 + random() * 0.3))), swatch };
@@ -171,10 +175,11 @@ export interface FoodSpawn {
  * 菜块落下去之前的位置：菜面上方、口沿以内排成一层格子（错开一点、随机转），一层放不下的分批落——一块块、一批批往下掉，不从高处
  * 一起砸下去（摞得太高的落下来太快，会弹出碗外）。顺序同 foodPieces。
  */
-export function foodSpawn(file: ProductFile, pieces: readonly FoodPiece[]): FoodSpawn[] {
+export function foodSpawn(input: ProductFile, pieces: readonly FoodPiece[]): FoodSpawn[] {
+  const file = PRODUCT.parse(input, input.name);
   if (!file.food || pieces.length === 0) return [];
   const { edgeY, edgeR, mound } = foodEdge(file, wareProfile(file), file.food);
-  const random = seededRandom(hash32(file.seed ?? 1, 4451));
+  const random = seededRandom(hash32(file.seed, 4451));
   // 格子的间距按最大的那块的外接球
   const extent = Math.max(...pieces.map(({ triangles }) => {
     let r = 0;
@@ -232,9 +237,9 @@ function lyingRotation(yaw: number, tilt: number): [number, number, number, numb
 }
 
 /** 菜面边上的高、半径（碗：贴着内壁在 level 的高度；盘：落在盘底上）和中间鼓起的高（米）。 */
-function foodEdge(file: ProductFile, profile: WareProfile, food: ProductFood): { edgeY: number; edgeR: number; mound: number } {
+function foodEdge(file: Product, profile: WareProfile, food: ProductFood): { edgeY: number; edgeR: number; mound: number } {
   const h = file.size[1];
-  const level = Math.min(1, Math.max(0, food.level ?? 0.7)), mound = Math.max(0, food.mound ?? 0.15) * h;
+  const level = Math.min(1, Math.max(0, food.level)), mound = Math.max(0, food.mound) * h;
   const plate = file.shape === 'plate';
   const edgeY = plate ? profile.floorY + 0.001 : profile.floorY + level * (h - profile.floorY);
   // 缩进一点点，不和内壁的三角形打架
@@ -243,12 +248,12 @@ function foodEdge(file: ProductFile, profile: WareProfile, food: ProductFood): {
 }
 
 /** 落定的菜块合成一个网格：按位姿摆好，面是平的（切块的棱），UV 落在各自的色块里（每个顶点挪一点，颜色有深浅）。 */
-function settledPieces(file: ProductFile, settled: readonly FoodPiecePose[], [W, H, L, F]: readonly [number, number, number, number]): { vertices: Float32Array; indices: Uint32Array } {
-  const pieces = foodPieces(file);
+function settledPieces(file: Product, settled: readonly FoodPiecePose[], [W, H, L, F]: readonly [number, number, number, number]): { vertices: Float32Array; indices: Uint32Array } {
+  const pieces = piecesOf(file);
   // 转着落的长条偶尔把薄薄的菜面转穿、停在菜面底下：看不见，不要
   const below = foodEdge(file, wareProfile(file), file.food!).edgeY - 0.004;
   const builder = new MeshBuilder();
-  const random = seededRandom(hash32(file.seed ?? 1, 4457));
+  const random = seededRandom(hash32(file.seed, 4457));
   settled.forEach(({ piece: index, position, rotation }) => {
     const piece = pieces[index];
     if (!piece || position[1] < below) return;
@@ -313,15 +318,15 @@ const normalize = (v: readonly number[]) => {
 };
 
 /** 菜面：中心一个点加 RINGS 圈，边上贴着内壁在 level 的高度，往中间鼓起，按菜的样子起伏。 */
-function foodSurface(file: ProductFile, food: ProductFood, profile: WareProfile, radial: number, deform: ((x: number, y: number, z: number) => readonly [number, number, number]) | undefined, [W, H, L, F]: readonly [number, number, number, number]): { vertices: Float32Array; indices: Uint32Array } {
+function foodSurface(file: Product, food: ProductFood, profile: WareProfile, radial: number, deform: ((x: number, y: number, z: number) => readonly [number, number, number]) | undefined, [W, H, L, F]: readonly [number, number, number, number]): { vertices: Float32Array; indices: Uint32Array } {
   const h = file.size[1];
   const RINGS = 18;
   // 碗：菜面的边贴着内壁在 level 的高度；盘：菜堆在中间、边落在盘底上，露出一圈盘沿
   const { edgeY, edgeR, mound } = foodEdge(file, profile, food);
-  const pieces = food.pieces ?? 'chunks';
+  const pieces = food.pieces;
   // 起伏：按鼓起的高度算，块的一坨坨最大，丝和粒细碎
   const [amount, cells] = pieces === 'chunks' ? [1.1, 6] : pieces === 'strands' ? [0.45, 12] : pieces === 'beans' ? [0.35, 18] : [0.05, 3];
-  const seed = file.seed ?? 1;
+  const seed = file.seed;
   const noise = (x: number, z: number) => {
     const value = (scale: number, salt: number) => {
       const px = (x / edgeR + 1) * scale, pz = (z / edgeR + 1) * scale, x0 = Math.floor(px), z0 = Math.floor(pz), fx = px - x0, fz = pz - z0;
@@ -359,7 +364,7 @@ function foodSurface(file: ProductFile, food: ProductFood, profile: WareProfile,
 /**
  * 器皿的贴图（SVG 的图形，毫米，不带外面的 svg 标签）：釉色、青花（floral 时）、盛的菜。glaze、cobalt 是釉和纹样的颜色。
  */
-export function wareSkin(file: ProductFile, [W, H]: readonly [number, number], glaze: string, cobalt: string, floral: boolean, variant: number): string {
+export function wareSkin(file: Product, [W, H]: readonly [number, number], glaze: string, cobalt: string, floral: boolean, variant: number): string {
   const profile = wareProfile(file);
   const scale = 1000;
   const { floorEdge, rimInner, rimOuter, foot, total } = profile.marks;
@@ -388,7 +393,7 @@ export function wareSkin(file: ProductFile, [W, H]: readonly [number, number], g
     const bandHeight = bandBottom - bandTop, mid = (bandTop + bandBottom) / 2;
     const waves = Math.max(3, Math.round(W / (bandHeight * 2.2)));
     let vine = `M0 ${svgNumber(mid)}`;
-    const random = seededRandom(hash32(file.seed ?? 1, variant * 31 + 5));
+    const random = seededRandom(hash32(file.seed, variant * 31 + 5));
     const flowers: string[] = [];
     for (let k = 0; k < waves; k++) {
       const x0 = (k / waves) * W, x1 = ((k + 1) / waves) * W, crest = mid + (k % 2 ? 1 : -1) * bandHeight * 0.3;
@@ -415,14 +420,14 @@ export function wareSkin(file: ProductFile, [W, H]: readonly [number, number], g
 }
 
 /** 菜面那块（y 从 L 起的正方形，边长是口径）：汤汁的底色，上面按种子撒块、丝、粒。 */
-function foodSkin(file: ProductFile, food: ProductFood, [W, H]: readonly [number, number], L: number, variant: number): string {
+function foodSkin(file: Product, food: ProductFood, [W, H]: readonly [number, number], L: number, variant: number): string {
   const F = foodSide(file);
-  const random = seededRandom(hash32(hash32(file.seed ?? 1, variant), 913));
+  const random = seededRandom(hash32(hash32(file.seed, variant), 913));
   const main = food.color, accent = food.accent ?? shadeColor(main, 0.6), sauce = food.sauce ?? shadeColor(main, 0.55);
   const pick = () => (random() < 0.8 ? shadeColor(main, 0.8 + random() * 0.4) : shadeColor(accent, 0.85 + random() * 0.3));
   const at = () => [random() * F, L + random() * F] as const;
   const shapes: string[] = [`<rect y="${svgNumber(L)}" width="${svgNumber(Math.min(W, F))}" height="${svgNumber(H - L)}" fill="${sauce}"/>`];
-  const pieces = food.pieces ?? 'chunks';
+  const pieces = food.pieces;
   if (pieces === 'chunks') {
     for (let i = 0; i < 90; i++) {
       const [x, y] = at(), w = F * (0.06 + random() * 0.08), d = w * (0.6 + random() * 0.5);
@@ -454,7 +459,7 @@ function foodSkin(file: ProductFile, food: ProductFood, [W, H]: readonly [number
     }
   }
   // 落下去的菜块取色的四个色块（正方形的四个角，圆的菜面用不到）：主料亮、暗、配料、主料，每块横着几道深浅
-  if ((food.dropped ?? 0) > 0) {
+  if ((food.dropped) > 0) {
     [shadeColor(main, 1.12), shadeColor(main, 0.82), accent, main].forEach((color, swatch) => {
       const [x, y, side] = swatchRect(swatch, F, L);
       for (let k = 0; k < 4; k++) shapes.push(`<rect x="${svgNumber(x)}" y="${svgNumber(y + (k * side) / 4)}" width="${svgNumber(side)}" height="${svgNumber(side / 4 + 0.01)}" fill="${shadeColor(color, 0.92 + (k % 2) * 0.12)}"/>`);

@@ -9,7 +9,7 @@
  * - 标签的 SVG 用毫米做单位（viewBox 和网格的展开一一对应，栅格化的尺寸按比例），字是字体轮廓的路径（evenodd 挖洞）。
  */
 import type { MaterialFile } from '../content/formats/assetFormat.ts';
-import { PRODUCE_SHAPES, WARE_SHAPES, type ProductColors, type ProductFile, type ProductMotif, type ProductPattern, type ProductShape, type ProductSurface } from '../content/formats/productFormat.ts';
+import { PRODUCE_SHAPES, WARE_SHAPES, type ProductColors, type ProductMotif, type ProductPattern, type ProductShape, type ProductSurface, PRODUCT, type Product, type ProductFile } from '../content/formats/productFormat.ts';
 import { hash32, seededRandom } from '../data/hash.ts';
 import { MeshBuilder } from './meshBuilder.ts';
 import { cross, finish, latheMesh, normalize, smoothNormals, sub, type ProductMesh, type ProfilePoint } from './lathe.ts';
@@ -60,14 +60,15 @@ export const SURFACE_MATERIAL: Readonly<Record<ProductSurface, { readonly roughn
 const RADIAL_SEGMENTS = 20;
 
 /** 文件里没写的按种子（加上第几个变体）挑好。变体只改文件里没写的：写了品牌、配色的文件每个变体都一样。 */
-export function productDesign(file: ProductFile, variant = 0): ProductDesign {
-  const random = seededRandom(hash32(file.seed ?? 1, variant));
+export function productDesign(input: ProductFile, variant = 0): ProductDesign {
+  const file = PRODUCT.parse(input, input.name);
+  const random = seededRandom(hash32(file.seed, variant));
   const pick = <T>(list: readonly T[]) => list[Math.floor(random() * list.length)]!;
   if (isWare(file.shape)) {
     // 器皿：白釉青花（碗）或者素白（盘），没有品牌和字
     return {
       brand: '', text: undefined, pattern: file.pattern ?? (file.shape === 'bowl' ? 'floral' : 'plain'), surface: file.surface ?? 'ceramic',
-      colors: { background: file.colors?.background ?? WARE_GLAZE, accent: file.colors?.accent ?? WARE_COBALT, text: '', cap: '', trim: '' }, ...UNPRINTED,
+      colors: { background: file.colors.background ?? WARE_GLAZE, accent: file.colors.accent ?? WARE_COBALT, text: '', cap: '', trim: '' }, ...UNPRINTED,
     };
   }
   if (isProduce(file.shape)) {
@@ -75,25 +76,25 @@ export function productDesign(file: ProductFile, variant = 0): ProductDesign {
     const [background, accent, cap] = PRODUCE_COLORS[file.shape]!.map((color) => jitter(color, random, 0.12));
     return {
       brand: '', text: undefined, pattern: 'plain', surface: file.surface ?? 'skin',
-      colors: { background: file.colors?.background ?? background!, accent: file.colors?.accent ?? accent!, text: '', cap: file.colors?.cap ?? cap!, trim: '' }, ...UNPRINTED,
+      colors: { background: file.colors.background ?? background!, accent: file.colors.accent ?? accent!, text: '', cap: file.colors.cap ?? cap!, trim: '' }, ...UNPRINTED,
     };
   }
-  const background = file.colors?.background ?? pick(PALETTE);
-  let accent = file.colors?.accent ?? pick(PALETTE);
-  for (let tries = 0; !file.colors?.accent && contrast(accent, background) < 1.6 && tries < 8; tries++) accent = pick(PALETTE);
+  const background = file.colors.background ?? pick(PALETTE);
+  let accent = file.colors.accent ?? pick(PALETTE);
+  for (let tries = 0; !file.colors.accent && contrast(accent, background) < 1.6 && tries < 8; tries++) accent = pick(PALETTE);
   const length = 2 + Math.floor(random() * 2);
   const brand = file.brand ?? Array.from({ length }, () => pick(Array.from(BRAND_CHARACTERS))).join('');
-  const cap = file.colors?.cap ?? pick(['#f4f2ec', '#d7262b', '#1e64c8', '#2f9e44', '#f6c40f', '#1d1d1f', accent]);
+  const cap = file.colors.cap ?? pick(['#f4f2ec', '#d7262b', '#1e64c8', '#2f9e44', '#f6c40f', '#1d1d1f', accent]);
   const pattern = file.pattern ?? pick(PATTERNS);
   // 后加的几样排在最后挑：前面的（品牌、配色、图案）和加之前按同一个种子挑的一样
-  const motif = file.motif ?? pick(MOTIFS), trim = file.colors?.trim ?? pick(TRIMS);
+  const motif = file.motif ?? pick(MOTIFS), trim = file.colors.trim ?? pick(TRIMS);
   return {
     brand,
     text: file.text,
-    colors: { background, accent, text: file.colors?.text ?? '', cap, trim },
+    colors: { background, accent, text: file.colors.text ?? '', cap, trim },
     pattern,
     surface: file.surface ?? DEFAULT_SURFACE[file.shape],
-    detail: file.detail ?? true, motif, badge: file.badge || undefined,
+    detail: file.detail, motif, badge: file.badge || undefined,
   };
 }
 
@@ -106,7 +107,7 @@ export function productText(design: ProductDesign): string {
 }
 
 /** 检查尺寸；不对时报错（where 是报错的前缀）。 */
-function checkSize(file: ProductFile, where: string): void {
+function checkSize(file: Product, where: string): void {
   const [w, h, d] = file.size;
   if (!(w > 0 && h > 0)) throw new Error(`${where}: size needs a width and a height greater than 0`);
   if ((file.shape === 'box' || file.shape === 'pouch') && !(d > 0)) throw new Error(`${where}: a ${file.shape} needs a depth greater than 0`);
@@ -116,7 +117,8 @@ function checkSize(file: ProductFile, where: string): void {
  * 外形的网格；segments 是旋转体绕一圈分几段（默认 20，看不清的地方给少一点）。food 是器皿里落定的菜块（ware.ts 的 foodSpawn
  * 经物理跑完的位姿），没给时只有菜面。
  */
-export function productMesh(file: ProductFile, where = file.name, segments = RADIAL_SEGMENTS, food?: readonly FoodPiecePose[]): ProductMesh {
+export function productMesh(input: ProductFile, where = input.name, segments = RADIAL_SEGMENTS, food?: readonly FoodPiecePose[]): ProductMesh {
+  const file = PRODUCT.parse(input, where);
   checkSize(file, where);
   if (file.shape === 'box') return boxMesh(file.size);
   if (file.shape === 'pouch') return pouchMesh(file.size);
@@ -142,11 +144,11 @@ export function isProduce(shape: ProductShape): boolean {
  * 果蔬：旋转体的轮廓（单位大小）按尺寸拉成椭球那样，再按种类起伏：蒜头一瓣瓣（沿圆周的余弦）、核桃坑坑洼洼、土豆疙疙瘩瘩
  * （按位置的哈希噪声），所以法线最后按起伏后的面重算（位置相同的顶点焊在一起取平均）。
  */
-function produceMesh(file: ProductFile, radial: number): ProductMesh {
+function produceMesh(file: Product, radial: number): ProductMesh {
   const [w, h, d] = file.size, rx = w / 2, rz = (d > 0 ? d : w) / 2;
   // 绕一圈分得少（小东西）时，轮廓线也分得少一半
   const profile = produceProfile(file.shape, radial < 12 ? 0.5 : 1);
-  const seed = file.seed ?? 1;
+  const seed = file.seed;
   const bump = (u: number, t: number, cells: number, amount: number) => {
     // 两层格子噪声：圆周上按 u 首尾相接
     const value = (scale: number, salt: number) => {
@@ -180,7 +182,7 @@ function produceMesh(file: ProductFile, radial: number): ProductMesh {
  * 落叶：躺平的一片叶子，长沿 Z、宽沿 X，两边和两头往上卷（size 是宽、卷起的高、长）。轮廓两头尖、中间宽，正反两面（隔 0.4 毫米），
  * 贴图按叶面平铺（u 横、v 竖，叶脉画在 u = 0.5 那条线上）。
  */
-function leafMesh(file: ProductFile): ProductMesh {
+function leafMesh(file: Product): ProductMesh {
   const [w, h] = file.size, d = leafLength(file);
   const thickness = Math.min(0.0004, h * 0.5), curl = h - thickness;
   const along = 12, across = 6, builder = new MeshBuilder();
@@ -233,7 +235,8 @@ function produceProfile(shape: ProductShape, detail = 1): ProfilePoint[] {
 }
 
 /** 摆在货架上占的地方（米）：宽、高、深（瓶罐的深是直径）。 */
-export function productFootprint(file: ProductFile): readonly [number, number, number] {
+export function productFootprint(input: ProductFile): readonly [number, number, number] {
+  const file = PRODUCT.parse(input, input.name);
   const [w, h, d] = file.size;
   if (file.shape === 'jug') return [w, h, jugDepth(file)];
   if (file.shape === 'leaf') return [w, h, leafLength(file)];
@@ -241,12 +244,12 @@ export function productFootprint(file: ProductFile): readonly [number, number, n
 }
 
 /** 落叶的长（米）：没写时是宽的 1.6。 */
-function leafLength(file: ProductFile): number {
+function leafLength(file: Product): number {
   return file.size[2] > 0 ? file.size[2] : file.size[0] * 1.6;
 }
 
 /** 方桶的厚度（米）：没写时是宽的 0.62（5 升的油桶大约 17 × 10.5 厘米）。 */
-function jugDepth(file: ProductFile): number {
+function jugDepth(file: Product): number {
   return file.size[2] > 0 ? file.size[2] : file.size[0] * 0.62;
 }
 
@@ -261,7 +264,7 @@ const JUG_NECK = 0.26;
  * 圆心挪到前面（瓶口偏前）；后面一个提手：从瓶颈后面拱起、落到背面的肩上的一根椭圆截面的弯管（拱下面是空的，手伸得进去），
  * 贴图取瓶身底色那一片（透光的桶，提手也透）。
  */
-function jugMesh(file: ProductFile, radial: number): ProductMesh {
+function jugMesh(file: Product, radial: number): ProductMesh {
   const [w, h] = file.size, R = w / 2, b = jugDepth(file) / 2;
   const profile = latheProfile('jug', R, h);
   const [from, to] = JUG_SHOULDER.map((t) => t * h) as [number, number], forward = b * 0.45, power = 2 / JUG_SQUARENESS;
@@ -424,19 +427,21 @@ interface TextArea {
  * 标签的 SVG（毫米做单位，宽高同 productMesh 的 labelSize）：底色、图案、盖子那几段的颜色，正面画品牌名和品类，背面小一号；
  * font 没有时不画字。
  */
-export function productLabelSvg(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+export function productLabelSvg(input: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+  const file = PRODUCT.parse(input, input.name);
   const [W, H] = labelSize;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" width="${svgNumber(W)}" height="${svgNumber(H)}">${productLabelShapes(file, labelSize, font, variant)}</svg>`;
 }
 
 /** 标签里的图形（不带外面的 svg 标签，坐标同 productLabelSvg）：货架把它们嵌进图集的一格。 */
-export function productLabelShapes(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+export function productLabelShapes(input: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+  const file = PRODUCT.parse(input, input.name);
   const design = productDesign(file, variant);
   const [W, H] = labelSize;
   const background = `<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`;
   if (isWare(file.shape)) return wareSkin(file, labelSize, design.colors.background, design.colors.accent, design.pattern === 'floral', variant);
-  const wear = isProduce(file.shape) ? 0 : Math.min(1, Math.max(0, file.wear ?? 0.5));
-  return background + labelPrint(file, design, labelSize, font, variant) + (wear > 0 ? labelWear(labelSize, wear, seededRandom(hash32(hash32(file.seed ?? 1, variant), 131))) : '');
+  const wear = isProduce(file.shape) ? 0 : Math.min(1, Math.max(0, file.wear));
+  return background + labelPrint(file, design, labelSize, font, variant) + (wear > 0 ? labelWear(labelSize, wear, seededRandom(hash32(hash32(file.seed, variant), 131))) : '');
 }
 
 /**
@@ -459,8 +464,9 @@ function labelWear([W, H]: readonly [number, number], amount: number, random: ()
 }
 
 /** 瓶身透多少光（ProductFile.transmission，限在 0..1）：只有包装算，果蔬、器皿是 0。 */
-export function productTransmission(file: ProductFile): number {
-  return isProduce(file.shape) || isWare(file.shape) ? 0 : Math.min(1, Math.max(0, file.transmission ?? 0));
+export function productTransmission(input: ProductFile): number {
+  const file = PRODUCT.parse(input, input.name);
+  return isProduce(file.shape) || isWare(file.shape) ? 0 : file.transmission;
 }
 
 /**
@@ -468,7 +474,8 @@ export function productTransmission(file: ProductFile): number {
  * 比例；print 盖在上面，是印上去的图形（盖子、图案、字）用一个滤镜涂成 R 为 0 的同一个颜色——按它们的轮廓不透光（半透明的印刷
  * 按它的不透明度少透一些）；不透光的商品没有 print。defs 是滤镜（同样材料的商品共用一个，放进 svg 的 defs）。
  */
-export function productSurface(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): { readonly color: string; readonly print: string; readonly defs: string } {
+export function productSurface(input: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): { readonly color: string; readonly print: string; readonly defs: string } {
+  const file = PRODUCT.parse(input, input.name);
   const design = productDesign(file, variant);
   const { roughness, metalness } = SURFACE_MATERIAL[design.surface];
   const g = Math.round(roughness * 255), b = Math.round(metalness * 255), transmission = productTransmission(file);
@@ -482,13 +489,14 @@ export function productSurface(file: ProductFile, labelSize: readonly [number, n
 }
 
 /** 整张表面贴图（透光的包装单独烘时，材质的 `<texture>.surface`）。 */
-export function productSurfaceSvg(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+export function productSurfaceSvg(input: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+  const file = PRODUCT.parse(input, input.name);
   const [W, H] = labelSize, { color, print, defs } = productSurface(file, labelSize, font, variant);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" width="${svgNumber(W)}" height="${svgNumber(H)}"><defs>${defs}</defs><rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${color}"/>${print}</svg>`;
 }
 
 /** 标签上底色以外的图形：果蔬的表皮纹路；包装的盖子、底纹、字。 */
-function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonly [number, number], font: TextFont | undefined, variant: number): string {
+function labelPrint(file: Product, design: ProductDesign, labelSize: readonly [number, number], font: TextFont | undefined, variant: number): string {
   const [W, H] = labelSize;
   const [w, h, d] = file.size.map((v) => v * 1000) as [number, number, number];
   const parts: string[] = [];
@@ -508,7 +516,7 @@ function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonl
     if (capLength > 0) parts.push(`<rect width="${svgNumber(W)}" height="${svgNumber(capLength)}" fill="${design.colors.cap}"/>`);
     // 不透光的玻璃罐：标签以外露出来的是隔着玻璃看见的里面的酱（底色当它的颜色）；玻璃瓶里是酱油、醋这种匀的，不画
     if (design.surface === 'glass' && productTransmission(file) === 0 && file.shape === 'jar') {
-      parts.push(contentsShapes(design.colors.background, [0, capLength, W, H - capLength], seededRandom(hash32(hash32(file.seed ?? 1, variant), 97))));
+      parts.push(contentsShapes(design.colors.background, [0, capLength, W, H - capLength], seededRandom(hash32(hash32(file.seed, variant), 97))));
     }
     // 瓶的肩、颈不放字：字放在瓶身的直段（离底 3% 到 60% 高）
     const straight = file.shape === 'bottle' ? [0.03, 0.6] : file.shape === 'jug' ? [0.05, 0.66] : file.shape === 'can' ? [0.08, 0.9] : file.shape === 'jar' ? [0.06, 0.76] : [0.1, 0.84];
@@ -519,7 +527,7 @@ function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonl
   }
   parts.push(...patternShapes(design, body));
   if (font) for (const area of areas) parts.push(...textBlock(design, font, area));
-  if (design.detail) parts.push(...labelDetails(design, font, areas[0]!, seededRandom(hash32(hash32(file.seed ?? 1, variant), 91))));
+  if (design.detail) parts.push(...labelDetails(design, font, areas[0]!, seededRandom(hash32(hash32(file.seed, variant), 91))));
   return parts.join('');
 }
 
@@ -527,8 +535,8 @@ function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonl
  * 果蔬的表皮：洋葱、蒜头是顺着从顶到底的细纹（贴图的竖线）加顶上一截颈的颜色，核桃、土豆是深浅的斑，圆的（番茄、橙子）
  * 是顶上一小圈深色（蒂）。按种子和变体摆。
  */
-function produceSkin(file: ProductFile, design: ProductDesign, [W, H]: readonly [number, number], variant: number): string {
-  const random = seededRandom(hash32(hash32(file.seed ?? 1, variant), 77));
+function produceSkin(file: Product, design: ProductDesign, [W, H]: readonly [number, number], variant: number): string {
+  const random = seededRandom(hash32(hash32(file.seed, variant), 77));
   const shapes: string[] = [];
   const { accent, cap } = design.colors;
   if (file.shape === 'leaf') {
@@ -778,7 +786,8 @@ export function labelPixels(labelSize: readonly [number, number], longest = 512)
  * 包装的材质：标签贴图（path 是贴图的内容路径，svg）加这类材料的粗糙度、金属度。瓶身透光（productTransmission 大于 0）时改用
  * 表面贴图 `<texture>.surface`（productSurfaceShapes：R 透射、G 粗糙度、B 金属度），加上透射。
  */
-export function productMaterial(file: ProductFile, texture: string, pixels: readonly [number, number], variant = 0): MaterialFile {
+export function productMaterial(input: ProductFile, texture: string, pixels: readonly [number, number], variant = 0): MaterialFile {
+  const file = PRODUCT.parse(input, input.name);
   const { surface } = productDesign(file, variant);
   const slot = { encoding: 'svg', size: pixels, filter: 'anisotropic', scale: [1, 1], offset: [0, 0] } as const;
   const base = { name: file.name, baseColor: [1, 1, 1, 1], baseColorTexture: { texture, srgb: true, ...slot } } as const;

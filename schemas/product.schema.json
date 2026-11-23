@@ -73,7 +73,8 @@
       },
       "required": [],
       "additionalProperties": false,
-      "description": "label colors; the missing ones come from the seed, so variants of one file differ in them"
+      "description": "label colors; the missing ones come from the seed, so variants of one file differ in them",
+      "default": {}
     },
     "pattern": {
       "enum": [
@@ -171,19 +172,19 @@
       "description": "print details: emblem, ingredient pictures, fine print, badge, trim lines and shading of the band; false draws only the color blocks, pattern and text (a cartoon look)",
       "default": true
     },
-    "wear": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1,
-      "description": "how handled the package looks (0..1): each variant fades a little and gets a few grimy smudges and scuffs near the edges, from the seed; 0 is fresh from the factory; produce and ware ignore it",
-      "default": 0.5
-    },
     "transmission": {
       "type": "number",
       "minimum": 0,
       "maximum": 1,
       "description": "how much light passes through the body (0..1: oil and drink bottles show what is inside); the label background is the body, printed parts (cap, pattern, text) stay opaque; produce and ware ignore it",
       "default": 0
+    },
+    "wear": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "how handled the package looks (0..1): each variant fades a little and gets a few grimy smudges and scuffs near the edges, from the seed; 0 is fresh from the factory; produce and ware ignore it",
+      "default": 0.5
     },
     "seed": {
       "type": "integer",

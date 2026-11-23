@@ -1,0 +1,15 @@
+{
+ "name": "Exit",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "出口 · 收银",
+ "size": [
+  1.8,
+  0.4,
+  0.06
+ ],
+ "style": "panel",
+ "doubleSided": true,
+ "colors": {
+  "background": "#c8281e"
+ }
+}

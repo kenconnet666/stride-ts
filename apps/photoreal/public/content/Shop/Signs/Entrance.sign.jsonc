@@ -1,0 +1,15 @@
+{
+ "name": "Entrance",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "入口",
+ "size": [
+  1.4,
+  0.4,
+  0.06
+ ],
+ "style": "panel",
+ "doubleSided": true,
+ "colors": {
+  "background": "#2f9e44"
+ }
+}

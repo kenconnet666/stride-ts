@@ -1,0 +1,14 @@
+{
+ "name": "WallSignCare",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "个人洗护",
+ "size": [
+  1.8,
+  0.42,
+  0.1
+ ],
+ "colors": {
+  "background": "#2f7fd0"
+ },
+ "brightness": 2.5
+}

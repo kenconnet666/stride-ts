@@ -187,6 +187,24 @@ const signs: Record<string, object> = {
   AisleGrain: { text: '粮油 · 酒水', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#c8281e' } },
   AislePantry: { text: '调味 · 速食', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#e07a1a' } },
   AisleHome: { text: '日化 · 洗护', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#7a3fa0' } },
+  // 靠墙货架上方墙上的分类灯箱（照片里墙上一排发光的字）
+  ...Object.fromEntries(([
+    ['WallSignGrain', '粮油', '#c8281e'], ['WallSignLiquor', '酒水', '#8a1a20'], ['WallSignCanned', '调味 · 罐头', '#e07a1a'], ['WallSignSnack', '休闲零食', '#e0a01a'],
+    ['WallSignCare', '个人洗护', '#2f7fd0'], ['WallSignHome', '家庭日化', '#7a3fa0'], ['WallSignDrinks', '饮料 · 水', '#1e9e8a'],
+  ] as const).map(([name, text, background]) => [name, { text, size: [1.8, 0.42, 0.1], colors: { background }, brightness: 2.5 }])),
+  // 入口、出口上方的挂牌
+  Entrance: { text: '入口', size: [1.4, 0.4, 0.06], style: 'panel', doubleSided: true, colors: { background: '#2f9e44' } },
+  Exit: { text: '出口 · 收银', size: [1.8, 0.4, 0.06], style: 'panel', doubleSided: true, colors: { background: '#c8281e' } },
+  // 过道上方吊下来的促销旗（两面印）
+  ...Object.fromEntries(([['BannerSale', '特价', '#d7262b'], ['BannerDeal', '满99减20', '#e07a1a'], ['BannerNew', '新品上市', '#2f9e44'], ['BannerMember', '会员日', '#7a3fa0']] as const)
+    .map(([name, text, background], i) => [name, { text, size: [0.55, 0.8, 0.01], style: 'banner', hang: 0.45, colors: { background, text: '#fff3b0' }, seed: 120 + i }])),
+  // 码垛旁的地堆价牌
+  ...Object.fromEntries(([['StandMilk', '整箱特价\n59.9'], ['StandWater', '整箱\n29.9'], ['StandNoodle', '整箱特价\n69'], ['StandBeer', '整箱\n79']] as const)
+    .map(([name, text], i) => [name, { text, size: [0.34, 0.26, 0.01], style: 'stand', standHeight: 1.25, colors: { background: '#f6d21a', text: '#d7262b' }, seed: 130 + i }])),
+  // 地贴：入口进来的箭头、出口的箭头、收银台前的排队圆标
+  FloorEnter: { text: '入口', size: [0.6, 1.0, 0], style: 'floor', shape: 'arrow', colors: { background: '#2f9e44' }, wear: 0.4, seed: 140 },
+  FloorExit: { text: '出口', size: [0.6, 1.0, 0], style: 'floor', shape: 'arrow', colors: { background: '#c8281e' }, wear: 0.4, seed: 141 },
+  FloorQueue: { text: '请排队', size: [0.5, 0.5, 0], style: 'floor', shape: 'round', colors: { background: '#f6d21a', text: '#3a3a3a' }, wear: 0.5, seed: 142 },
 };
 for (const [name, sign] of Object.entries(signs)) await write('sign', `Shop/Signs/${name}`, { name, font: FONT, ...sign });
 
@@ -317,7 +335,34 @@ const shelfEntities = [
   // 四条过道上方的招牌
   ...([['AisleGrain', -4.5], ['AisleDrinks', -1.5], ['AislePantry', 1.5], ['AisleHome', 4.5]] as const).map(([name, x], i) => entity(sid(0x30 + i), `Sign ${name}`, [x, 2.55, -3.6], { model: { model: `Shop/Signs/${name}`, materials: [] } }, euler(0))),
   entity(sid(0x34), 'Sign frozen', [0, 2.55, -9.0], { model: { model: 'Shop/Signs/AisleFrozen', materials: [] } }),
+  ...detailEntities(),
 ];
+
+/** 细节：墙上的分类灯箱、入口出口的挂牌、过道上的吊旗、码垛旁的价牌、地贴、过道里的购物车和篮子。 */
+function detailEntities() {
+  let count = 0;
+  const did = () => `5e0b5e0b-0004-4000-8000-${(count++).toString(16).padStart(12, '0')}`;
+  const sign = (name: string, position: Vec3, yaw: number) => entity(did(), name, position, { model: { model: `Shop/Signs/${name}`, materials: [] } }, euler(yaw));
+  // 地贴：贴花从上往下投到地面，盒子 0.3 米高、中心在地面上（离中心远的上下两截按 upperFade、lowerFade 渐隐）
+  const sticker = (name: string, position: Vec3, size: readonly [number, number], yaw: number) =>
+    entity(did(), name, position, { decal: { size: [size[0], 0.3, size[1]], albedo: { texture: `Shop/Signs/${name}`, encoding: 'svg' } } }, euler(yaw));
+  return [
+    // 墙上的灯箱：在每节靠墙货架的正上方，贴着墙
+    ...(['WallSignGrain', 'WallSignLiquor', 'WallSignCanned', 'WallSignSnack'] as const).map((name, i) => sign(name, [-WALL_X, 2.55, 0.05 - 4 * i], 90)),
+    ...(['WallSignCare', 'WallSignHome', 'WallSignDrinks'] as const).map((name, i) => sign(name, [WALL_X, 2.55, -2.2 - 4 * i], -90)),
+    sign('Entrance', [-3.9, 2.5, 4.8], 0), sign('Exit', [3.65, 2.6, 5.3], 0),
+    // 吊旗：中间两条过道上错开挂
+    sign('BannerSale', [-1.5, 2.3, -1.5], 0), sign('BannerDeal', [1.5, 2.3, -2.2], 0),
+    sign('BannerNew', [-1.5, 2.3, -5.6], 0), sign('BannerMember', [1.5, 2.3, -6.6], 0),
+    // 价牌：每个托盘外侧前角（托盘的顺序同码垛：牛奶、水在里排，方便面、啤酒在外排）
+    sign('StandMilk', [-1.55, 0, 2.15], 15), sign('StandWater', [1.55, 0, 2.15], -15),
+    sign('StandNoodle', [-1.55, 0, 3.4], 15), sign('StandBeer', [1.55, 0, 3.4], -15),
+    sticker('FloorEnter', [-3.9, 0, 3.6], [0.6, 1.0], 0), sticker('FloorExit', [3.65, 0, 5.0], [0.6, 1.0], 180),
+    sticker('FloorQueue', [3.65, 0, 2.1], [0.5, 0.5], 0), sticker('FloorQueue', [3.65, 0, 1.3], [0.5, 0.5], 0),
+    // 过道里推着的购物车、放在地上的篮子
+    fixtureAt(16, 'Cart', [-1.45, 0, -3.3], 165), fixtureAt(17, 'Basket', [1.6, 0, -2.6], 30),
+  ];
+}
 // 天花板：照片里开放式的黑顶（风管、桥架、喷淋管、吊杆上的灯管）。管线沿天花板的 X，转 90° 以后顺着过道（-Z）；
 // 面光源放在 ceilingLights 算出的每盏灯管下面，灯具和光对得上。调料过道用的 Hall（14 米宽）照旧；超市的 Market 和大厅一样
 // 12 米宽，四排灯正好在四条过道（x = ±1.5、±4.5）的上面

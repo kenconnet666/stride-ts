@@ -1,0 +1,14 @@
+{
+ "name": "WallSignCanned",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "调味 · 罐头",
+ "size": [
+  1.8,
+  0.42,
+  0.1
+ ],
+ "colors": {
+  "background": "#e07a1a"
+ },
+ "brightness": 2.5
+}

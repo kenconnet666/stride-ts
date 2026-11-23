@@ -1,0 +1,14 @@
+{
+ "name": "WallSignGrain",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "粮油",
+ "size": [
+  1.8,
+  0.42,
+  0.1
+ ],
+ "colors": {
+  "background": "#c8281e"
+ },
+ "brightness": 2.5
+}

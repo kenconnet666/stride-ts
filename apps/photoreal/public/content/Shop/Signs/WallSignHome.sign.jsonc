@@ -1,0 +1,14 @@
+{
+ "name": "WallSignHome",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "家庭日化",
+ "size": [
+  1.8,
+  0.42,
+  0.1
+ ],
+ "colors": {
+  "background": "#7a3fa0"
+ },
+ "brightness": 2.5
+}

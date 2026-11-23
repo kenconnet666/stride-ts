@@ -1,0 +1,14 @@
+{
+ "name": "WallSignSnack",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "休闲零食",
+ "size": [
+  1.8,
+  0.42,
+  0.1
+ ],
+ "colors": {
+  "background": "#e0a01a"
+ },
+ "brightness": 2.5
+}

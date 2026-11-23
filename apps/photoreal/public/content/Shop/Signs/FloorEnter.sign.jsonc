@@ -1,0 +1,17 @@
+{
+ "name": "FloorEnter",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "入口",
+ "size": [
+  0.6,
+  1,
+  0
+ ],
+ "style": "floor",
+ "shape": "arrow",
+ "colors": {
+  "background": "#2f9e44"
+ },
+ "wear": 0.4,
+ "seed": 140
+}

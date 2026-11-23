@@ -1,0 +1,14 @@
+{
+ "name": "WallSignDrinks",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "饮料 · 水",
+ "size": [
+  1.8,
+  0.42,
+  0.1
+ ],
+ "colors": {
+  "background": "#1e9e8a"
+ },
+ "brightness": 2.5
+}

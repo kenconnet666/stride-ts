@@ -1,0 +1,17 @@
+{
+ "name": "BannerDeal",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "满99减20",
+ "size": [
+  0.55,
+  0.8,
+  0.01
+ ],
+ "style": "banner",
+ "hang": 0.45,
+ "colors": {
+  "background": "#e07a1a",
+  "text": "#fff3b0"
+ },
+ "seed": 121
+}

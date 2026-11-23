@@ -1,0 +1,18 @@
+{
+ "name": "FloorQueue",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "请排队",
+ "size": [
+  0.5,
+  0.5,
+  0
+ ],
+ "style": "floor",
+ "shape": "round",
+ "colors": {
+  "background": "#f6d21a",
+  "text": "#3a3a3a"
+ },
+ "wear": 0.5,
+ "seed": 142
+}

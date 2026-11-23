@@ -1,0 +1,17 @@
+{
+ "name": "BannerNew",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "新品上市",
+ "size": [
+  0.55,
+  0.8,
+  0.01
+ ],
+ "style": "banner",
+ "hang": 0.45,
+ "colors": {
+  "background": "#2f9e44",
+  "text": "#fff3b0"
+ },
+ "seed": 122
+}

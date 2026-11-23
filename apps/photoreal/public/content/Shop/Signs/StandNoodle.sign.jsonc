@@ -1,0 +1,17 @@
+{
+ "name": "StandNoodle",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "整箱特价\n69",
+ "size": [
+  0.34,
+  0.26,
+  0.01
+ ],
+ "style": "stand",
+ "standHeight": 1.25,
+ "colors": {
+  "background": "#f6d21a",
+  "text": "#d7262b"
+ },
+ "seed": 132
+}

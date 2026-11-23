@@ -1,0 +1,17 @@
+{
+ "name": "BannerMember",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "会员日",
+ "size": [
+  0.55,
+  0.8,
+  0.01
+ ],
+ "style": "banner",
+ "hang": 0.45,
+ "colors": {
+  "background": "#7a3fa0",
+  "text": "#fff3b0"
+ },
+ "seed": 123
+}

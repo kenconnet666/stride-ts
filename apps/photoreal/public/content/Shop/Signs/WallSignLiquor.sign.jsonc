@@ -1,0 +1,14 @@
+{
+ "name": "WallSignLiquor",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "酒水",
+ "size": [
+  1.8,
+  0.42,
+  0.1
+ ],
+ "colors": {
+  "background": "#8a1a20"
+ },
+ "brightness": 2.5
+}

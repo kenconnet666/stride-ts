@@ -1,0 +1,17 @@
+{
+ "name": "FloorExit",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "出口",
+ "size": [
+  0.6,
+  1,
+  0
+ ],
+ "style": "floor",
+ "shape": "arrow",
+ "colors": {
+  "background": "#c8281e"
+ },
+ "wear": 0.4,
+ "seed": 141
+}

@@ -3,7 +3,8 @@
  * 并按文件名关联给 IDE：人手写 `.json`、`.jsonc`（`*.shelf.json`、`*.shelf.jsonc`……）时补全字段名和枚举、写错标红、悬停看说明。
  * - VS Code：.vscode/settings.json 的 json.schemas（只改这一项，别的设置留着）；
  * - JetBrains（WebStorm、IDEA、CLion）：.idea/jsonSchemas.xml（.idea 不进仓库，有这个目录才写）。
- * 字段描述改了以后重跑；`--check` 只比不写，过期了退出码 1（单测里跑）。
+ * `pnpm install` 之后自动跑（根 package.json 的 postinstall），JetBrains 打开工程就有关联；字段描述改了以后重跑（`pnpm schemas`）；
+ * `--check` 只比不写，过期了退出码 1（单测里跑）。
  *   node tools/json-schemas.ts [--check]
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';

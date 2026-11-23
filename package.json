@@ -15,7 +15,9 @@
     "test": "pnpm -r --no-bail run test",
     "lint": "oxlint --deny-warnings .",
     "test:changed": "pnpm -r --no-bail --filter \"...[origin/main]\" run test",
-    "stride": "node packages/cli/src/cli.ts"
+    "stride": "node packages/cli/src/cli.ts",
+    "schemas": "node tools/json-schemas.ts",
+    "postinstall": "node tools/json-schemas.ts || echo \"json-schemas: skipped (IDE completion for content files may be stale)\""
   },
   "devDependencies": {
     "@stride-ts/cli": "workspace:*",

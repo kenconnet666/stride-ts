@@ -29,8 +29,8 @@ export const SIGN = s.object({
   standHeight: s.number({ min: 0.2, step: 0.1 }).default(1.2).describe('height from the floor to the top of a stand card (m)'),
   /** 地贴的外形：圆角方块、圆标、箭头（指向贴图的上方，转实体来定方向）。 */
   shape: s.oneOf('rect', 'round', 'arrow').default('rect').describe('floor sticker shape: rounded rectangle, round badge, arrow (pointing to the top of the texture; turn the entity to aim it)'),
-  /** 地贴踩旧了多少（0..1）：按种子擦掉几道、几片。 */
-  wear: s.number({ min: 0, max: 1, step: 0.05 }).default(0).describe('how worn a floor sticker is (0..1): scratches and scuffed patches from the seed'),
+  /** 用旧了多少（0..1，按种子）：地贴擦掉几道、几片；别的招牌字面上的手印、擦痕，外框边角的划伤、靠底发脏。 */
+  wear: s.number({ min: 0, max: 1, step: 0.05 }).default(0.3).describe('how worn it is (0..1, from the seed): a floor sticker gets scratches and scuffed patches; other signs smudges and scuffs on the face, scratched edges and grime on the frame'),
   seed: s.integer(0, 2 ** 31 - 1).default(1).describe('random seed of the wear'),
   /** 两面都有字面（挂在通道上方的）。 */
   doubleSided: s.bool().default(false).describe('a face on the back too (signs hanging over an aisle)'),

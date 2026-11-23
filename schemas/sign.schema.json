@@ -59,8 +59,8 @@
       "type": "number",
       "minimum": 0,
       "maximum": 1,
-      "description": "how worn a floor sticker is (0..1): scratches and scuffed patches from the seed",
-      "default": 0
+      "description": "how worn it is (0..1, from the seed): a floor sticker gets scratches and scuffed patches; other signs smudges and scuffs on the face, scratched edges and grime on the frame",
+      "default": 0.3
     },
     "seed": {
       "type": "integer",

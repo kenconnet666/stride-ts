@@ -64,6 +64,20 @@
       "maximum": 90,
       "description": "how far the heads tilt from straight down toward the front (+Z), degrees",
       "default": 30
+    },
+    "wear": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "how used it looks (0..1, 0 brand new): chipped edges, fine scratches, grime and scuff marks near the bottom on the main color, from the seed",
+      "default": 0.4
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 2147483647,
+      "description": "random seed of the wear",
+      "default": 1
     }
   },
   "required": [

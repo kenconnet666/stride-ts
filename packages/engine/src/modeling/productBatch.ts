@@ -108,6 +108,7 @@ export class ProductBatch {
   readonly #glassIndices: number[] = [];
   readonly #clearVertices: number[] = [];
   readonly #clearIndices: number[] = [];
+  readonly #solidTextures = new Map<number, number>();
   readonly #hazeVertices: number[] = [];
   readonly #hazeIndices: number[] = [];
   /** 图集的边长（像素）。 */
@@ -136,8 +137,18 @@ export class ProductBatch {
     return this.#extraCells[i]!;
   }
 
-  /** 轴对齐的盒子，六个面都是第 solid 个纯色。 */
+  /**
+   * 之后 box 里用第 solid 个纯色的盒子都换成 texturedBox 贴第 cell 个格子（器具的主色换成用旧了的漆面，wear.ts 的 wornPaintCell）；
+   * 圆管、斜板这些照旧是纯色。
+   */
+  textureSolid(solid: number, cell: number): void {
+    this.#solidTextures.set(solid, cell);
+  }
+
+  /** 轴对齐的盒子，六个面都是第 solid 个纯色（textureSolid 换过的贴那一格）。 */
   box(min: readonly number[], max: readonly number[], solid: number): void {
+    const cell = this.#solidTextures.get(solid);
+    if (cell !== undefined) return this.texturedBox(min, max, cell);
     const [x, y, w, h] = this.#solidCells[solid]!;
     addBox(this.#vertices, this.#indices, min, max, (x + w / 2) / this.#atlas, (y + h / 2) / this.#atlas);
   }

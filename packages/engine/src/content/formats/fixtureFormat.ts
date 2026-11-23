@@ -29,6 +29,9 @@ export const FIXTURE = s.object({
   length: s.number({ min: 0.2, step: 0.1 }).default(3).describe('track length (m)'),
   heads: s.integer(1, 32).default(4).describe('spotlight heads on the track'),
   tilt: s.number({ min: 0, max: 90, step: 5 }).default(30).describe('how far the heads tilt from straight down toward the front (+Z), degrees'),
+  /** 用旧了多少（0..1；0 是新的）：主色的面上边角掉漆、细划痕、靠底发脏和黑印，按种子。 */
+  wear: s.number({ min: 0, max: 1, step: 0.05 }).default(0.4).describe('how used it looks (0..1, 0 brand new): chipped edges, fine scratches, grime and scuff marks near the bottom on the main color, from the seed'),
+  seed: s.integer(0, 2 ** 31 - 1).default(1).describe('random seed of the wear'),
 });
 
 /** 器具文件的样子（有默认值的可以不写）。 */

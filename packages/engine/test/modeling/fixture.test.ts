@@ -14,6 +14,14 @@ describe('店里的器具', () => {
     expect(maxIndex).toBeLessThan(model.vertices.length / 8);
   });
 
+  test('用旧了：主色的盒子贴旧漆格（掉漆、划痕、底下发脏），按种子不同；wear 0 时是纯色', () => {
+    const cart = { name: 'Cart', type: 'cart' as const };
+    const worn = fixtureModel(cart, undefined), fresh = fixtureModel({ ...cart, wear: 0 }, undefined);
+    expect(worn.colorSvg).toContain('<ellipse');
+    expect(fresh.colorSvg).not.toContain('<ellipse');
+    expect(fixtureModel({ ...cart, seed: 2 }, undefined).colorSvg).not.toBe(worn.colorSvg);
+  });
+
   test('收银台的号码灯箱、寄存柜的指示灯发光；寄存柜按列行变宽变高', () => {
     expect(fixtureModel({ name: 'C', type: 'checkout' }, undefined).emissive).toBeGreaterThan(0);
     const small: FixtureFile = { name: 'L', type: 'locker', columns: 2, rows: 2 }, big: FixtureFile = { ...small, columns: 6, rows: 4 };

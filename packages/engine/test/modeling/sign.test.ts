@@ -25,8 +25,19 @@ describe('招牌', () => {
     expect(() => signModel({ ...sign, size: [0, 0.3, 0.08] }, undefined)).toThrow(/size/);
   });
 
+  test('用旧了：默认外框贴旧的不锈钢格、字面上有手印擦痕；wear 0 时外框是纯色、没有；吊旗没有外框', () => {
+    const sign: SignFile = { name: 'Old', text: '', font: 'F', size: [1.2, 0.3, 0.08] };
+    const worn = signModel(sign, undefined), fresh = signModel({ ...sign, wear: 0 }, undefined);
+    expect(worn.colorSvg).toContain('<ellipse');
+    expect(fresh.colorSvg).not.toContain('<ellipse');
+    // 外框的盒子贴旧漆格：UV 铺开，不再是同一个点
+    const us = (model: typeof worn) => new Set(Array.from({ length: model.vertices.length / 8 }, (_, i) => `${model.vertices[i * 8 + 6]!.toFixed(4)},${model.vertices[i * 8 + 7]!.toFixed(4)}`));
+    expect(us(worn).size).toBeGreaterThan(us(fresh).size);
+    expect(signModel({ ...sign, style: 'banner' }, undefined).colorSvg).toContain('<ellipse');
+  });
+
   test('地贴：透明底的 SVG（毫米），圆角方块、圆标、箭头；磨损时有遮罩；尺寸不对时报错', () => {
-    const base: SignFile = { name: 'Floor', style: 'floor', text: '', font: 'F', size: [0.5, 0.9, 0] };
+    const base: SignFile = { name: 'Floor', style: 'floor', text: '', font: 'F', size: [0.5, 0.9, 0], wear: 0 };
     const rect = floorStickerSvg(base, undefined);
     expect(rect).toContain('viewBox="0 0 500 900"');
     expect(rect).toContain('<rect x=');

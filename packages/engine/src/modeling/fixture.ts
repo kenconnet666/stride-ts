@@ -6,6 +6,7 @@
 import { FIXTURE, type Fixture, type FixtureFile } from '../content/formats/fixtureFormat.ts';
 import { textPath } from './product.ts';
 import { ProductBatch, type AtlasCell, type Cell, type MergedProducts } from './productBatch.ts';
+import { wornPaintCell } from './wear.ts';
 import type { TextFont } from './textOutline.ts';
 
 /**
@@ -62,9 +63,12 @@ export function fixtureModel(input: FixtureFile, font: TextFont | undefined, whe
     size: [700, 260], color: '#d7262b', roughness: 0.3, metalness: 0, emissive: 2.5,
     draw: ([x, y, w, h]: Cell) => (font ? textPath(font, `收银 ${file.number}`, x + w / 2, y + h / 2, w * 0.8, h * 0.62, '#ffffff') : undefined),
   }] : file.type === 'selfCheckout' ? selfCheckoutCells(file.number, font) : [];
+  const mainSolid = { color: main, roughness: 0.45, metalness: file.type === 'gate' ? 0.8 : 0.1 };
+  // 用旧了：主色的盒子贴旧漆格（排在别的格子后面）
+  if (file.wear > 0) cells.push(wornPaintCell(main, { ...mainSolid, amount: file.wear, seed: file.seed }));
   const batch = new ProductBatch({ products: new Map(), font: () => undefined }, where, [], {
     solids: [
-      { color: main, roughness: 0.45, metalness: file.type === 'gate' ? 0.8 : 0.1 },
+      mainSolid,
       { color: '#c3c7cb', roughness: 0.25, metalness: 0.9 },
       { color: '#1c1d20', roughness: 0.6, metalness: 0.1 },
       { color: '#eceae6', roughness: 0.4, metalness: 0 },
@@ -75,6 +79,7 @@ export function fixtureModel(input: FixtureFile, font: TextFont | undefined, whe
     ],
     cells,
   });
+  if (file.wear > 0) batch.textureSolid(MAIN, cells.length - 1);
   switch (file.type) {
     case 'checkout': checkout(batch); break;
     case 'cart': cart(batch); break;

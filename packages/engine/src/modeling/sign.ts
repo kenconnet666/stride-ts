@@ -7,6 +7,7 @@ import { hash32, seededRandom } from '../data/hash.ts';
 import { textPath } from './product.ts';
 import { svgNumber } from './svg.ts';
 import { ProductBatch, type Cell, type MergedProducts } from './productBatch.ts';
+import { printWear, wornPaintCell } from './wear.ts';
 import type { TextFont } from './textOutline.ts';
 
 /** 字面比外框往里缩多少（米）、往外凸多少（贴在框的面上，不和框打架）。 */
@@ -74,18 +75,27 @@ export function signModel(input: SignFile, font: TextFont | undefined, where = i
   const background = file.colors.background ?? (printed ? '#d7262b' : '#2f9e44'), ink = file.colors.text ?? (printed ? '#f6e21a' : '#ffffff');
   const inset = printed ? 0 : INSET;
   const faceW = Math.max(0.01, w - 2 * inset), faceH = Math.max(0.01, h - 2 * inset);
+  const frame = { color: file.colors.frame ?? '#c8c9cc', roughness: 0.35, metalness: 0.7 };
+  const wear = (random: () => number) => `<svg viewBox="0 0 ${svgNumber(faceW * 1000)} ${svgNumber(faceH * 1000)}" preserveAspectRatio="none">${printWear([faceW * 1000, faceH * 1000], file.wear, random)}</svg>`;
   const batch = new ProductBatch({ products: new Map(), font: () => undefined }, where, [], {
     solids: [
-      { color: file.colors.frame ?? '#c8c9cc', roughness: 0.35, metalness: 0.7 },
+      frame,
       // 吊旗、价牌的边（同底色）、吊绳和底座（深色）
       { color: background, roughness: 0.5, metalness: 0 },
       { color: '#2a2b2e', roughness: 0.5, metalness: 0.2 },
     ],
     cells: [{
       size: [faceW * 1000, faceH * 1000], color: background, roughness: 0.3, metalness: 0, ...(lightbox ? { emissive: file.brightness } : {}),
-      draw: ([x, y, cw, ch]: Cell) => (font ? textPath(font, file.text, x + cw / 2, y + ch / 2, cw * 0.86, ch * 0.72, ink) : undefined),
-    }],
+      draw: ([x, y, cw, ch]: Cell) => {
+        const text = font ? textPath(font, file.text, x + cw / 2, y + ch / 2, cw * 0.86, ch * 0.72, ink) : undefined;
+        // 字面旧了：手印、擦痕盖在字上（灯箱的也画进发光的那层：脏的地方透出来的光少）
+        const used = file.wear > 0 ? wear(seededRandom(hash32(file.seed, 6001))).replace('<svg ', `<svg x="${x}" y="${y}" width="${cw}" height="${ch}" `) : '';
+        return text || used ? `${text ?? ''}${used}` : undefined;
+      },
+    }, ...(file.wear > 0 && !printed ? [wornPaintCell(frame.color, { ...frame, amount: file.wear, seed: file.seed })] : [])],
   });
+  // 外框旧了：贴旧的不锈钢格（字面之后那一格）
+  if (file.wear > 0 && !printed) batch.textureSolid(FRAME_SOLID, 1);
   // 价牌的卡片在立杆顶上（原点在地面），别的以中心为原点
   const cy = style === 'stand' ? Math.max(h, file.standHeight) - h / 2 : 0;
   batch.box([-w / 2, cy - h / 2, -d / 2], [w / 2, cy + h / 2, d / 2], printed ? EDGE : FRAME_SOLID);

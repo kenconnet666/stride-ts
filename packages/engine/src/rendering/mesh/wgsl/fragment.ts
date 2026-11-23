@@ -152,24 +152,6 @@ const AREA_FAR = 8.0;
  * 货架上只有倒影附近的几盏要积分，镜面那部分 4K 下从 3.2 毫秒降到约 1 毫秒）；倒影附近的照旧积分。矩形按 4 个角单独积分
  * （ltcRect，四个角在本地坐标里只建一次，漫反射、镜面共用），不走 12 个角的数组。
  */
-/** 一盏点光、聚光或面光源照到这个像素的漫反射和镜面（乘过直射光的遮蔽 occlusion）；面光源的每像素部分 area 先算好。 */
-fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, world: vec3f, n: vec3f, occlusion: f32) -> Lit {
-  let kind = localLightKind(light);
-  if (kind >= 2u) {
-    let lit = areaLight(surface, area, light, world, kind);
-    return Lit(lit.diffuse * occlusion, lit.specular * occlusion);
-  }
-  let at = localLightAt(light, world);
-  let l = at.xyz;
-  let attenuation = at.w;
-  // 这个视图用不用阴影看图集的尺寸（不用时是 0）
-  var shadow = 1.0;
-  if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0) {
-    shadow = computeLocalShadow(u32(light.direction.w), world, n, max(dot(n, l), 0.0001), light.position.xyz);
-  }
-  return shadeLight(surface, l, light.color.rgb, attenuation, shadow * occlusion);
-}
-
 fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, kind: u32) -> Lit {
   var result = Lit(vec3f(0.0), vec3f(0.0));
   let toLight = light.position.xyz - world;
@@ -712,7 +694,23 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
     area = areaShading(surface);
   }
   for (var k = 0u; k < localCount; k++) {
-    let lit = localLightLit(localLight(select(k, clusters[firstLight + k], clustered)), surface, area, in.world, n, directOcclusion);
+    let light = localLight(select(k, clusters[firstLight + k], clustered));
+    let kind = localLightKind(light);
+    if (kind >= 2u) {
+      let lit = areaLight(surface, area, light, in.world, kind);
+      direct.diffuse += lit.diffuse * directOcclusion;
+      direct.specular += lit.specular * directOcclusion;
+      continue;
+    }
+    let at = localLightAt(light, in.world);
+    let l = at.xyz;
+    let attenuation = at.w;
+    // 这个视图用不用阴影看图集的尺寸（不用时是 0）
+    var shadow = 1.0;
+    if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0) {
+      shadow = computeLocalShadow(u32(light.direction.w), in.world, n, max(dot(n, l), 0.0001), light.position.xyz);
+    }
+    let lit = shadeLight(surface, l, light.color.rgb, attenuation, shadow * directOcclusion);
     direct.diffuse += lit.diffuse;
     direct.specular += lit.specular;
   }

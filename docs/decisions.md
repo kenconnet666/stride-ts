@@ -10,6 +10,7 @@
 - **货架试点**：`shelfFormat.ts` 的接口和 `retail.ts` 里的 `fields<ShelfFile>` 换成一份模式 `SHELF`（`ShelfFile`、`Shelf`、`ShelfStock`……都是推导的；字段的中文说明还在模式的字段上），`SHELF_FIELDS = schemaFields(SHELF)`。`planShelf`、`shelfModel`、`deliLamps` 收文件的样子、开头 `SHELF.parse` 一次，后面的代码不再写 `?? 默认值`（删了 12 处和 `BOARD` 常量）。按种类不同的默认值留在代码里、模式里只写说明：`bay`（货架 1、冷柜 0.75、熟食柜 0.6——原来字段描述写着默认 1，和冷柜、熟食柜的代码对不上）、`facings`（货架 [2, 5]、堆头 [3, 6]，同样对不上）。仓库里 18 个货架文件都过了新模式。
 - **给 IDE 的 JSON Schema**：`tools/json-schemas.ts` 把每种内容文件（28 种：资源、场景、预制体）的 schema 导出到 `schemas/`，VS Code 的 `.vscode/settings.json`（`json.schemas`）、JetBrains 的 `.idea/jsonSchemas.xml`（本机有 `.idea` 才写，不进仓库）按 `*.<种类>.json`、`*.<种类>.jsonc` 关联：手写时补全字段名和枚举、写错标红、悬停看说明和默认值。用 ajv 拿现有的场景、货架、材质校验过都通过。单测里跑 `--check`，字段描述改了没重新导出就失败。
 - **新建默认 `.jsonc`**：编辑器后端、MCP 新建人写的资源（数据库里还没有的）存成 `.jsonc`；已有的照它原来的文件；烘焙、导入生成的照旧是 `.json`（不走这条路）。运行时照旧只读 `.json`（开发服务器、构建转换）。
+- 用户 2026-11-23 又说超市和地铁两个场景都改成这种模式：`tools/to-jsonc.ts` 把 photoreal 里进了 git 的 133 个人写的内容文件改成 `.jsonc`（生成物不动），`.gitignore` 放行 `.jsonc`。导出的 schema 声明 draft 2020-12（最新发布的版本，同 MCP、OpenAPI 3.1；我们只用各版本通用的关键字，以后换版本改生成器一行）。
 - 下一步：其余格式一种种换成模式（商品、堆放、招牌、器具、天花板……材质、场景最后），每换一种删掉那边代码里的 `?? 默认值`；格式的版本和迁移函数。
 
 ### 内容文件可以是带注释的 `.jsonc`（2026-11-23）

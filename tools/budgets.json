@@ -165,7 +165,7 @@
     "render.instances": 10
   },
   "photoreal": {
-    "entities": 26,
+    "entities": 66,
     "gpu.buffers": 141,
     "gpu.buffers.bytes": 5125264,
     "gpu.pipelines.sync": 1,
@@ -173,7 +173,7 @@
     "gpu.textures.bytes": 128589864,
     "native.allocated.bytes": 76045608,
     "render.drawCalls": 191,
-    "render.instances": 110
+    "render.instances": 282
   },
   "physics-sample": {
     "entities": 8,

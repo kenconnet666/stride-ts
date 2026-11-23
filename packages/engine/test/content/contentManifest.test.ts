@@ -36,7 +36,7 @@ describe('内容文件的清单（带哈希的地址）', () => {
   });
 
   test('自己给了 read 的不换地址（测试、虚拟文件自己管）', async () => {
-    const read = vi.fn(async () => new TextEncoder().encode('{"name":"M","baseColor":[1,1,1,1]}').buffer as ArrayBuffer);
+    const read = vi.fn(async (_url: URL) => new TextEncoder().encode('{"name":"M","baseColor":[1,1,1,1]}').buffer as ArrayBuffer);
     const content = new ContentManager({ root: ROOT, read, manifest: { 'Materials/A.material.json': 'Materials/A.material.1234567890ab.json' } });
     await content.loadMaterialFile('Materials/A');
     expect(read.mock.calls[0]![0].href).toBe(`${ROOT}Materials/A.material.json`);

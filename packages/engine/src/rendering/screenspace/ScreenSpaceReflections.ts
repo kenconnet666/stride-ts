@@ -248,7 +248,8 @@ fn sampleAt(pixel: vec2i, uv: vec2f, cone: f32) -> vec4f {
   // 半分辨率的双线性：一次取到周围四条光线的平均（光追的样本噪声大，粗糙的金属尤其）
   let traced = textureSampleLevel(rayTraced, linearClamp, (vec2f(pixel) + 0.5) / ssr.size.xy, 0.0);
   if (traced.a > 0.0) {
-    sum += vec4f(compress(traced.rgb) * traced.a, traced.a);
+    // 光追的结果是预乘占比的（rgb = 反射 × 占比），除回去才是反射；压高光要在还原以后
+    sum += vec4f(compress(traced.rgb / traced.a) * traced.a, traced.a);
   }
   return sum;
 }

@@ -4,7 +4,8 @@
  * reflectionDirection），屏幕上命中的把握不足 1 的才追：
  * - 打到的表面：烘好的材质平均色 ×（直射光（带阴影射线）+ 辐照度体的间接光，体外是天空盒光）+ 自发光，同探针的射线；
  * - 没打到：天空盒的镜面贴图（按粗糙度取 mip，乘天空盒光的强度）。
- * 输出 rgb 是反射、a 是它占的比例（1 - 屏幕上的把握），屏幕空间反射的空间解析按比例混进去，再一起做时间上的累积、合成。
+ * 输出 a 是它占的比例（1 - 屏幕上的把握），rgb 是反射乘这个比例（预乘：降噪、取样平均时没追光线的邻居不会把颜色拉暗），
+ * 屏幕空间反射的空间解析按比例混进去（rgb 除以 a 还原成反射），再一起做时间上的累积、合成。
  *
  * 一个像素一条光线噪声很大（阴影里和太阳下的地面亮度差得多，粗糙的金属上斑驳），交出去之前先降噪（半分辨率，同 SVGF 的简化版）：
  * 1. 时间上累积：按表面的世界位置和上一帧的视图投影找上一帧的位置，历史夹在这一帧 3×3 邻域的均值 ± 1.5 倍标准差里（方差夹，
@@ -86,8 +87,9 @@ ${DENOISE_COMMON}
   let center = textureLoad(source, q, 0);
   let h = here(q);
   if (!h.valid || h.roughness < 0.05) { return center; }
-  // 半径随粗糙度：越粗糙越糊（反射的波瓣越宽）
-  let step = max(1, i32(round(blur.x * saturate(h.roughness / max(ssr.params.x, 0.01)) * 2.0)));
+  // 半径随粗糙度：越粗糙越糊（反射的波瓣越宽）。系数 3 是照站台的拉丝钢（粗糙度 0.35，反射到黑门框）试的：2 时下半块板上
+  // 还有一块块黑斑（一条光线一个像素，时间累积压不住），3 时成了柔和的渐变
+  let step = max(1, i32(round(blur.x * saturate(h.roughness / max(ssr.params.x, 0.01)) * 3.0)));
   var sum = center;
   var weight = 1.0;
   for (var y = -1; y <= 1; y++) {
@@ -185,7 +187,8 @@ ${rayTracedLightingWgsl(0, 9, 8)}
     }
     radiance = rtAlbedo(hit) * light + rtEmissive(hit);
   }
-  return vec4f(radiance, share);
+  // 预乘占比存（rgb = 反射 × 占比）：后面降噪和双线性取样把没追光线的邻居（全 0）平均进来时，反射的颜色才不会被拉暗
+  return vec4f(radiance * share, share);
 }
 `;
 

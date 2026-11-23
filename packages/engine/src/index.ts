@@ -140,6 +140,7 @@ export type { CloneHandler } from './engine/clone';
 export { Entity, type EntityScene, type View } from './engine/Entity';
 export { EntityManager, type EntityArg, type EntityDesc, type SpawnBatch } from './engine/EntityManager';
 export { EventKey, EventReceiver, Hook, hook, type HookEvent, type HookHandler } from './engine/events';
+export { GameEventBus, type GameEventName, type GameEvents, type RecentGameEvent } from './engine/GameEvents';
 export { Registry, type HotChange, type Registered } from './engine/registry';
 export {
   AsyncScript,

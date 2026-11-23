@@ -4,6 +4,7 @@ import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { WorldClock } from '../world/WorldClock';
+import { GameEventBus } from './GameEvents';
 import { dayNightCycleSystem } from '../rendering/sky/DayNightCycle';
 import { hook } from './events';
 import { failLoading, finishLoading, reportLoading } from './loadingScreen';
@@ -209,6 +210,8 @@ export class Game {
   readonly precipitation = new PrecipitationSystem();
   /** 天气状态（Stride 没有）：Weather 组件想要的天气慢慢过渡，驱动云、雾、风和雨雪；`game.weather.current` 是当前的天气。 */
   readonly weather = new WeatherSystem();
+  /** 全局的命名事件：按名字收发（脚本、时间轴、调试命令），见 engine/GameEvents.ts。 */
+  readonly events = new GameEventBus(() => this.updateTime.frameCount);
   /** 世界时钟和日历：世界里现在几点、第几天（日夜循环、日程、存档读写它），见 world/WorldClock.ts。编辑状态下不走。 */
   readonly clock = new WorldClock();
   /**

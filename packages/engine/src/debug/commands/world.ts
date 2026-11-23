@@ -10,7 +10,11 @@ import type { Debug } from '../Debug';
 import { entityArg } from './shared.ts';
 
 export function registerWorldCommands(debug: Debug, game: Game): void {
-  debug.command('clock', 'World clock and calendar (game.clock): the day-night cycle follows it. args: hours (0-24), dayOfYear (1-365), year, rate (world seconds per game second; 0 stops it, 720 is a day in two minutes), time (world seconds). Reports the calendar and whether game code or a day-night cycle has set it.', (args) => {
+  debug.command('events', 'Named game events (game.events): the recent ones (name, value, frame) and which names have receivers. args: emit (event name) sends one with value (any JSON, default null).', (args) => {
+    if (typeof args['emit'] === 'string') game.events.emitUnchecked(args['emit'], args['value'] ?? null);
+    return { recent: game.events.recent, listeners: game.events.listeners() };
+  });
+  debug.command('clock','World clock and calendar (game.clock): the day-night cycle follows it. args: hours (0-24), dayOfYear (1-365), year, rate (world seconds per game second; 0 stops it, 720 is a day in two minutes), time (world seconds). Reports the calendar and whether game code or a day-night cycle has set it.', (args) => {
     const clock = game.clock;
     const number = (key: string) => (typeof args[key] === 'number' ? args[key] : undefined);
     const change = { time: number('time'), year: number('year'), dayOfYear: number('dayOfYear'), hours: number('hours'), rate: number('rate') };

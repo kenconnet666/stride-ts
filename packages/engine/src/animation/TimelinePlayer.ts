@@ -4,7 +4,8 @@
  *
  *   scripts: [{ type: 'TimelinePlayer', props: { timeline: { $asset: 'Cutscenes/Intro', kind: 'timeline' }, subtitleFont: { … } } }]
  *
- * 游戏的脚本接事件：`this.receive(player.events)`（值是事件的名字），或者 `await player.finished()`。
+ * 游戏的脚本接事件：`this.receive(player.events)`（值是事件的名字），或者 `await player.finished()`；事件点也发到全局的
+ * `game.events` 的 `timeline`（不拿着这个播放器也收得到）。
  */
 import { prop, type EntityId } from '../data/prop';
 import type { Entity } from '../engine/Entity';
@@ -147,6 +148,7 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
         this.#sounds.push(instance);
       } else {
         this.events.broadcast(cue.name);
+        this.game.events.emit('timeline', { entity: this.entity.id, name: cue.name });
       }
     }
   }

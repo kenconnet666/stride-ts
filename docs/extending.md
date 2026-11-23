@@ -8,6 +8,7 @@
 | 对大量实体的每帧逻辑 | 数据组件 `component({...})` 加系统 `system({ with, writes, update })` | `apps/sandbox/src/game/particles.ts` |
 | 不属于某个实体的每帧逻辑 | 子系统 `game.addSystem({ phase, update, moveOrigin, destroy })` | 引擎内置的地形、摆放、天气（`engine/Game.ts` 的 `#builtinSystems`） |
 | 自己的资源种类 | 引擎：`registerAssetKind` 加 `CustomAssetKinds` 声明合并；编辑器：工程扩展 `defineEditorExtension` | `apps/greybox/editor/extension.ts`（柱子） |
+| 世界里的事件（开门了、店开张了） | `game.events.emit(名字, 值)`，收 `this.receive(game.events.key(名字))`；类型写进 `interface GameEvents`（声明合并） | `engine/GameEvents.ts` 的说明；`stride call events` 看最近发的 |
 | 调试命令 | `game.debug.command(名字, 说明, handler)`，CLI 用 `stride call <名字>` | `apps/collect-dodge/src/game/GameRules.ts` 的 `rules` |
 | 材质节点图的节点 | `registerMaterialNodes`（游戏入口）加编辑器扩展的 `materialNodes` | `apps/greybox/src/materialNodes.ts`（警示条纹） |
 | 网格的着色钩子 | `meshEffect(wgsl, defaults)` 按导出名登记，场景合成器的效果名引用 | `apps/space-escape`（走廊弯曲、远处起雾） |

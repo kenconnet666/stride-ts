@@ -604,6 +604,7 @@ export class EditorBackend {
       // 块压缩要整块：宽高补到 4 的倍数（同 Stride 的 TextureHelper.FindBestTextureSize）
       const width = Math.max(4, Math.ceil((image.width * fit) / 4) * 4), height = Math.max(4, Math.ceil((image.height * fit) / 4) * 4);
       const pixels = width === image.width && height === image.height ? image.pixels : await tools.resizeImage(image.pixels, image.width, image.height, width, height);
+      if (settings.alpha) await this.#packAlpha(tools, pixels, width, height, settings.alpha, where);
       await writeAtomically(path.join(this.project.contentDir, ktx2), await tools.encodeBasis(pixels, width, height, { mode: settings.compress, srgb: settings.srgb, mipmaps: settings.mipmaps }));
       encoding = 'ktx2';
     }
@@ -618,6 +619,16 @@ export class EditorBackend {
     }
     await this.#recordBake(`imageImport:${assetPath}`, settings);
     return { files, warnings: [] };
+  }
+
+  /** 把图片资源 alphaPath 的亮度（红色通道，缩放到 width × height）写进 pixels 的 alpha。 */
+  async #packAlpha(tools: StrideTools, pixels: Uint8Array, width: number, height: number, alphaPath: string, where: string): Promise<void> {
+    const record = this.database.get('image', alphaPath);
+    const file = record?.files[0];
+    if (!file) throw new Error(`${where}: the alpha image ${alphaPath} is missing`);
+    const image = await tools.decodeImage(await readFile(path.join(this.project.contentDir, file)));
+    const alpha = image.width === width && image.height === height ? image.pixels : await tools.resizeImage(image.pixels, image.width, image.height, width, height);
+    for (let i = 3; i < pixels.length; i += 4) pixels[i] = alpha[i - 3]!;
   }
 
   #writeAssetTypes(): Promise<boolean> {

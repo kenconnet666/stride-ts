@@ -30,6 +30,8 @@ export interface MaterialNormalMap extends MaterialTexture {
   readonly isXYNormal?: boolean;
   /** y 取反，默认 false（Stride 导入时按贴图的 InvertY 翻转绿色通道，管线把它记在这里）。 */
   readonly invertY?: boolean;
+  /** 视差遮挡：alpha 是高度，depth 是最深处的深度（贴图坐标的单位），steps 是最多分几层（意思同 content/formats/assetFormat.ts 的 NormalMapSlot.parallax）。 */
+  readonly parallax?: { readonly depth: number; readonly steps?: number };
 }
 
 /** 光泽度贴图取哪些通道：光泽度（或 invert 时的粗糙度）、可选的金属度和透射比例（意思同 content/formats/assetFormat.ts 的 glossinessTexture）。 */
@@ -284,7 +286,7 @@ export class Material {
   readonly transparency: Required<MaterialTransparency> | undefined;
   readonly alphaCutoff: number | undefined;
   readonly cavity: { readonly diffuse: number; readonly specular: number };
-  readonly normalMap: Required<MaterialNormalMap> | undefined;
+  readonly normalMap: (Required<Omit<MaterialNormalMap, 'parallax'>> & { readonly parallax?: Required<NonNullable<MaterialNormalMap['parallax']>> }) | undefined;
   /** 次表面散射；改它用 setSubsurfaceScattering。 */
   subsurfaceScattering: MaterialSubsurfaceScattering | undefined;
   /** 光泽、各向异性；改它们用 setSheen、setAnisotropy。 */
@@ -341,6 +343,7 @@ export class Material {
       scaleAndBias: normalMap.scaleAndBias ?? true,
       isXYNormal: normalMap.isXYNormal ?? true,
       invertY: normalMap.invertY ?? false,
+      ...(normalMap.parallax ? { parallax: { steps: 24, ...normalMap.parallax } } : {}),
     };
     this.subsurfaceScattering = desc.subsurfaceScattering && { ...SKIN_SUBSURFACE_SCATTERING, ...desc.subsurfaceScattering };
     this.sheen = desc.sheen;

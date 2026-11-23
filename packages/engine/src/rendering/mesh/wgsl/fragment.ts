@@ -29,6 +29,61 @@ fn baseColor(in: Varyings) -> vec4f {
   return select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
 }
 
+/**
+ * 视差遮挡（Material.normalMap.parallax，Stride 没有）：法线贴图的 alpha 是高度（1 是表面），沿视线在切线空间里一层层往下走，
+ * 找到第一层走进高度场里面的，和上一层按两边的高度差线性插值（McGuire 和 McGuire 2005 的 Steep Parallax、Tatarchuk 2006 的 POM；
+ * learnopengl 的写法）。切线框架同 surfaceNormal（网格的切线，没有时按屏幕导数现算）；层数按视线和表面的夹角，正对时 steps 的
+ * 四分之一、贴着看时 steps。循环里用 textureSampleGrad（导数在循环外按原来的 UV 取，mip 不跳）。没有视差、背面时原样返回。
+ */
+fn parallaxUv(in: Varyings) -> vec2f {
+  let scale = material.normalUvTransform.xy;
+  let offset = material.normalUvTransform.zw;
+  let dx = dpdx(in.uv * scale);
+  let dy = dpdy(in.uv * scale);
+  let dp1 = dpdx(in.world);
+  let dp2 = dpdy(in.world);
+  let duv1 = dpdx(in.uv);
+  let duv2 = dpdy(in.uv);
+  let depth = material.parallax.x;
+  if (depth <= 0.0 || (material.normalFlags & 1u) == 0u) {
+    return in.uv;
+  }
+  let n = normalize(in.normal);
+  let dp2perp = cross(dp2, n);
+  let dp1perp = cross(n, dp1);
+  let ct = dp2perp * duv1.x + dp1perp * duv2.x;
+  let cb = dp2perp * duv1.y + dp1perp * duv2.y;
+  let frameScale = inverseSqrt(max(max(dot(ct, ct), dot(cb, cb)), 1e-20));
+  let tangentLength = length(in.tangent.xyz);
+  let hasTangent = tangentLength > 0.0;
+  let t = select(ct * frameScale, in.tangent.xyz / max(tangentLength, 1e-8), hasTangent);
+  let b = select(cb * frameScale, in.tangent.w * cross(n, t), hasTangent);
+  let toEye = normalize(view.eye.xyz - in.world);
+  let eye = vec3f(dot(toEye, t), dot(toEye, b), dot(toEye, n));
+  if (eye.z <= 0.01) {
+    return in.uv;
+  }
+  let maxLayers = material.parallax.y;
+  let layers = mix(maxLayers, max(4.0, maxLayers * 0.25), saturate(eye.z));
+  let layerDepth = 1.0 / layers;
+  // 每一层 UV 往离开眼睛的方向挪多少：最深处整个挪 eye.xy / eye.z · depth
+  let stepUv = eye.xy / eye.z * depth / layers;
+  var uv = in.uv;
+  var current = 0.0;
+  var surface = 1.0 - textureSampleGrad(normalTexture, normalSampler, uv * scale + offset, dx, dy).a;
+  for (var i = 0; i < 64 && f32(i) < layers && current < surface; i++) {
+    uv -= stepUv;
+    current += layerDepth;
+    surface = 1.0 - textureSampleGrad(normalTexture, normalSampler, uv * scale + offset, dx, dy).a;
+  }
+  // 上一层在高度场外面、这一层在里面：按两边离高度场的距离插值
+  let previous = uv + stepUv;
+  let after = surface - current;
+  let before = (1.0 - textureSampleGrad(normalTexture, normalSampler, previous * scale + offset, dx, dy).a) - (current - layerDepth);
+  let weight = after / min(after - before, -1e-6);
+  return mix(uv, previous, saturate(weight));
+}
+
 /** 一个光源照出来的漫反射和镜面反射（分开是因为次表面散射只模糊漫反射）。 */
 struct Lit { diffuse: vec3f, specular: vec3f };
 
@@ -478,7 +533,10 @@ fn interiorLight(world: vec3f, n: vec3f) -> vec3f {
   return albedo * light;
 }
 
-fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
+fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
+  // 视差遮挡：后面所有贴图、节点图都按移过的 UV 取
+  var in = raw;
+  in.uv = parallaxUv(raw);
   var n = facingNormal(surfaceNormal(in, coatPass), front);
   let v = normalize(view.eye.xyz - in.world);
   let base = baseColor(in);

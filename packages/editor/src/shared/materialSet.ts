@@ -72,12 +72,16 @@ export interface MaterialCredit {
   readonly author?: string | undefined;
 }
 
+/** 视差的最深处默认多深（米）：扫描的高度贴图都拉满了 0..1，看不出实际的深浅，按砖缝、石板的起伏给 1 厘米。 */
+export const PARALLAX_DEPTH = 0.01;
+
 /**
  * 按各用途的贴图（内容路径）写材质文件。tileSize 是贴图在世界里铺多大（米，扫描的材质一般标着，ambientCG 多是 1～2 米）：
  * 生成的模型（白盒、多边形）的 UV 是按米的世界坐标投影，所以 scale = 1 / tileSize；metalness 是金属度贴图的平均（我们没有单独的
- * 金属度贴图槽，金属度在一套扫描材质里几乎总是整片的 0 或 1）。
+ * 金属度贴图槽，金属度在一套扫描材质里几乎总是整片的 0 或 1）；parallax 是高度并进了法线贴图的 alpha 时视差的最深处（米：白盒、多边形的 UV 按米，
+ * 贴图坐标的单位就是米）。
  */
-export function scannedMaterial(name: string, textures: Partial<Record<MaterialMapRole, string>>, options: { readonly tileSize?: number; readonly metalness?: number; readonly credit?: MaterialCredit } = {}): MaterialFile {
+export function scannedMaterial(name: string, textures: Partial<Record<MaterialMapRole, string>>, options: { readonly tileSize?: number; readonly metalness?: number; readonly credit?: MaterialCredit; readonly parallax?: number } = {}): MaterialFile {
   const scale = 1 / (options.tileSize ?? 1);
   const slot = (texture: string): TextureSlot => ({ texture, scale: [scale, scale], offset: [0, 0], filter: 'anisotropic' });
   const normal = textures.normalGl ?? textures.normalDx;
@@ -90,7 +94,8 @@ export function scannedMaterial(name: string, textures: Partial<Record<MaterialM
     roughness: 1,
     ...(rough ? { glossinessTexture: { ...slot(rough), srgb: false, channel: 'r' as const, invert: textures.roughness !== undefined } } : {}),
     // DirectX 的法线贴图绿色通道朝下，翻过来
-    ...(normal ? { normalMap: { ...slot(normal), srgb: false, scaleAndBias: true, isXYNormal: false, invertY: normal === textures.normalDx } } : {}),
+    // 高度在法线贴图的 alpha 里时开视差
+    ...(normal ? { normalMap: { ...slot(normal), srgb: false, scaleAndBias: true, isXYNormal: false, invertY: normal === textures.normalDx, ...(options.parallax ? { parallax: { depth: options.parallax } } : {}) } } : {}),
     ...(textures.occlusion ? { ambientOcclusion: { value: 1, texture: { ...slot(textures.occlusion), srgb: false, channel: 'r' as const }, directLighting: 0 } } : {}),
     ...(options.credit ? { credit: { source: options.credit.source, license: options.credit.license, ...(options.credit.author ? { author: options.credit.author } : {}) } } : {}),
   };

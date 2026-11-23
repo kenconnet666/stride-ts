@@ -33,5 +33,13 @@ describe('扫描的材质', () => {
     expect(material.normalMap).toMatchObject({ invertY: true, scaleAndBias: true });
     expect(material.credit).toEqual({ source: 'https://ambientcg.com/view?id=Tiles074', license: 'CC0 1.0' });
     expect(checkFields(material, { kind: 'object', fields: ASSET_FIELDS.material }, 'Tiles')).toEqual([]);
+    expect(material.normalMap?.parallax).toBeUndefined();
+  });
+
+  test('高度贴图并进了法线贴图的 alpha：法线贴图开视差，深度是给的米数；高度贴图本身认得出来', () => {
+    const material = scannedMaterial('Tiles', { baseColor: 'M/Tiles/Tiles_baseColor', normalGl: 'M/Tiles/Tiles_normalGl' }, { tileSize: 2, parallax: 0.004 });
+    expect(material.normalMap).toMatchObject({ texture: 'M/Tiles/Tiles_normalGl', parallax: { depth: 0.004 } });
+    expect(classifyMap('Tiles141_1K-JPG_Displacement.jpg')?.role).toBe('height');
+    expect(materialSet(['T_Color.jpg', 'T_NormalGL.jpg', 'T_Displacement.jpg'])?.maps.map((map) => map.role).sort()).toEqual(['baseColor', 'height', 'normalGl']);
   });
 });

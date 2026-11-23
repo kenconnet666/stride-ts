@@ -406,7 +406,7 @@ export class ContentManager {
         ...(file.doubleSided ? { doubleSided: true } : {}),
         ...(occlusion ? { ambientOcclusion: { value: occlusion.value, directLighting: occlusion.directLighting, ...(occlusionTexture ? { texture: { ...occlusionTexture, channel: occlusion.texture!.channel } } : {}) } } : {}),
         ...(file.cavity ? { cavity: file.cavity } : {}),
-        ...(normalTexture ? { normalMap: { ...normalTexture, scaleAndBias: normal!.scaleAndBias, isXYNormal: normal!.isXYNormal, invertY: normal!.invertY } } : {}),
+        ...(normalTexture ? { normalMap: { ...normalTexture, scaleAndBias: normal!.scaleAndBias, isXYNormal: normal!.isXYNormal, invertY: normal!.invertY, ...(normal!.parallax ? { parallax: normal!.parallax } : {}) } } : {}),
         ...(file.transparency ? { transparency: file.transparency } : {}),
         ...(file.alphaCutoff === undefined ? {} : { alphaCutoff: file.alphaCutoff }),
       });

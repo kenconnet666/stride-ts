@@ -51,6 +51,8 @@ struct Material {
   // 室内映射（Material.interior）：房间的宽、高、深（米，宽是 0 是没有），亮灯的比例；x 是亮灯的房间的亮度
   interior: vec4f,
   interiorLight: vec4f,
+  // 视差遮挡（Material.normalMap.parallax）：最深处的深度（贴图坐标的单位，0 是没有）、正对时最多几层
+  parallax: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;

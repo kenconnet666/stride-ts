@@ -172,6 +172,12 @@ export interface NormalMapSlot extends TextureSlot {
   readonly scaleAndBias: boolean;
   readonly isXYNormal: boolean;
   readonly invertY: boolean;
+  /**
+   * 视差遮挡（Stride 没有）：这张法线贴图的 alpha 是高度（1 是表面、0 是最深，导入扫描的材质时把高度贴图放进来），沿视线一层层
+   * 找到看到的那一点，所有贴图按它取——砖缝、地砖的缝看着是凹进去的。depth 是最深处有多深，按网格的贴图坐标的单位（白盒按米铺，
+   * 就是米）；steps 是正对时最多分几层（默认 24，斜着看时少一些）。
+   */
+  readonly parallax?: { readonly depth: number; readonly steps?: number };
 }
 
 /**
@@ -701,6 +707,11 @@ export interface ImageImportFile {
   readonly maxSize: number;
   /** 颜色贴图（按 sRGB 存、生成 mipmap 时按线性算）；法线、粗糙度这些数据贴图关掉。 */
   readonly srgb: boolean;
+  /**
+   * 压缩时 alpha 换成另一张图片（图片资源的内容路径）的亮度（红色通道），缩放到同样大小：法线贴图带上高度给视差用
+   * （NormalMapSlot.parallax）。
+   */
+  readonly alpha?: string;
 }
 
 /** 新的贴图导入设置：不压缩（拖进来的图片原样用），压缩时带 mipmap、不限尺寸。 */

@@ -8,7 +8,7 @@ overrides:
   '@zerodep-dev/vue-tsx-pro-tsx': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev/zerodep-dev-vue-tsx-pro-tsx-0.39.0-ae5ecdf56a.tgz
   '@zerodep-dev/vue-tsx-pro-ui': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev/zerodep-dev-vue-tsx-pro-ui-0.39.0-ae5ecdf56a.tgz
   typescript: 7.1.0-dev.20261104.1
-  '@stride-ts/assets': https://github.com/kenconnet666/world-engine-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz
+  '@stride-ts/assets': https://github.com/kenconnet666/world-engine-assets/releases/download/dev-53bd6f12ea/stride-ts-assets-0.1.0.tgz
   '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-61ba7879f3/stride-ts-native-0.43.0.tgz
 
 pnpmfileChecksum: sha256-cNVAWsfYgR1gA9gfl6uRdr7jzzf0Qt8bfIezEETHYTs=
@@ -304,8 +304,8 @@ importers:
   apps/photoreal:
     dependencies:
       '@stride-ts/assets':
-        specifier: https://github.com/kenconnet666/world-engine-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz
-        version: https://github.com/kenconnet666/world-engine-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz
+        specifier: https://github.com/kenconnet666/world-engine-assets/releases/download/dev-53bd6f12ea/stride-ts-assets-0.1.0.tgz
+        version: https://github.com/kenconnet666/world-engine-assets/releases/download/dev-53bd6f12ea/stride-ts-assets-0.1.0.tgz
       '@stride-ts/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -1010,8 +1010,8 @@ packages:
   '@rolldown/pluginutils@1.1.1':
     resolution: {integrity: sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==}
 
-  '@stride-ts/assets@https://github.com/kenconnet666/world-engine-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz':
-    resolution: {integrity: sha512-8oK+C2l6HLzpAke4RwgxSRzsiKvh1j1QFCsgr7R3rSYmt72KdaDWv2IUDuUJo4Sb1TfDEc0G19DF0RtciVKzwQ==, tarball: https://github.com/kenconnet666/world-engine-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz}
+  '@stride-ts/assets@https://github.com/kenconnet666/world-engine-assets/releases/download/dev-53bd6f12ea/stride-ts-assets-0.1.0.tgz':
+    resolution: {integrity: sha512-IMgvtHlUsMPGXv3EDGbSBjAXcam9crjlFtipH08/IWxNtFNUsS+/dQJfpi4PUQ6+FkIPSlLi3YqIRyWvshY9hw==, tarball: https://github.com/kenconnet666/world-engine-assets/releases/download/dev-53bd6f12ea/stride-ts-assets-0.1.0.tgz}
     version: 0.1.0
 
   '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-61ba7879f3/stride-ts-native-0.43.0.tgz':
@@ -1981,7 +1981,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.1.1': {}
 
-  '@stride-ts/assets@https://github.com/kenconnet666/world-engine-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz': {}
+  '@stride-ts/assets@https://github.com/kenconnet666/world-engine-assets/releases/download/dev-53bd6f12ea/stride-ts-assets-0.1.0.tgz': {}
 
   '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-61ba7879f3/stride-ts-native-0.43.0.tgz': {}
 

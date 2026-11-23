@@ -12,7 +12,7 @@ import { parseCubeLut } from '@stride-ts/engine/color-lut';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import type { StrideTools } from '@stride-ts/native/tools';
 import { convertSplats, importFontFile, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
-import { materialSet, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../../shared/materialSet.ts';
+import { materialSet, PARALLAX_DEPTH, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../../shared/materialSet.ts';
 import type { AssetKind, ImportResult } from '../../shared/protocol.ts';
 import { assetFileName, type AssetDatabase } from './AssetDatabase.ts';
 import { checkContentPath, writeAtomically } from './files.ts';
@@ -24,6 +24,8 @@ export interface MaterialSetOptions {
   readonly tileSize?: number | undefined;
   readonly maxSize?: number | undefined;
   readonly credit?: MaterialCredit | undefined;
+  /** 有高度贴图时视差的最深处（米，默认 PARALLAX_DEPTH）。 */
+  readonly parallaxDepth?: number | undefined;
 }
 
 /** 烘一次导入设置的结果：写了的文件，导入源模型时的警告和动画剪辑。 */
@@ -152,7 +154,7 @@ export class Importer {
   /**
    * 导入一套扫描的材质（materialSet.ts）：各张贴图放进 `<folder>/<name>/`（`<name>_<用途>.<扩展名>`，旁边有同名的贴图资源，节点图用），导入设置是压成 UASTC 的
    * KTX2、带 mipmap、长边最多 maxSize（颜色贴图按 sRGB，其余线性），当场几张一起压好；金属度贴图取平均当金属度；再写
-   * `<folder>/<name>.material.json`。高度、不透明度贴图还没有槽，跳过并警告。名字和已有的材质重复时加数字。
+   * `<folder>/<name>.material.json`。高度贴图并进法线贴图的 alpha、材质开视差（没有法线贴图时跳过并警告）；不透明度贴图还没有槽，跳过并警告。名字和已有的材质重复时加数字。
    */
   importMaterialSet(folder: string, files: readonly { readonly name: string; readonly bytes: Uint8Array }[], options: MaterialSetOptions = {}): Promise<ImportResult> {
     if (folder !== '') checkContentPath(folder);
@@ -168,14 +170,25 @@ export class Importer {
       const written: string[] = [];
       const encodes: { readonly assetPath: string; readonly settings: ImageImportFile }[] = [];
       let metalness: number | undefined;
+      const sourceOf = (fileName: string) => ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.webp': 'webp' } as const)[path.extname(fileName).toLowerCase() as '.png'];
+      // 高度贴图并进法线贴图的 alpha（视差，NormalMapSlot.parallax）：先写成一张图片资源，法线贴图的导入设置压缩时取它
+      const heightMap = set.maps.find((map) => map.role === 'height'), hasNormal = set.maps.some((map) => map.role === 'normalGl' || map.role === 'normalDx');
+      let heightPath: string | undefined;
+      if (heightMap && hasNormal) {
+        heightPath = `${dir}/${name}_height`;
+        const heightFile = path.join(this.#host.contentDir, heightPath + TEXTURE_EXTENSIONS[sourceOf(heightMap.fileName)]);
+        await writeAtomically(heightFile, files.find((candidate) => candidate.name === heightMap.fileName)!.bytes);
+        await this.#host.refresh([this.#relative(heightFile)]);
+        written.push(this.#relative(heightFile));
+      } else if (heightMap) warnings.push(`${heightMap.fileName}: a height map is packed into the normal map for parallax, and there is no normal map; skipped`);
       for (const map of set.maps) {
         const file = files.find((candidate) => candidate.name === map.fileName)!;
-        if (map.role === 'height' || map.role === 'opacity') {
-          warnings.push(`${map.fileName}: ${map.role} maps have no material slot yet, skipped`);
+        if (map.role === 'height') continue;
+        if (map.role === 'opacity') {
+          warnings.push(`${map.fileName}: opacity maps have no material slot yet, skipped`);
           continue;
         }
-        const extension = path.extname(map.fileName).toLowerCase();
-        const source = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.webp': 'webp' } as const)[extension as '.png'];
+        const source = sourceOf(map.fileName);
         if (map.role === 'metalness') {
           const tools = await this.#host.tools();
           const image = await tools.decodeImage(file.bytes);
@@ -187,7 +200,8 @@ export class Importer {
         }
         const assetPath = `${dir}/${name}_${map.role}`;
         await writeAtomically(path.join(this.#host.contentDir, assetPath + TEXTURE_EXTENSIONS[source]), file.bytes);
-        const settings: ImageImportFile = { source, compress: 'uastc', mipmaps: true, maxSize: options.maxSize ?? 2048, srgb: SRGB_ROLES.has(map.role) };
+        const isNormal = map.role === 'normalGl' || map.role === 'normalDx';
+        const settings: ImageImportFile = { source, compress: 'uastc', mipmaps: true, maxSize: options.maxSize ?? 2048, srgb: SRGB_ROLES.has(map.role), ...(isNormal && heightPath ? { alpha: heightPath } : {}) };
         const settingsFile = assetFileName('imageImport', assetPath);
         await writeAtomically(path.join(this.#host.contentDir, settingsFile), JSON.stringify(settings, null, 1));
         // 同名的贴图资源：材质节点图的贴图、三平面投影节点引用的是它（材质的固定槽直接引用图片）
@@ -199,7 +213,7 @@ export class Importer {
       }
       // 几张贴图一起压：每张是原生任务系统上的一个任务（Basis 的编码单线程，一张 1K 带 mipmap 二三十秒），并行时三张差不多一张的时间
       for (const baked of await Promise.all(encodes.map(({ assetPath, settings }) => this.#host.bake('imageImport', assetPath, settings)))) written.push(...baked.files);
-      const material = scannedMaterial(name, textures, { ...(options.tileSize !== undefined ? { tileSize: options.tileSize } : {}), ...(metalness !== undefined ? { metalness } : {}), ...(options.credit ? { credit: options.credit } : {}) });
+      const material = scannedMaterial(name, textures, { ...(options.tileSize !== undefined ? { tileSize: options.tileSize } : {}), ...(metalness !== undefined ? { metalness } : {}), ...(options.credit ? { credit: options.credit } : {}), ...(heightPath !== undefined ? { parallax: options.parallaxDepth ?? PARALLAX_DEPTH } : {}) });
       const main = assetFileName('material', folder ? `${folder}/${name}` : name);
       await writeAtomically(path.join(this.#host.contentDir, main), JSON.stringify(material, null, 1));
       await this.#host.refresh([...written, main]);

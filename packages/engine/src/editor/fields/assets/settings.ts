@@ -36,4 +36,5 @@ export const IMAGE_IMPORT_FIELDS = fields<ImageImportFile>({
   mipmaps: { type: bool, description: 'generate mipmaps when compressing' },
   maxSize: { type: integer(0, 16384), description: 'when compressing, scale down so the longer side is at most this many pixels; 0: no limit' },
   srgb: { type: bool, description: 'color image (stored as sRGB); turn off for normal, roughness and other data maps' },
+  alpha: { type: asset('image'), optional: true, description: 'when compressing, replace the alpha with the brightness of this image (a height map packed into a normal map for parallax)' },
 });

@@ -51,7 +51,7 @@ const ROUTES: Readonly<Record<string, Route>> = {
   },
   'POST /import-material': async (backend, request) => {
     // 一套扫描的材质：JSON 里各个文件是 base64
-    const body = await readJson(request) as { folder?: string; files: { name: string; base64: string }[]; name?: string; tileSize?: number; maxSize?: number; credit?: MaterialCredit };
+    const body = await readJson(request) as { folder?: string; files: { name: string; base64: string }[]; name?: string; tileSize?: number; maxSize?: number; parallaxDepth?: number; credit?: MaterialCredit };
     if (!Array.isArray(body.files)) throw new HttpError(400, 'files ([{ name, base64 }]) is required');
     return backend.importMaterialSet(body.folder ?? '', body.files.map((file) => ({ name: file.name, bytes: Buffer.from(file.base64, 'base64') })), body);
   },

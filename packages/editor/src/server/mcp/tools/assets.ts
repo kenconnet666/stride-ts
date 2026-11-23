@@ -50,6 +50,7 @@ export function registerAssetsTools(server: McpServer, projects: McpProjects): v
       'Import a scanned material (a set of texture maps from ambientCG, Poly Haven, Quixel, Substance...) as one material: maps are recognized by the',
       'last word of the file name (Color/Albedo/Diff, NormalGL/NormalDX/nor_gl, Roughness/Gloss, Metalness, AmbientOcclusion/AO; resolution suffixes',
       'like _2K are ignored), compressed to KTX2 (UASTC, mipmaps) under <folder>/<name>/, and a <folder>/<name>.material.json is written.',
+      'A Height/Displacement map is packed into the alpha of the normal map and turns on parallax occlusion (parallaxDepth meters at full height).',
       'tileSize is how many meters one repeat of the texture covers (generated models use metric world UVs). Record where the data comes from in credit.',
     ].join(' '),
     inputSchema: z.object({
@@ -58,6 +59,7 @@ export function registerAssetsTools(server: McpServer, projects: McpProjects): v
       name: z.string().optional().describe('material name; default: the common prefix of the file names'),
       tileSize: z.number().positive().optional().describe('meters covered by one repeat of the texture (default 1)'),
       maxSize: z.number().int().min(0).optional().describe('longest side of the compressed textures in pixels (default 2048, 0: keep)'),
+      parallaxDepth: z.number().positive().optional().describe('with a height map: how deep the lowest point looks, in meters (default 0.01)'),
       credit: z.object({ source: z.string(), license: z.string(), author: z.string().optional() }).optional().describe('source URL, license and author of the scanned data'),
     }),
   }, async ({ files, folder, ...options }) => {

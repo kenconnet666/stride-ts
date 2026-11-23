@@ -209,10 +209,10 @@ const lingering = new Map();
 
 function detachLater(tabId) {
   clearTimeout(lingering.get(tabId));
-  lingering.set(tabId, setTimeout(async () => {
+  lingering.set(tabId, setTimeout(() => {
     lingering.delete(tabId);
     // 这期间又有会话来了：不断
-    if ((await sessionsOf(tabId)).length === 0) await chrome.debugger.detach({ tabId }).catch(() => {}); // 没附加时也算成功
+    void sessionsOf(tabId).then((sessions) => (sessions.length === 0 ? chrome.debugger.detach({ tabId }).catch(() => {}) : undefined)); // 没附加时也算成功
   }, LINGER_MS));
 }
 

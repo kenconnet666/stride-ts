@@ -38,6 +38,24 @@ function status(debug: Debug, game: Game): unknown {
     watches: debug.watches(),
   };
 }
+/** gpu 命令：适配器、设备拿到的特性（适配器有、引擎没要的另列）、WGSL 的语言特性、几个要紧的上限。 */
+async function gpu(game: Game): Promise<unknown> {
+  const device = game.graphicsDevice as Game['graphicsDevice'] | undefined;
+  if (!device) return null;
+  const adapter = await navigator.gpu.requestAdapter();
+  const got = [...device.device.features].sort();
+  const limits = device.device.limits;
+  return {
+    ...adapterInfo(device.device.adapterInfo),
+    features: got,
+    notRequested: adapter ? [...adapter.features].filter((feature) => !device.has(feature)).sort() : [],
+    wgsl: [...navigator.gpu.wgslLanguageFeatures].sort(),
+    limits: {
+      maxBufferSize: limits.maxBufferSize, maxStorageBufferBindingSize: limits.maxStorageBufferBindingSize, maxSampledTexturesPerShaderStage: limits.maxSampledTexturesPerShaderStage,
+      maxComputeWorkgroupStorageSize: limits.maxComputeWorkgroupStorageSize, maxImmediateSize: (limits as unknown as Record<string, number>)['maxImmediateSize'] ?? 0,
+    },
+  };
+}
 function adapterInfo(info: GPUAdapterInfo): Record<string, string> {
   return { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description };
 }
@@ -256,6 +274,7 @@ export function withLastValue(code: string, compile: (body: string) => unknown):
 export function registerCoreCommands(debug: Debug, game: Game): void {
   debug.command('commands', 'List the registered commands.', () => debug.commands());
   debug.command('status', 'Game status, time, frame rate, canvas, GPU adapter, counters and watches.', () => status(debug, game));
+  debug.command('gpu', 'GPU adapter, the features the device got (and the ones the adapter has but the engine did not request), WGSL language features and the main limits.', () => gpu(game));
   debug.command('entities', 'List entities. args: name (substring), with (component or script name), limit (default 200).', (args) => entities(game, args));
   debug.command('inspect', 'All component values and script properties of one entity. args: entity (id, name, or in the editor the scene file id).', (args) => inspect(game, entityArg(game, args)));
   debug.command('set', "Set a component field or script property. args: entity, path ('Component.field' or 'Script.prop', optionally '.x'), value.", (args) => set(game, args));

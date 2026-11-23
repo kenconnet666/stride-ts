@@ -9,6 +9,22 @@ const COMPRESSION: readonly (readonly [GPUFeatureName, TextureTarget])[] = [
   ['texture-compression-etc2', 'etc2rgba8'],
 ];
 
+/** 默认上限的设备也请求的特性（回归按它模拟最低配的设备，退回的路要有人测）。 */
+const BASIC_FEATURES: readonly GPUFeatureName[] = ['depth-clip-control', 'timestamp-query', 'indirect-first-instance'];
+
+/**
+ * 适配器有就请求的特性：引擎按 GraphicsDevice.has 选路，没有的走原来的路（画面一样、只是慢）。用户 2026-11-23 定以开了实验特性的
+ * 最新版 Chrome 为主，`chromium-experimental-` 的只在 `--enable-unsafe-webgpu` 时有。各自用在哪见 docs/research.md 的
+ * "浏览器的新特性和实验特性"。
+ */
+const OPTIONAL_FEATURES: readonly string[] = [
+  ...BASIC_FEATURES,
+  'shader-f16', 'subgroups', 'subgroup-size-control', 'primitive-index', 'atomic-vec2u-min-max',
+  'texture-formats-tier1', 'texture-formats-tier2', 'float32-filterable', 'float32-blendable', 'rg11b10ufloat-renderable',
+  'dual-source-blending', 'clip-distances', 'texture-component-swizzle', 'depth32float-stencil8', 'bgra8unorm-storage',
+  'chromium-experimental-multi-draw-indirect', 'chromium-experimental-sampling-resource-table', 'chromium-experimental-timestamp-query-inside-passes',
+];
+
 /**
  * 适配器能给的全部限制。不要的话设备只有规范的默认值（存储缓冲单次绑定 128 MB、单个缓冲 256 MB、2D 贴图 8192、贴图数组 256 层、
  * 每个阶段 16 张采样贴图），桌面显卡大得多（RX 9070 GRE 上 2 GB、2 GB、16384、2048、48）；GPU 驱动的场景数据、虚拟贴图的页图集、
@@ -69,21 +85,20 @@ export class GraphicsDevice {
     if (!adapter) throw new Error('No WebGPU adapter is available');
     if (adapter.info.isFallbackAdapter) console.warn('WebGPU: using the software fallback adapter (no hardware adapter is available); rendering is slow');
     const compression = COMPRESSION.filter(([feature]) => adapter.features.has(feature));
-    const depthClipControl = adapter.features.has('depth-clip-control');
-    const timestampQuery = adapter.features.has('timestamp-query');
-    const indirectFirstInstance = adapter.features.has('indirect-first-instance');
-    const optional = [...(depthClipControl ? ['depth-clip-control' as const] : []), ...(timestampQuery ? ['timestamp-query' as const] : []), ...(indirectFirstInstance ? ['indirect-first-instance' as const] : [])];
+    // 默认上限的设备也只要最基本的几个特性：模拟最低配的设备，退回的路要走到
+    const optional = (defaultLimits ? BASIC_FEATURES : OPTIONAL_FEATURES).filter((feature) => adapter.features.has(feature)) as GPUFeatureName[];
     const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...optional], ...(defaultLimits ? {} : { requiredLimits: adapterLimits(adapter) }) });
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('The canvas has no WebGPU context');
-    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl, timestampQuery, indirectFirstInstance);
+    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8');
   }
 
-  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget, depthClipControl: boolean, timestampQuery: boolean, indirectFirstInstance: boolean) {
+  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget) {
     this.device = device;
     this.textureTarget = textureTarget;
-    this.depthClipControl = depthClipControl;
-    this.indirectFirstInstance = indirectFirstInstance;
+    this.depthClipControl = this.has('depth-clip-control');
+    this.indirectFirstInstance = this.has('indirect-first-instance');
+    const timestampQuery = this.has('timestamp-query');
     // 先装上记账，后面建的资源（包括剖析器自己的）才都算进去
     this.memory = new GpuMemory(device);
     this.pipelines = new PipelineCounts(device);
@@ -119,6 +134,16 @@ export class GraphicsDevice {
       device: this.device, format: this.backBufferFormat, alphaMode: 'opaque', viewFormats: [this.backBufferViewFormat],
       usage: GPUTextureUsage.RENDER_ATTACHMENT | (copySource ? GPUTextureUsage.COPY_SRC : 0),
     });
+  }
+
+  /** 设备有没有这个特性（请求到了的；名字可以是 @webgpu/types 还没有的实验特性）。 */
+  has(feature: string): boolean {
+    return this.device.features.has(feature);
+  }
+
+  /** WGSL 有没有这个语言特性（navigator.gpu.wgslLanguageFeatures：不用请求，浏览器认就能写）。 */
+  hasWgsl(feature: string): boolean {
+    return navigator.gpu.wgslLanguageFeatures.has(feature);
   }
 
   get queue(): GPUQueue {

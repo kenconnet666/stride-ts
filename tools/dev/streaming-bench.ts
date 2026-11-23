@@ -60,7 +60,7 @@ const measure = `(async () => {
   const marks = Object.fromEntries(Object.entries(startup).map(([name, at]) => [name, Math.round(at)]));
   const resources = performance.getEntriesByType('resource');
   const loadStats = { requests: resources.length, transferKB: Math.round(resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) };
-  const metric = (name) => game().metrics?.read?.(name);
+  const metric = (name) => game().metrics.snapshot().find((entry) => entry.name === name)?.value;
   const pipelinesBefore = { sync: game().graphicsDevice.pipelines.sync, warmed: game().graphicsDevice.pipelines.warmed };
   const worldBefore = { loads: game().world.loads, unloads: game().world.unloads };
   // 显存和内存：飞行前后各读一次，飞过的格子卸载以后应该基本回到原来的数（涨得多就是泄漏）
@@ -128,8 +128,14 @@ if (process.argv.includes('--check')) {
     console.error(`no budget for ${world} in tools/streaming-budgets.json`);
     process.exit(2);
   }
-  const result = lastResult as { flight: { maxMs: number; over50ms: number; over100ms: number }; pipelines: { syncDuringFlight: number } };
-  const actual: Record<string, number> = { maxMs: result.flight.maxMs, over50ms: result.flight.over50ms, over100ms: result.flight.over100ms, syncDuringFlight: result.pipelines.syncDuringFlight };
+  type Memory = { gpuBufferMB: number; gpuTextureMB: number; nativeMB: number };
+  const result = lastResult as { flight: { maxMs: number; over50ms: number; over100ms: number }; pipelines: { syncDuringFlight: number }; memory: { before: Memory; after: Memory } };
+  const { before, after } = result.memory;
+  const actual: Record<string, number> = {
+    maxMs: result.flight.maxMs, over50ms: result.flight.over50ms, over100ms: result.flight.over100ms, syncDuringFlight: result.pipelines.syncDuringFlight,
+    // 飞过的格子卸载以后显存、原生内存应该基本回到原来的数：涨得多就是泄漏
+    gpuBufferGrowthMB: +(after.gpuBufferMB - before.gpuBufferMB).toFixed(1), gpuTextureGrowthMB: +(after.gpuTextureMB - before.gpuTextureMB).toFixed(1), nativeGrowthMB: +(after.nativeMB - before.nativeMB).toFixed(1),
+  };
   const failed = Object.entries(budget).filter(([name, limit]) => (actual[name] ?? 0) > limit);
   for (const [name, limit] of Object.entries(budget)) console.error(`${(actual[name] ?? 0) > limit ? 'FAIL' : 'ok  '} ${name}: ${actual[name]} (budget ${limit})`);
   process.exit(failed.length > 0 ? 1 : 0);

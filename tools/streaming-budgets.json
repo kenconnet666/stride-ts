@@ -1,4 +1,5 @@
 {
-  "_comment": "tools/dev/streaming-bench.ts --check 比的预算（用户 2026-11-23 的加载与缓存阶段）：每个世界在空闲机器上按默认路线（20 秒，60 米每秒）飞的结果。管线没好先不画（deferPipelines）以后飞行中不该再有当场编译的管线。",
-  "Worlds/Valley": { "maxMs": 100, "over50ms": 3, "over100ms": 0, "syncDuringFlight": 0 }
+  "_comment": "tools/dev/streaming-bench.ts --check 比的预算（用户 2026-11-23 的加载与缓存阶段）：每个世界在空闲机器上按默认路线（20 秒，60 米每秒）飞的结果。管线没好先不画（deferPipelines）以后飞行中不该再有当场编译的管线。Town 的路线是 `--seconds 40 --speed 100`，飞过 172 个格子、卸掉 214 个，显存、原生内存的增长（`*GrowthMB`）是泄漏的门槛。",
+  "Worlds/Valley": { "maxMs": 100, "over50ms": 3, "over100ms": 0, "syncDuringFlight": 0 },
+  "Worlds/Town": { "maxMs": 100, "over50ms": 3, "over100ms": 0, "syncDuringFlight": 0, "gpuBufferGrowthMB": 2, "gpuTextureGrowthMB": 2, "nativeGrowthMB": 8 }
 }

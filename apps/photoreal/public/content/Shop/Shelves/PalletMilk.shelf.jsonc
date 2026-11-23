@@ -1,0 +1,20 @@
+{
+ "name": "PalletMilk",
+ "type": "pallet",
+ "sides": 1,
+ "length": 1.2,
+ "height": 1.2,
+ "depth": 1,
+ "levels": [
+  0.144
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "boardColor": "#b48a5a",
+ "stock": {
+  "products": [
+   "Shop/Products/MilkCase"
+  ],
+  "variants": 2
+ },
+ "seed": 181
+}

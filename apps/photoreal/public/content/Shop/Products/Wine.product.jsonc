@@ -1,0 +1,14 @@
+{
+ "name": "Wine",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.075,
+  0.31,
+  0
+ ],
+ "text": "干红",
+ "price": 89,
+ "seed": 154,
+ "surface": "glass"
+}

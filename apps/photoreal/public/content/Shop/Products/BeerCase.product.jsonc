@@ -1,0 +1,18 @@
+{
+ "name": "BeerCase",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "box",
+ "size": [
+  0.4,
+  0.25,
+  0.27
+ ],
+ "text": "啤酒",
+ "price": 79,
+ "seed": 163,
+ "badge": "24罐",
+ "colors": {
+  "background": "#1a5a2e",
+  "accent": "#e8c25a"
+ }
+}

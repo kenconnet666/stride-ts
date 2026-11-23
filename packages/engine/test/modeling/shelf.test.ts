@@ -202,6 +202,25 @@ describe('货架', () => {
     }
   });
 
+  test('码垛：一个托盘一种货，整箱直上直下码在托盘面上、不超过高和托盘的大小，最上面一层少几箱', () => {
+    const pallet: ShelfFile = { ...island, type: 'pallet', length: 1.2, height: 1.5, depth: 1.0, levels: [0.144], boardColor: '#b48a5a', stock: { products: ['P/Cereal', 'P/Oil'], variants: 2 } };
+    const { items, tags } = planShelf(pallet, products);
+    expect(new Set(items.map((item) => item.product)).size).toBe(1);
+    expect(tags.length).toBe(1);
+    const product = products.get(items[0]!.product)!;
+    const [w, h, d] = productFootprint(product);
+    const layers = [...new Set(items.map((item) => item.position[1]))].sort((a, b) => a - b);
+    expect(layers.length).toBe(Math.floor((1.5 - 0.144) / (h + 0.002)));
+    const perLayer = (y: number) => items.filter((item) => item.position[1] === y).length;
+    expect(perLayer(layers.at(-1)!)).toBeLessThanOrEqual(perLayer(layers[0]!));
+    for (const item of items) {
+      expect(item.position[1] + h).toBeLessThanOrEqual(1.5 + 1e-9);
+      expect(Math.abs(item.position[0]) + w / 2).toBeLessThanOrEqual(0.6 + 0.01);
+      expect(Math.abs(item.position[2]) + d / 2).toBeLessThanOrEqual(0.5 + 0.01);
+    }
+    expect(shelfModel(pallet, sources).items).toBe(items.length);
+  });
+
   test('透明挡条：每层每面一条进玻璃网格，层板下没有价签条；价签插在挡条后面、和挡条一样往后仰，不碰前排的商品', () => {
     const strip = shelfModel(island, sources), rail = shelfModel({ ...island, tagHolder: 'rail' }, sources);
     expect(strip.glass).toBeUndefined();

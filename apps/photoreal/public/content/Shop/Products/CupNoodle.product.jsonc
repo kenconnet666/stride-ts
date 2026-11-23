@@ -1,0 +1,13 @@
+{
+ "name": "CupNoodle",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "tub",
+ "size": [
+  0.11,
+  0.11,
+  0
+ ],
+ "text": "桶面",
+ "price": 5.5,
+ "seed": 159
+}

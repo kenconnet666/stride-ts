@@ -92,6 +92,7 @@ export function planShelf(input: ShelfFile, products: ReadonlyMap<string, Produc
   const file = SHELF.parse(input, where);
   checkShelf(file, where);
   if (file.type === 'stack') return { ...planStack(file, products), hooks: [] };
+  if (file.type === 'pallet') return { ...planPallet(file, products), hooks: [] };
   const items: ShelfItem[] = [], tags: ShelfTag[] = [], hooks: ShelfHook[] = [];
   const pegboard = file.type === 'pegboard';
   const stock = file.stock;
@@ -199,6 +200,72 @@ function planStack(file: Shelf, products: ReadonlyMap<string, ProductFile>): { i
     x += columns * (w + GAP) + 0.02;
   }
   return { items, tags };
+}
+
+/** 码垛：托盘上下两层铺板的厚（垫块填满中间）、比货垛四周大出多少；一箱一箱之间的缝。 */
+const PALLET_BOARD = 0.022, PALLET_MARGIN = 0.03, CASE_GAP = 0.004;
+
+/**
+ * 码垛（照片里过道口、入口那片整箱的牛奶、水、油码在木托盘上）：一个托盘一种货（stock.products 里按种子挑），整箱直上直下地
+ * 码满托盘面、一层层码到 height，每层按种子错开一点（人手码的不齐），每箱转一点；最上面一层被顾客拿走了一些（从前面拿）。
+ * 价签插在托盘正面。
+ */
+function planPallet(file: Shelf, products: ReadonlyMap<string, ProductFile>): { items: ShelfItem[]; tags: ShelfTag[] } {
+  const items: ShelfItem[] = [], tags: ShelfTag[] = [];
+  const stock = file.stock;
+  if (!stock || stock.products.length === 0) return { items, tags };
+  const candidates = stock.products.flatMap((path) => {
+    const product = products.get(path);
+    return product && product.size[0] > 0 && product.size[1] > 0 ? [{ path, product, footprint: productFootprint(product) }] : [];
+  });
+  if (candidates.length === 0) return { items, tags };
+  const random = seededRandom(hash32(file.seed, 5));
+  const choice = candidates[Math.floor(random() * candidates.length)]!;
+  const variant = Math.floor(random() * Math.max(1, Math.round(stock.variants)));
+  const [w, h, d] = choice.footprint;
+  const base = file.levels[0]!;
+  const columns = Math.max(1, Math.floor((file.length + CASE_GAP) / (w + CASE_GAP)));
+  const rows = Math.max(1, Math.floor((file.depth + CASE_GAP) / (d + CASE_GAP)));
+  const layers = Math.max(1, Math.floor((file.height - base) / (h + 0.002)));
+  const x0 = -(columns * (w + CASE_GAP) - CASE_GAP) / 2, z0 = -(rows * (d + CASE_GAP) - CASE_GAP) / 2;
+  // 最上面一层拿走了几箱：从前排（+Z）往后、按种子
+  const taken = Math.floor(random() * (columns * rows * 0.6));
+  for (let k = 0; k < layers; k++) {
+    const shift = [(random() * 2 - 1) * 0.008, (random() * 2 - 1) * 0.008];
+    const top = k === layers - 1;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < columns; i++) {
+        if (top && (rows - 1 - j) * columns + i < taken) continue;
+        const outside = i === 0 || j === 0 || i === columns - 1 || j === rows - 1;
+        items.push({
+          product: choice.path, variant,
+          position: [x0 + i * (w + CASE_GAP) + w / 2 + shift[0]!, base + k * (h + 0.002), z0 + j * (d + CASE_GAP) + d / 2 + shift[1]!],
+          yaw: (random() * 2 - 1) * 0.03, front: outside || top,
+        });
+      }
+    }
+  }
+  tags.push({ position: [0, base / 2, -z0 + PALLET_MARGIN + 0.03], side: 1, price: tagPrice(file, choice.product, variant, random()) });
+  return { items, tags };
+}
+
+/**
+ * 木托盘：上面一层铺板（五块）、三排垫块（每排三个）、底下三块。大小跟着码出来的货垛（[半长, 半深]），四周大出 PALLET_MARGIN：
+ * 整箱按格子码不一定铺满 length × depth。
+ */
+function palletBody(batch: ProductBatch, file: Shelf, wood: number, load: readonly [number, number]): void {
+  const L = load[0] + PALLET_MARGIN, D = load[1] + PALLET_MARGIN, top = file.levels[0]!;
+  const box = (min: readonly number[], max: readonly number[]) => (wood >= 0 ? batch.texturedBox(min, max, wood) : batch.box(min, max, BASE));
+  const block = Math.max(0.02, top - 2 * PALLET_BOARD), y0 = PALLET_BOARD, y1 = PALLET_BOARD + block;
+  const boards = 5, boardWidth = (2 * D) / (boards * 1.6);
+  for (let b = 0; b < boards; b++) {
+    const z = -D + boardWidth / 2 + (b * (2 * D - boardWidth)) / (boards - 1);
+    box([-L, y1, z - boardWidth / 2], [L, top, z + boardWidth / 2]);
+  }
+  for (const z of [-D + 0.05, 0, D - 0.05]) {
+    box([-L, 0, z - 0.05], [L, y0, z + 0.05]);
+    for (const x of [-L + 0.05, 0, L - 0.05]) box([x - 0.05, y0, z - 0.05], [x + 0.05, y1, z + 0.05]);
+  }
 }
 
 function checkShelf(file: Shelf, where: string): void {
@@ -316,6 +383,13 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
     // 台子（比垛四周大出一点）和插在正面的价签
     const L = file.length / 2, D = file.depth / 2 + 0.03;
     batch.box([-L, 0, -D], [L, file.levels[0]!, D], BASE);
+    for (const tag of tags) addTag(batch, tag, electronic, priceCell.get(tag.price)!);
+    return { ...batch.finish(), items: items.length };
+  }
+  if (type === 'pallet') {
+    // 货垛的半长、半深（没有货时按 length、depth）
+    const half = (axis: 0 | 2) => items.reduce((most, item) => Math.max(most, Math.abs(item.position[axis]) + productFootprint(sources.products.get(item.product)!)[axis] / 2), 0);
+    palletBody(batch, file, woodBoard, items.length > 0 ? [half(0), half(2)] : [file.length / 2, file.depth / 2]);
     for (const tag of tags) addTag(batch, tag, electronic, priceCell.get(tag.price)!);
     return { ...batch.finish(), items: items.length };
   }

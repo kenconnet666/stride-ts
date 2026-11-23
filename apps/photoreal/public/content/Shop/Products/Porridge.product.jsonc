@@ -1,0 +1,13 @@
+{
+ "name": "Porridge",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "can",
+ "size": [
+  0.066,
+  0.11,
+  0
+ ],
+ "text": "八宝粥",
+ "price": 4.5,
+ "seed": 158
+}

@@ -1,0 +1,14 @@
+{
+ "name": "Flour",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "pouch",
+ "size": [
+  0.28,
+  0.4,
+  0.09
+ ],
+ "text": "小麦面粉",
+ "price": 25.9,
+ "seed": 152,
+ "badge": "5kg"
+}

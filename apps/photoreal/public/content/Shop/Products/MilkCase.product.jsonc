@@ -1,0 +1,18 @@
+{
+ "name": "MilkCase",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "box",
+ "size": [
+  0.34,
+  0.25,
+  0.22
+ ],
+ "text": "纯牛奶",
+ "price": 59.9,
+ "seed": 160,
+ "badge": "24盒",
+ "colors": {
+  "background": "#f4f6f2",
+  "accent": "#2f8f3a"
+ }
+}

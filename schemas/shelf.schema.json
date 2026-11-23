@@ -146,9 +146,10 @@
         "freezer",
         "pegboard",
         "stack",
-        "deli"
+        "deli",
+        "pallet"
       ],
-      "description": "gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered); deli: a black counter with a white quartz front ledge and rows of bowls and plates in a sunken black tray, gold heat lamps every bay above (only the first level is used: the tray top; height is the bottom of the lamp shades; depth is the whole counter)",
+      "description": "gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered); deli: a black counter with a white quartz front ledge and rows of bowls and plates in a sunken black tray, gold heat lamps every bay above (only the first level is used: the tray top; height is the bottom of the lamp shades; depth is the whole counter); pallet: whole cases stacked straight up to the height on a wooden pallet, each layer a little off, some taken from the top; one kind of goods per pallet (only the first level is used: the pallet top; length and depth are the size of the load; centered; wood grain when boardColor is set)",
       "default": "gondola"
     },
     "header": {

@@ -1,0 +1,14 @@
+{
+ "name": "Rice",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "pouch",
+ "size": [
+  0.3,
+  0.45,
+  0.1
+ ],
+ "text": "东北大米",
+ "price": 39.9,
+ "seed": 151,
+ "badge": "5kg"
+}

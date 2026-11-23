@@ -1,0 +1,26 @@
+{
+ "name": "Instant",
+ "sides": 2,
+ "length": 4,
+ "height": 1.95,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.55,
+  0.92,
+  1.29,
+  1.66
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "priceTags": "electronic",
+ "stock": {
+  "products": [
+   "Shop/Products/CupNoodle",
+   "Shop/Products/Noodles",
+   "Shop/Products/Porridge",
+   "Shop/Products/Konjac"
+  ],
+  "variants": 5
+ },
+ "seed": 178
+}

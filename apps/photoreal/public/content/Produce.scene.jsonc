@@ -139,7 +139,7 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Ceilings/Hall",
+     "model": "Shop/Ceilings/Market",
      "materials": []
     }
    }

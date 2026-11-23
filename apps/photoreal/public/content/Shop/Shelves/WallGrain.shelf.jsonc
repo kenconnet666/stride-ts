@@ -1,0 +1,30 @@
+{
+ "name": "WallGrain",
+ "sides": 1,
+ "length": 4,
+ "height": 2.1,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.52,
+  0.89,
+  1.26,
+  1.63
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "priceTags": "electronic",
+ "stock": {
+  "products": [
+   "Shop/Products/Rice",
+   "Shop/Products/Flour",
+   "Shop/Products/PeanutOil",
+   "Shop/Products/SoySauce"
+  ],
+  "variants": 4,
+  "facings": [
+   3,
+   6
+  ]
+ },
+ "seed": 171
+}

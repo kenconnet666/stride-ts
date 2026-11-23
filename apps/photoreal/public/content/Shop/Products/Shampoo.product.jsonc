@@ -1,0 +1,14 @@
+{
+ "name": "Shampoo",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.08,
+  0.24,
+  0
+ ],
+ "text": "洗发水",
+ "price": 39.9,
+ "seed": 155,
+ "surface": "plastic"
+}

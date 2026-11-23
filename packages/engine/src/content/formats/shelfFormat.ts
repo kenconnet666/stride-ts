@@ -71,9 +71,11 @@ export const SHELF = s.object({
    * 洞洞板上一排排挂钩，袋装、卡装的商品挂在钩上，levels 是每排挂钩的高、depth 是钩长）；堆头（stack：地上一个台子，商品一块块
    * 码成往上收的垛，levels 只用第一个——台面的高，depth 是整个垛的深，原点在台子中心）；熟食柜（deli：黑色的柜体，前面一条白
    * 石英台面，中间下沉的黑托盘上成排摆碗、盘（商品的 bowl、plate，摆货的 rows 是往里几排），上面每隔 bay 挂一盏金色的保温灯；
-   * levels 只用第一个——托盘面的高，height 是灯罩底的高，depth 是整个柜子的深）。端架就是短的单面货架。
+   * levels 只用第一个——托盘面的高，height 是灯罩底的高，depth 是整个柜子的深）；码垛（pallet：地上一个木托盘，整箱的货直上直下码到
+   * height，每层错开一点，最上面一层被拿走一些；一个托盘一种货，levels 只用第一个——托盘面的高，length、depth 是货垛的大小，原点在
+   * 中心；写了 boardColor 的托盘带木纹）。端架就是短的单面货架。
    */
-  type: s.oneOf('gondola', 'fridge', 'freezer', 'pegboard', 'stack', 'deli').default('gondola').describe('gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered); deli: a black counter with a white quartz front ledge and rows of bowls and plates in a sunken black tray, gold heat lamps every bay above (only the first level is used: the tray top; height is the bottom of the lamp shades; depth is the whole counter)'),
+  type: s.oneOf('gondola', 'fridge', 'freezer', 'pegboard', 'stack', 'deli', 'pallet').default('gondola').describe('gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered); deli: a black counter with a white quartz front ledge and rows of bowls and plates in a sunken black tray, gold heat lamps every bay above (only the first level is used: the tray top; height is the bottom of the lamp shades; depth is the whole counter); pallet: whole cases stacked straight up to the height on a wooden pallet, each layer a little off, some taken from the top; one kind of goods per pallet (only the first level is used: the pallet top; length and depth are the size of the load; centered; wood grain when boardColor is set)'),
   /** 冷柜顶上灯箱的字（"冷藏饮料"），要有 font；没写时灯箱只发光不写字。 */
   header: s.string().optional().describe('text on the lit header of a fridge (needs the font)'),
   /** 冷柜的门框、门下的前脸、顶盖和灯箱的颜色（sRGB 的 #rrggbb；饮料厂家的品牌冷柜，黄的、红的）；没写是深灰门框、架子色的顶、蓝灯箱。 */

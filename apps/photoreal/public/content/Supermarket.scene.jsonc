@@ -39,15 +39,15 @@
    "name": "Camera",
    "parent": null,
    "position": [
-    0.25,
-    1.5,
-    3.2
+    0.2,
+    1.75,
+    5.8
    ],
    "rotation": [
-    -0.016290338726192805,
-    0.013581393203461606,
-    0.00022129527923517617,
-    0.9997750355211108
+    -0.031725960420389124,
+    0.008469397588126426,
+    0.00026884476473329667,
+    0.9994606848007533
    ],
    "scale": [
     1,
@@ -143,19 +143,19 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Ceilings/Hall",
+     "model": "Shop/Ceilings/Market",
      "materials": []
     }
    }
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000010",
-   "name": "Drinks 0",
+   "name": "WallGrain 0",
    "parent": null,
    "position": [
-    -1.3,
+    -5.95,
     0,
-    -1
+    0.05
    ],
    "rotation": [
     0,
@@ -170,19 +170,19 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/Drinks",
+     "model": "Shop/Shelves/WallGrain",
      "materials": []
     }
    }
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000011",
-   "name": "Pantry 1",
+   "name": "WallLiquor 1",
    "parent": null,
    "position": [
-    -1.3,
+    -5.95,
     0,
-    -5.1
+    -3.95
    ],
    "rotation": [
     0,
@@ -197,73 +197,19 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/Pantry",
+     "model": "Shop/Shelves/WallLiquor",
      "materials": []
     }
    }
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000012",
-   "name": "Snacks 2",
+   "name": "WallCanned 2",
    "parent": null,
    "position": [
-    1.3,
+    -5.95,
     0,
-    -1
-   ],
-   "rotation": [
-    0,
-    -0.7071067811865475,
-    0,
-    0.7071067811865476
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Shelves/Snacks",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000013",
-   "name": "Household 3",
-   "parent": null,
-   "position": [
-    1.3,
-    0,
-    -5.1
-   ],
-   "rotation": [
-    0,
-    -0.7071067811865475,
-    0,
-    0.7071067811865476
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Shelves/Household",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000014",
-   "name": "Snacks 4",
-   "parent": null,
-   "position": [
-    -4.2,
-    0,
-    -3
+    -7.95
    ],
    "rotation": [
     0,
@@ -278,19 +224,46 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/Snacks",
+     "model": "Shop/Shelves/WallCanned",
      "materials": []
     }
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-000000000015",
-   "name": "Wall 5",
+   "id": "5e0b5e0b-0002-4000-8000-000000000013",
+   "name": "WallSnack 3",
+   "parent": null,
+   "position": [
+    -5.95,
+    0,
+    -11.95
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/WallSnack",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000014",
+   "name": "WallCare 4",
    "parent": null,
    "position": [
     5.95,
     0,
-    -3
+    -2.2
    ],
    "rotation": [
     0,
@@ -305,25 +278,52 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/Wall",
+     "model": "Shop/Shelves/WallCare",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000015",
+   "name": "WallHome 5",
+   "parent": null,
+   "position": [
+    5.95,
+    0,
+    -6.2
+   ],
+   "rotation": [
+    0,
+    -0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/WallHome",
      "materials": []
     }
    }
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000016",
-   "name": "Freezer 6",
+   "name": "WallDrinks 6",
    "parent": null,
    "position": [
+    5.95,
     0,
-    0,
-    -8.4
+    -10.2
    ],
    "rotation": [
     0,
+    -0.7071067811865475,
     0,
-    0,
-    1
+    0.7071067811865476
    ],
    "scale": [
     1,
@@ -332,25 +332,25 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/Freezer",
+     "model": "Shop/Shelves/WallDrinks",
      "materials": []
     }
    }
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000017",
-   "name": "Fridge 7",
+   "name": "WallEnd 7",
    "parent": null,
    "position": [
-    -1.55,
+    5.95,
     0,
-    -11.6
+    -13.075
    ],
    "rotation": [
     0,
+    -0.7071067811865475,
     0,
-    0,
-    1
+    0.7071067811865476
    ],
    "scale": [
     1,
@@ -359,7 +359,7 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/Fridge",
+     "model": "Shop/Shelves/WallEnd",
      "materials": []
     }
    }
@@ -369,9 +369,9 @@
    "name": "Fridge 8",
    "parent": null,
    "position": [
-    1.55,
+    -1.55,
     0,
-    -11.6
+    -13.95
    ],
    "rotation": [
     0,
@@ -393,12 +393,147 @@
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000019",
-   "name": "EndCap 9",
+   "name": "Fridge 9",
    "parent": null,
    "position": [
-    -1.3,
+    1.55,
     0,
-    1.03
+    -13.95
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Fridge",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000001a",
+   "name": "WallCorner 10",
+   "parent": null,
+   "position": [
+    -4.275,
+    0,
+    -13.95
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/WallCorner",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000001b",
+   "name": "WallCorner 11",
+   "parent": null,
+   "position": [
+    4.275,
+    0,
+    -13.95
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/WallCorner",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000001c",
+   "name": "Snacks 12",
+   "parent": null,
+   "position": [
+    -3,
+    0,
+    -1.6
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Snacks",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000001d",
+   "name": "Breakfast 13",
+   "parent": null,
+   "position": [
+    -3,
+    0,
+    -5.6
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Breakfast",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000001e",
+   "name": "EndCap 14",
+   "parent": null,
+   "position": [
+    -3,
+    0,
+    0.43
    ],
    "rotation": [
     0,
@@ -419,19 +554,19 @@
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-00000000001a",
-   "name": "Hooks 10",
+   "id": "5e0b5e0b-0002-4000-8000-00000000001f",
+   "name": "Hooks 15",
    "parent": null,
    "position": [
-    1.3,
+    -3,
     0,
-    1.03
+    -7.63
    ],
    "rotation": [
     0,
+    1,
     0,
-    0,
-    1
+    6.123233995736766e-17
    ],
    "scale": [
     1,
@@ -446,40 +581,13 @@
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-00000000001b",
-   "name": "Stack 11",
+   "id": "5e0b5e0b-0002-4000-8000-000000000020",
+   "name": "Freezer 16",
    "parent": null,
    "position": [
+    -3,
     0,
-    0,
-    1.85
-   ],
-   "rotation": [
-    0,
-    0,
-    0,
-    1
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Shelves/Stack",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000080",
-   "name": "Checkout1 0",
-   "parent": null,
-   "position": [
-    -4.4,
-    0,
-    3.6
+    -10.2
    ],
    "rotation": [
     0,
@@ -494,19 +602,19 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Fixtures/Checkout1",
+     "model": "Shop/Shelves/Freezer",
      "materials": []
     }
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-000000000081",
-   "name": "Checkout2 1",
+   "id": "5e0b5e0b-0002-4000-8000-000000000021",
+   "name": "Drinks 17",
    "parent": null,
    "position": [
-    -2.9,
     0,
-    3.6
+    0,
+    -1.6
    ],
    "rotation": [
     0,
@@ -521,19 +629,19 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Fixtures/Checkout2",
+     "model": "Shop/Shelves/Drinks",
      "materials": []
     }
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-00000000008c",
-   "name": "Self3 12",
+   "id": "5e0b5e0b-0002-4000-8000-000000000022",
+   "name": "Pantry 18",
    "parent": null,
    "position": [
-    -5.7,
     0,
-    0.6
+    0,
+    -5.6
    ],
    "rotation": [
     0,
@@ -548,25 +656,241 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Fixtures/Self3",
+     "model": "Shop/Shelves/Pantry",
      "materials": []
     }
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-00000000008d",
-   "name": "Self4 13",
+   "id": "5e0b5e0b-0002-4000-8000-000000000023",
+   "name": "EndCap 19",
    "parent": null,
    "position": [
-    -5.7,
+    0,
+    0,
+    0.43
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/EndCap",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000024",
+   "name": "Hooks 20",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    -7.63
+   ],
+   "rotation": [
+    0,
+    1,
+    0,
+    6.123233995736766e-17
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Hooks",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000025",
+   "name": "Freezer 21",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    -10.2
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Freezer",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000026",
+   "name": "Instant 22",
+   "parent": null,
+   "position": [
+    3,
+    0,
+    -1.6
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Instant",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000027",
+   "name": "Household 23",
+   "parent": null,
+   "position": [
+    3,
+    0,
+    -5.6
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Household",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000028",
+   "name": "EndCap 24",
+   "parent": null,
+   "position": [
+    3,
+    0,
+    0.43
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/EndCap",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000029",
+   "name": "Hooks 25",
+   "parent": null,
+   "position": [
+    3,
+    0,
+    -7.63
+   ],
+   "rotation": [
+    0,
+    1,
+    0,
+    6.123233995736766e-17
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Hooks",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000002a",
+   "name": "Freezer 26",
+   "parent": null,
+   "position": [
+    3,
+    0,
+    -10.2
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Freezer",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000002b",
+   "name": "PalletMilk 27",
+   "parent": null,
+   "position": [
+    -0.75,
     0,
     1.75
    ],
    "rotation": [
     0,
-    0.7071067811865475,
     0,
-    0.7071067811865476
+    0,
+    1
    ],
    "scale": [
     1,
@@ -575,25 +899,25 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Fixtures/Self4",
+     "model": "Shop/Shelves/PalletMilk",
      "materials": []
     }
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-00000000008e",
-   "name": "Self5 14",
+   "id": "5e0b5e0b-0002-4000-8000-00000000002c",
+   "name": "PalletWater 28",
    "parent": null,
    "position": [
-    -5.7,
+    0.75,
     0,
-    2.9
+    1.75
    ],
    "rotation": [
     0,
-    0.7071067811865475,
     0,
-    0.7071067811865476
+    0,
+    1
    ],
    "scale": [
     1,
@@ -602,7 +926,61 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Fixtures/Self5",
+     "model": "Shop/Shelves/PalletWater",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000002d",
+   "name": "PalletNoodle 29",
+   "parent": null,
+   "position": [
+    -0.75,
+    0,
+    3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/PalletNoodle",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000002e",
+   "name": "PalletBeer 30",
+   "parent": null,
+   "position": [
+    0.75,
+    0,
+    3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/PalletBeer",
      "materials": []
     }
    }
@@ -612,13 +990,13 @@
    "name": "Locker 2",
    "parent": null,
    "position": [
-    5.75,
+    -5.75,
     0,
-    3.8
+    3.6
    ],
    "rotation": [
     0,
-    -0.7071067811865475,
+    0.7071067811865475,
     0,
     0.7071067811865476
    ],
@@ -635,202 +1013,13 @@
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-000000000083",
-   "name": "Cart 3",
-   "parent": null,
-   "position": [
-    3.2,
-    0,
-    4.4
-   ],
-   "rotation": [
-    0,
-    1,
-    0,
-    6.123233995736766e-17
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Fixtures/Cart",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000084",
-   "name": "Cart 4",
-   "parent": null,
-   "position": [
-    3.3200000000000003,
-    0,
-    4.12
-   ],
-   "rotation": [
-    0,
-    1,
-    0,
-    6.123233995736766e-17
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Fixtures/Cart",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000085",
-   "name": "Cart 5",
-   "parent": null,
-   "position": [
-    3.4400000000000004,
-    0,
-    3.8400000000000003
-   ],
-   "rotation": [
-    0,
-    1,
-    0,
-    6.123233995736766e-17
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Fixtures/Cart",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000086",
-   "name": "Basket 6",
-   "parent": null,
-   "position": [
-    4.4,
-    0,
-    2.6
-   ],
-   "rotation": [
-    0,
-    0,
-    0,
-    1
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Fixtures/Basket",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000087",
-   "name": "Basket 7",
-   "parent": null,
-   "position": [
-    4.4,
-    0.09,
-    2.6
-   ],
-   "rotation": [
-    0,
-    0.08715574274765817,
-    0,
-    0.9961946980917455
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Fixtures/Basket",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000088",
-   "name": "Basket 8",
-   "parent": null,
-   "position": [
-    4.4,
-    0.18,
-    2.6
-   ],
-   "rotation": [
-    0,
-    0.17364817766693033,
-    0,
-    0.984807753012208
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Fixtures/Basket",
-     "materials": []
-    }
-   }
-  },
-  {
-   "id": "5e0b5e0b-0002-4000-8000-000000000089",
-   "name": "Basket 9",
-   "parent": null,
-   "position": [
-    4.4,
-    0.27,
-    2.6
-   ],
-   "rotation": [
-    0,
-    0.25881904510252074,
-    0,
-    0.9659258262890683
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Fixtures/Basket",
-     "materials": []
-    }
-   }
-  },
-  {
    "id": "5e0b5e0b-0002-4000-8000-00000000008a",
    "name": "Gate 10",
    "parent": null,
    "position": [
-    1.2,
+    -4.3,
     0,
-    4.6
+    4.8
    ],
    "rotation": [
     0,
@@ -855,9 +1044,9 @@
    "name": "Gate 11",
    "parent": null,
    "position": [
-    2,
+    -3.5,
     0,
-    4.6
+    4.8
    ],
    "rotation": [
     0,
@@ -878,13 +1067,364 @@
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-000000000030",
-   "name": "Sign drinks",
+   "id": "5e0b5e0b-0002-4000-8000-000000000083",
+   "name": "Cart 3",
    "parent": null,
    "position": [
+    -2.6,
     0,
+    5.3
+   ],
+   "rotation": [
+    0,
+    1,
+    0,
+    6.123233995736766e-17
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Cart",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000084",
+   "name": "Cart 4",
+   "parent": null,
+   "position": [
+    -2.48,
+    0,
+    5.02
+   ],
+   "rotation": [
+    0,
+    1,
+    0,
+    6.123233995736766e-17
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Cart",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000085",
+   "name": "Cart 5",
+   "parent": null,
+   "position": [
+    -2.3600000000000003,
+    0,
+    4.74
+   ],
+   "rotation": [
+    0,
+    1,
+    0,
+    6.123233995736766e-17
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Cart",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000086",
+   "name": "Basket 6",
+   "parent": null,
+   "position": [
+    -2.2,
+    0,
+    3.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Basket",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000087",
+   "name": "Basket 7",
+   "parent": null,
+   "position": [
+    -2.2,
+    0.09,
+    3.6
+   ],
+   "rotation": [
+    0,
+    0.08715574274765817,
+    0,
+    0.9961946980917455
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Basket",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000088",
+   "name": "Basket 8",
+   "parent": null,
+   "position": [
+    -2.2,
+    0.18,
+    3.6
+   ],
+   "rotation": [
+    0,
+    0.17364817766693033,
+    0,
+    0.984807753012208
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Basket",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000089",
+   "name": "Basket 9",
+   "parent": null,
+   "position": [
+    -2.2,
+    0.27,
+    3.6
+   ],
+   "rotation": [
+    0,
+    0.25881904510252074,
+    0,
+    0.9659258262890683
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Basket",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000080",
+   "name": "Checkout1 0",
+   "parent": null,
+   "position": [
+    2.9,
+    0,
+    3.6
+   ],
+   "rotation": [
+    0,
+    -0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Checkout1",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000081",
+   "name": "Checkout2 1",
+   "parent": null,
+   "position": [
+    4.4,
+    0,
+    3.6
+   ],
+   "rotation": [
+    0,
+    -0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Checkout2",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000008c",
+   "name": "Self3 12",
+   "parent": null,
+   "position": [
+    5.7,
+    0,
+    0.6
+   ],
+   "rotation": [
+    0,
+    -0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Self3",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000008d",
+   "name": "Self4 13",
+   "parent": null,
+   "position": [
+    5.7,
+    0,
+    1.75
+   ],
+   "rotation": [
+    0,
+    -0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Self4",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000008e",
+   "name": "Self5 14",
+   "parent": null,
+   "position": [
+    5.7,
+    0,
+    2.9
+   ],
+   "rotation": [
+    0,
+    -0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Self5",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000030",
+   "name": "Sign AisleGrain",
+   "parent": null,
+   "position": [
+    -4.5,
     2.55,
-    -2.6
+    -3.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Signs/AisleGrain",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000031",
+   "name": "Sign AisleDrinks",
+   "parent": null,
+   "position": [
+    -1.5,
+    2.55,
+    -3.6
    ],
    "rotation": [
     0,
@@ -905,13 +1445,67 @@
    }
   },
   {
-   "id": "5e0b5e0b-0002-4000-8000-000000000031",
+   "id": "5e0b5e0b-0002-4000-8000-000000000032",
+   "name": "Sign AislePantry",
+   "parent": null,
+   "position": [
+    1.5,
+    2.55,
+    -3.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Signs/AislePantry",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000033",
+   "name": "Sign AisleHome",
+   "parent": null,
+   "position": [
+    4.5,
+    2.55,
+    -3.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Signs/AisleHome",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000034",
    "name": "Sign frozen",
    "parent": null,
    "position": [
     0,
     2.55,
-    -7.4
+    -9
    ],
    "rotation": [
     0,
@@ -936,7 +1530,7 @@
    "name": "Light 0",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     4.888888888888889
    ],
@@ -971,7 +1565,7 @@
    "name": "Light 1",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     2.666666666666666
    ],
@@ -1006,7 +1600,7 @@
    "name": "Light 2",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     0.44444444444444464
    ],
@@ -1041,7 +1635,7 @@
    "name": "Light 3",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     -1.7777777777777786
    ],
@@ -1076,7 +1670,7 @@
    "name": "Light 4",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     -4
    ],
@@ -1111,7 +1705,7 @@
    "name": "Light 5",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     -6.222222222222223
    ],
@@ -1146,7 +1740,7 @@
    "name": "Light 6",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     -8.444444444444445
    ],
@@ -1181,7 +1775,7 @@
    "name": "Light 7",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     -10.666666666666668
    ],
@@ -1216,7 +1810,7 @@
    "name": "Light 8",
    "parent": null,
    "position": [
-    -5.25,
+    -4.5,
     2.735,
     -12.88888888888889
    ],
@@ -1251,7 +1845,7 @@
    "name": "Light 9",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     4.888888888888889
    ],
@@ -1286,7 +1880,7 @@
    "name": "Light 10",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     2.666666666666666
    ],
@@ -1321,7 +1915,7 @@
    "name": "Light 11",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     0.44444444444444464
    ],
@@ -1356,7 +1950,7 @@
    "name": "Light 12",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     -1.7777777777777786
    ],
@@ -1391,7 +1985,7 @@
    "name": "Light 13",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     -4
    ],
@@ -1426,7 +2020,7 @@
    "name": "Light 14",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     -6.222222222222223
    ],
@@ -1461,7 +2055,7 @@
    "name": "Light 15",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     -8.444444444444445
    ],
@@ -1496,7 +2090,7 @@
    "name": "Light 16",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     -10.666666666666668
    ],
@@ -1531,7 +2125,7 @@
    "name": "Light 17",
    "parent": null,
    "position": [
-    -1.75,
+    -1.5,
     2.735,
     -12.88888888888889
    ],
@@ -1566,7 +2160,7 @@
    "name": "Light 18",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     4.888888888888889
    ],
@@ -1601,7 +2195,7 @@
    "name": "Light 19",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     2.666666666666666
    ],
@@ -1636,7 +2230,7 @@
    "name": "Light 20",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     0.44444444444444464
    ],
@@ -1671,7 +2265,7 @@
    "name": "Light 21",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     -1.7777777777777786
    ],
@@ -1706,7 +2300,7 @@
    "name": "Light 22",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     -4
    ],
@@ -1741,7 +2335,7 @@
    "name": "Light 23",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     -6.222222222222223
    ],
@@ -1776,7 +2370,7 @@
    "name": "Light 24",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     -8.444444444444445
    ],
@@ -1811,7 +2405,7 @@
    "name": "Light 25",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     -10.666666666666668
    ],
@@ -1846,7 +2440,7 @@
    "name": "Light 26",
    "parent": null,
    "position": [
-    1.75,
+    1.5,
     2.735,
     -12.88888888888889
    ],
@@ -1881,7 +2475,7 @@
    "name": "Light 27",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     4.888888888888889
    ],
@@ -1916,7 +2510,7 @@
    "name": "Light 28",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     2.666666666666666
    ],
@@ -1951,7 +2545,7 @@
    "name": "Light 29",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     0.44444444444444464
    ],
@@ -1986,7 +2580,7 @@
    "name": "Light 30",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     -1.7777777777777786
    ],
@@ -2021,7 +2615,7 @@
    "name": "Light 31",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     -4
    ],
@@ -2056,7 +2650,7 @@
    "name": "Light 32",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     -6.222222222222223
    ],
@@ -2091,7 +2685,7 @@
    "name": "Light 33",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     -8.444444444444445
    ],
@@ -2126,7 +2720,7 @@
    "name": "Light 34",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     -10.666666666666668
    ],
@@ -2161,7 +2755,7 @@
    "name": "Light 35",
    "parent": null,
    "position": [
-    5.25,
+    4.5,
     2.735,
     -12.88888888888889
    ],

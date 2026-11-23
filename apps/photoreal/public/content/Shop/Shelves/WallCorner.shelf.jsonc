@@ -1,0 +1,25 @@
+{
+ "name": "WallCorner",
+ "sides": 1,
+ "length": 2.45,
+ "height": 2.1,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.52,
+  0.89,
+  1.26,
+  1.63
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "priceTags": "electronic",
+ "stock": {
+  "products": [
+   "Shop/Products/Milk",
+   "Shop/Products/Yogurt",
+   "Shop/Products/Cereal"
+  ],
+  "variants": 4
+ },
+ "seed": 177
+}

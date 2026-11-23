@@ -135,6 +135,43 @@ shelves['Hooks'] = {
   stock: { products: ['Jerky', 'Candy', 'Konjac', 'Noodles'].map(p), variants: 4, facings: [2, 3], rows: 6 }, seed: 49,
 };
 shelves['Stack'] = { type: 'stack', sides: 1, length: 1.1, height: 0.85, depth: 0.6, levels: [0.12], font: FONT, stock: { products: ['Tissue', 'Cereal', 'Biscuits'].map(p), variants: 2, facings: [3, 4] }, seed: 50 };
+// 整个超市要的更多品类（照片里：米面粮油、酒、洗护、日化、罐头、桶面，入口那片码在托盘上的整箱牛奶、水、方便面、啤酒）
+for (const { id, ...product } of [
+  { id: 'Rice', shape: 'pouch', size: [0.3, 0.45, 0.1], text: '东北大米', price: 39.9, seed: 151, badge: '5kg' },
+  { id: 'Flour', shape: 'pouch', size: [0.28, 0.4, 0.09], text: '小麦面粉', price: 25.9, seed: 152, badge: '5kg' },
+  { id: 'Liquor', shape: 'box', size: [0.1, 0.27, 0.1], text: '白酒', price: 168, seed: 153, colors: { background: '#b3121b', accent: '#e8c25a' } },
+  { id: 'Wine', shape: 'bottle', size: [0.075, 0.31, 0], text: '干红', price: 89, seed: 154, surface: 'glass' },
+  { id: 'Shampoo', shape: 'bottle', size: [0.08, 0.24, 0], text: '洗发水', price: 39.9, seed: 155, surface: 'plastic' },
+  { id: 'Toothpaste', shape: 'box', size: [0.2, 0.045, 0.045], text: '牙膏', price: 12.9, seed: 156 },
+  { id: 'Wipes', shape: 'pouch', size: [0.2, 0.12, 0.06], text: '湿巾', price: 9.9, seed: 157 },
+  { id: 'Porridge', shape: 'can', size: [0.066, 0.11, 0], text: '八宝粥', price: 4.5, seed: 158 },
+  { id: 'CupNoodle', shape: 'tub', size: [0.11, 0.11, 0], text: '桶面', price: 5.5, seed: 159 },
+  { id: 'MilkCase', shape: 'box', size: [0.34, 0.25, 0.22], text: '纯牛奶', price: 59.9, seed: 160, badge: '24盒', colors: { background: '#f4f6f2', accent: '#2f8f3a' } },
+  { id: 'WaterCase', shape: 'box', size: [0.38, 0.26, 0.25], text: '饮用水', price: 29.9, seed: 161, badge: '24瓶', colors: { background: '#e8f2fb', accent: '#1e64c8' } },
+  { id: 'NoodleCase', shape: 'box', size: [0.42, 0.24, 0.3], text: '方便面', price: 69, seed: 162, badge: '整箱', colors: { background: '#c8281e', accent: '#f2c40f' } },
+  { id: 'BeerCase', shape: 'box', size: [0.4, 0.25, 0.27], text: '啤酒', price: 79, seed: 163, badge: '24罐', colors: { background: '#1a5a2e', accent: '#e8c25a' } },
+] as const) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
+// 靠墙的单面货架（三面墙铺满：左墙、右墙一节节 4 米，后墙两头各一节短的，中间是冷柜）
+const wall = { ...gondola, priceTags: 'electronic', sides: 1, height: 2.1, levels: [0.15, 0.52, 0.89, 1.26, 1.63] };
+Object.assign(shelves, {
+  WallGrain: { ...wall, stock: { products: ['Rice', 'Flour', 'PeanutOil', 'SoySauce'].map(p), variants: 4, facings: [3, 6] }, seed: 171 },
+  WallLiquor: { ...wall, stock: { products: ['Liquor', 'Wine', 'Beer'].map(p), variants: 5, facings: [3, 6] }, seed: 172 },
+  WallCare: { ...wall, stock: { products: ['Shampoo', 'Toothpaste', 'Wipes', 'Detergent'].map(p), variants: 5 }, seed: 173 },
+  WallHome: { ...wall, stock: { products: ['Tissue', 'Wipes', 'Detergent'].map(p), variants: 4, facings: [3, 6] }, seed: 174 },
+  WallCanned: { ...wall, stock: { products: ['Porridge', 'Sauce', 'Vinegar', 'ChiliSauce'].map(p), variants: 4, facings: [3, 7] }, seed: 175 },
+  WallSnack: { ...wall, stock: { products: ['Chips', 'Biscuits', 'Jerky', 'Candy'].map(p), variants: 5 }, seed: 180 },
+  WallDrinks: { ...wall, stock: { products: ['Water', 'Juice', 'Cola', 'Tea'].map(p), variants: 4, facings: [4, 8] }, seed: 186 },
+  WallEnd: { ...wall, length: 1.75, stock: { products: ['Water', 'Juice', 'Tea'].map(p), variants: 3 }, seed: 176 },
+  WallCorner: { ...wall, length: 2.45, stock: { products: ['Milk', 'Yogurt', 'Cereal'].map(p), variants: 4 }, seed: 177 },
+  // 中间三排货架多出来的两种
+  Instant: { ...gondola, priceTags: 'electronic', stock: { products: ['CupNoodle', 'Noodles', 'Porridge', 'Konjac'].map(p), variants: 5 }, seed: 178 },
+  Breakfast: { ...gondola, stock: { products: ['Cereal', 'Milk', 'Crackers', 'Biscuits'].map(p), variants: 4 }, seed: 179 },
+  // 码垛区：一个托盘一种整箱的货（货垛最大 1.2 × 1.0 米、1.2 米高，木托盘跟着货垛的大小）
+  ...Object.fromEntries(['MilkCase', 'WaterCase', 'NoodleCase', 'BeerCase'].map((product, i) => [`Pallet${product.replace('Case', '')}`, {
+    type: 'pallet', sides: 1, length: 1.2, height: 1.2, depth: 1.0, levels: [0.144], font: FONT, boardColor: '#b48a5a',
+    stock: { products: [p(product)], variants: 2 }, seed: 181 + i,
+  }])),
+});
 for (const [name, shelf] of Object.entries(shelves)) await write('shelf', `Shop/Shelves/${name}`, { name, ...shelf });
 // 收银台、自助收银机、寄存柜、购物车、篮子、闸机
 const fixtures: Record<string, object> = {
@@ -147,6 +184,9 @@ for (const [name, fixture] of Object.entries(fixtures)) await write('fixture', `
 const signs: Record<string, object> = {
   AisleDrinks: { text: '饮料 · 零食', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#2f9e44' } },
   AisleFrozen: { text: '冷冻食品', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#1e64c8' } },
+  AisleGrain: { text: '粮油 · 酒水', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#c8281e' } },
+  AislePantry: { text: '调味 · 速食', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#e07a1a' } },
+  AisleHome: { text: '日化 · 洗护', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#7a3fa0' } },
 };
 for (const [name, sign] of Object.entries(signs)) await write('sign', `Shop/Signs/${name}`, { name, font: FONT, ...sign });
 
@@ -236,37 +276,57 @@ await write('brush', 'Shop/Models/Hall', {
     { kind: 'box', operation: 'add', position: [0, 1.65, -14.1], size: [14, 3.3, 0.2], material: 1 },
   ],
 });
-const aisleEye: Vec3 = [0.25, 1.5, 3.2];
+// 整个超市（用户 11-23 画的布局）：大厅 12 × 20 米，入口在 +Z 那头。靠墙三面铺满单面货架（左墙、右墙一节节，后墙两头各一节、中间
+// 两节立式冷柜）；中间三排双面货架（x = -3、0、3，顺着 -Z，两节 8 米，两头是端架和挂钩架），后面一片放卧式冰柜；门口左边是入口
+// （寄存柜、两道单向闸机、购物车和篮子），右边是结账出口（两个收银台、靠右墙三台自助收银机），中间一片码垛（四个托盘的整箱货）。
+// 货架的原点：单面的在背板上、正面朝它自己的 +Z；双面的、冰柜、码垛在中心。yaw 90 正面朝 +X，-90 朝 -X，0 朝 +Z，180 朝 -Z。
+const entranceEye: Vec3 = [0.2, 1.75, 5.8];
 const sid = (k: number) => `5e0b5e0b-0002-4000-8000-${k.toString(16).padStart(12, '0')}`;
 const fixtureAt = (k: number, name: string, position: Vec3, yaw: number) => entity(sid(0x80 + k), `${name} ${k}`, position, { model: { model: `Shop/Fixtures/${name}`, materials: [] } }, euler(yaw));
-const shelfAt = (k: number, name: string, position: Vec3, yaw: number) => entity(sid(0x10 + k), `${name} ${k}`, position, { model: { model: `Shop/Shelves/${name}`, materials: [] } }, euler(yaw));
-// 过道沿 -Z：左边一排的正面朝 +X，右边一排朝 -X；靠墙那排在右边的墙上
+let shelfCount = 0;
+const shelfAt = (name: string, position: Vec3, yaw: number) => entity(sid(0x10 + shelfCount), `${name} ${shelfCount++}`, position, { model: { model: `Shop/Shelves/${name}`, materials: [] } }, euler(yaw));
+const WALL_X = 5.95, BACK_Z = -13.95, ROWS = [-3, 0, 3] as const;
 const shelfEntities = [
-  shelfAt(0, 'Drinks', [-1.3, 0, -1], 90), shelfAt(1, 'Pantry', [-1.3, 0, -5.1], 90),
-  shelfAt(2, 'Snacks', [1.3, 0, -1], -90), shelfAt(3, 'Household', [1.3, 0, -5.1], -90),
-  shelfAt(4, 'Snacks', [-4.2, 0, -3], 90), shelfAt(5, 'Wall', [5.95, 0, -3], -90),
-  // 过道尽头：一台卧式冰柜，后墙前一排两节立式冷柜
-  shelfAt(6, 'Freezer', [0, 0, -8.4], 0), shelfAt(7, 'Fridge', [-1.55, 0, -11.6], 0), shelfAt(8, 'Fridge', [1.55, 0, -11.6], 0),
-  // 两排货架朝着入口的那一头：左边端架、右边挂钩架；过道口一个低的堆头
-  shelfAt(9, 'EndCap', [-1.3, 0, 1.03], 0), shelfAt(10, 'Hooks', [1.3, 0, 1.03], 0), shelfAt(11, 'Stack', [0, 0, 1.85], 0),
-  // 入口那片：左边两个收银台（顾客从 -Z 走过）、左墙前的自助收银机，右墙一排寄存柜，几辆购物车、一摞篮子，中间两道闸机
-  fixtureAt(0, 'Checkout1', [-4.4, 0, 3.6], 90), fixtureAt(1, 'Checkout2', [-2.9, 0, 3.6], 90),
-  // 左墙前一排三台自助收银机，正面朝过道（+X）
-  ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [-5.7, 0, 0.6 + i * 1.15], 90)),
-  fixtureAt(2, 'Locker', [5.75, 0, 3.8], -90),
-  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [3.2 + i * 0.12, 0, 4.4 - i * 0.28], 180)),
-  ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [4.4, i * 0.09, 2.6], 10 * i)),
-  fixtureAt(10, 'Gate', [1.2, 0, 4.6], 0), fixtureAt(11, 'Gate', [2.0, 0, 4.6], 0),
-  // 挂在过道上方的招牌
-  entity(sid(0x30), 'Sign drinks', [0, 2.55, -2.6], { model: { model: 'Shop/Signs/AisleDrinks', materials: [] } }),
-  entity(sid(0x31), 'Sign frozen', [0, 2.55, -7.4], { model: { model: 'Shop/Signs/AisleFrozen', materials: [] } }),
+  // 左墙：粮油、酒、罐头调味、零食，从入口那头（z = 2.05）铺到后墙
+  ...['WallGrain', 'WallLiquor', 'WallCanned', 'WallSnack'].map((name, i) => shelfAt(name, [-WALL_X, 0, 0.05 - 4 * i], 90)),
+  // 右墙：洗护、日化、饮料，前面留给自助收银机（z = -0.2 起），最后一节短的接到后墙
+  ...['WallCare', 'WallHome', 'WallDrinks'].map((name, i) => shelfAt(name, [WALL_X, 0, -2.2 - 4 * i], -90)),
+  shelfAt('WallEnd', [WALL_X, 0, -13.075], -90),
+  // 后墙：中间两节立式冷柜，两头各一节短货架
+  shelfAt('Fridge', [-1.55, 0, BACK_Z], 0), shelfAt('Fridge', [1.55, 0, BACK_Z], 0),
+  shelfAt('WallCorner', [-4.275, 0, BACK_Z], 0), shelfAt('WallCorner', [4.275, 0, BACK_Z], 0),
+  // 中间三排：每排两节 4 米（z 从 0.4 到 -7.6），朝入口那头一个端架，后头一个挂钩架；再往后一台卧式冰柜
+  ...ROWS.flatMap((x, i) => {
+    const [front, back] = ([['Snacks', 'Breakfast'], ['Drinks', 'Pantry'], ['Instant', 'Household']] as const)[i]!;
+    return [
+      shelfAt(front, [x, 0, -1.6], 90), shelfAt(back, [x, 0, -5.6], 90),
+      shelfAt('EndCap', [x, 0, 0.43], 0), shelfAt('Hooks', [x, 0, -7.63], 180),
+      shelfAt('Freezer', [x, 0, -10.2], 90),
+    ];
+  }),
+  // 码垛区：入口和出口之间四个托盘
+  ...(['PalletMilk', 'PalletWater', 'PalletNoodle', 'PalletBeer'] as const).map((name, i) => shelfAt(name, [i % 2 === 0 ? -0.75 : 0.75, 0, i < 2 ? 1.75 : 3.0], 0)),
+  // 入口（左）：左墙前的寄存柜，两道单向闸机，购物车、一摞篮子
+  fixtureAt(2, 'Locker', [-5.75, 0, 3.6], 90),
+  fixtureAt(10, 'Gate', [-4.3, 0, 4.8], 0), fixtureAt(11, 'Gate', [-3.5, 0, 4.8], 0),
+  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [-2.6 + i * 0.12, 0, 5.3 - i * 0.28], 180)),
+  ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [-2.2, i * 0.09, 3.6], 10 * i)),
+  // 结账出口（右）：两个收银台（顾客从 -Z 走过来），右墙前三台自助收银机朝过道
+  fixtureAt(0, 'Checkout1', [2.9, 0, 3.6], -90), fixtureAt(1, 'Checkout2', [4.4, 0, 3.6], -90),
+  ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [5.7, 0, 0.6 + i * 1.15], -90)),
+  // 四条过道上方的招牌
+  ...([['AisleGrain', -4.5], ['AisleDrinks', -1.5], ['AislePantry', 1.5], ['AisleHome', 4.5]] as const).map(([name, x], i) => entity(sid(0x30 + i), `Sign ${name}`, [x, 2.55, -3.6], { model: { model: `Shop/Signs/${name}`, materials: [] } }, euler(0))),
+  entity(sid(0x34), 'Sign frozen', [0, 2.55, -9.0], { model: { model: 'Shop/Signs/AisleFrozen', materials: [] } }),
 ];
 // 天花板：照片里开放式的黑顶（风管、桥架、喷淋管、吊杆上的灯管）。管线沿天花板的 X，转 90° 以后顺着过道（-Z）；
-// 面光源放在 ceilingLights 算出的每盏灯管下面，灯具和光对得上
-const ceiling: CeilingFile = { name: 'Hall', size: [20, 14], height: 3.3, style: 'open', ducts: 2, trays: 2, pipes: 3, lights: { rows: 4, spacing: 2.2, length: 1.4, drop: 0.55 } };
-await write('ceiling', 'Shop/Ceilings/Hall', ceiling);
+// 面光源放在 ceilingLights 算出的每盏灯管下面，灯具和光对得上。调料过道用的 Hall（14 米宽）照旧；超市的 Market 和大厅一样
+// 12 米宽，四排灯正好在四条过道（x = ±1.5、±4.5）的上面
+const hallCeiling: CeilingFile = { name: 'Hall', size: [20, 14], height: 3.3, style: 'open', ducts: 2, trays: 2, pipes: 3, lights: { rows: 4, spacing: 2.2, length: 1.4, drop: 0.55 } };
+await write('ceiling', 'Shop/Ceilings/Hall', hallCeiling);
+const ceiling: CeilingFile = { ...hallCeiling, name: 'Market', size: [20, 12] };
+await write('ceiling', 'Shop/Ceilings/Market', ceiling);
 const ceilingAt: Vec3 = [0, 0, -4];
-const ceilingEntity = (id: string) => entity(id, 'Ceiling', ceilingAt, { model: { model: 'Shop/Ceilings/Hall', materials: [] } }, euler(90));
+const ceilingEntity = (id: string) => entity(id, 'Ceiling', ceilingAt, { model: { model: 'Shop/Ceilings/Market', materials: [] } }, euler(90));
 // 转 90°：天花板本地的 (x, z) 到世界是 (z, -x)
 const lights = ceilingLights(ceiling).map((light, i) => entity(sid(0x40 + i), `Light ${i}`, [ceilingAt[0] + light.center[2], light.center[1] - 0.015, ceilingAt[2] - light.center[0]], {
   light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: light.length, range: 9 },
@@ -280,7 +340,7 @@ await write('scene', 'Supermarket', {
     transparent: true,
   },
   entities: [
-    entity(sid(1), 'Camera', aisleEye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 200 } }, lookAt(aisleEye, [0, 1.2, -6])),
+    entity(sid(1), 'Camera', entranceEye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 200 } }, lookAt(entranceEye, [0, 1.0, -6])),
     entity(sid(2), 'Ambient', [0, 3, 0], { light: { type: 'ambient', color: [1, 0.98, 0.95], intensity: 0.35 } }),
     entity(sid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
     ceilingEntity(sid(4)),

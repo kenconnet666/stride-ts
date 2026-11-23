@@ -1,0 +1,13 @@
+{
+ "name": "Toothpaste",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "box",
+ "size": [
+  0.2,
+  0.045,
+  0.045
+ ],
+ "text": "牙膏",
+ "price": 12.9,
+ "seed": 156
+}

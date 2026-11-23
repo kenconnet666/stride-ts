@@ -1,0 +1,13 @@
+{
+ "name": "Wipes",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "pouch",
+ "size": [
+  0.2,
+  0.12,
+  0.06
+ ],
+ "text": "湿巾",
+ "price": 9.9,
+ "seed": 157
+}

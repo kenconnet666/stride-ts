@@ -92,7 +92,8 @@
       },
       "required": [],
       "additionalProperties": false,
-      "description": "colors of the face, the text and the frame"
+      "description": "colors of the face, the text and the frame",
+      "default": {}
     },
     "brightness": {
       "type": "number",

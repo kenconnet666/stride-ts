@@ -62,8 +62,11 @@ export class Schema<Out, In = Out> {
     return new Schema(this.type, { ...this.meta, optional: true });
   }
 
-  /** 文件里可以不写，不写时是 value（解析时深拷贝一份补上）。 */
-  default(value: Exclude<Out, undefined>): Schema<Exclude<Out, undefined>, In | undefined> {
+  /**
+   * 文件里可以不写，不写时是 value：照文件里的样子写（对象的默认值可以只写一部分，`{}` 也行），解析时深拷贝一份、里面没写的
+   * 再按各自的默认值补。
+   */
+  default(value: Exclude<In, undefined>): Schema<Exclude<Out, undefined>, In | undefined> {
     return new Schema(this.type, { ...this.meta, optional: true, default: value });
   }
 
@@ -111,7 +114,7 @@ export class Schema<Out, In = Out> {
   parse(value: unknown, where = 'value'): Out {
     const issues = this.check(value, where);
     if (issues.length > 0) throw new SchemaError(issues);
-    if (value === undefined) return structuredClone(this.meta.default) as Out;
+    if (value === undefined) return (this.meta.default === undefined ? undefined : withDefaults(structuredClone(this.meta.default), this.type)) as Out;
     if (value === null) return value as Out;
     return withDefaults(value, this.type) as Out;
   }

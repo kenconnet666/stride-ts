@@ -3,7 +3,7 @@
  * 或格栅吊顶（一格格的板、龙骨、灯盘），走 ProductBatch 出一个模型、图集和材质；灯具发光。ceilingLights 给出每盏灯的中心和
  * 大小，搭场景时照它放面光源，灯具和光对得上。
  */
-import type { CeilingFile } from '../content/formats/ceilingFormat.ts';
+import { CEILING, type CeilingFile } from '../content/formats/ceilingFormat.ts';
 import { ProductBatch, type MergedProducts } from './productBatch.ts';
 
 /** 纯色：楼板或吊顶、镀锌的风管、桥架、喷淋管（红）、吊杆和龙骨、灯。 */
@@ -17,10 +17,11 @@ export interface CeilingLight {
 }
 
 /** 每盏灯的位置（开放式吊在楼板下 drop，格栅嵌在吊顶里）。 */
-export function ceilingLights(file: CeilingFile): CeilingLight[] {
+export function ceilingLights(input: CeilingFile): CeilingLight[] {
+  const file = CEILING.parse(input, input.name);
   const [w, d] = file.size, grid = file.style === 'grid';
-  const rows = Math.max(0, Math.round(file.lights?.rows ?? 2)), spacing = Math.max(0.5, file.lights?.spacing ?? 2.2);
-  const length = grid ? 0.6 : Math.min(spacing, file.lights?.length ?? 1.4), y = grid ? file.height - 0.01 : file.height - (file.lights?.drop ?? 0.6);
+  const rows = Math.max(0, Math.round(file.lights.rows)), spacing = Math.max(0.5, file.lights.spacing);
+  const length = grid ? 0.6 : Math.min(spacing, file.lights.length), y = grid ? file.height - 0.01 : file.height - (file.lights.drop);
   const count = Math.max(0, Math.floor(w / spacing));
   const lights: CeilingLight[] = [];
   for (let r = 0; r < rows; r++) {
@@ -30,7 +31,8 @@ export function ceilingLights(file: CeilingFile): CeilingLight[] {
   return lights;
 }
 
-export function ceilingModel(file: CeilingFile, where = file.name): MergedProducts {
+export function ceilingModel(input: CeilingFile, where = input.name): MergedProducts {
+  const file = CEILING.parse(input, where);
   const [w, d] = file.size, H = file.height;
   if (!(w > 0 && d > 0 && H > 0)) throw new Error(`${where}: size and height must be greater than 0`);
   const grid = file.style === 'grid';
@@ -62,11 +64,11 @@ export function ceilingModel(file: CeilingFile, where = file.name): MergedProduc
   const hangers = (z: number, top: number, bottom: number) => {
     for (let x = -w / 2 + 1.25; x < w / 2; x += 2.5) batch.tube([x, top, z], [x, bottom, z], 0.006, ROD, 6);
   };
-  for (const z of lanes(file.ducts ?? 2, 0.3)) {
+  for (const z of lanes(file.ducts, 0.3)) {
     batch.box([-w / 2, H - 0.45, z - 0.3], [w / 2, H - 0.12, z + 0.3], DUCT);
     hangers(z - 0.32, H, H - 0.45);
   }
-  for (const z of lanes(file.trays ?? 2, 0.75)) {
+  for (const z of lanes(file.trays, 0.75)) {
     // 梯形桥架：两条边框、每 0.3 米一根横档
     const y = H - 0.38;
     batch.box([-w / 2, y, z - 0.16], [w / 2, y + 0.06, z - 0.14], TRAY);
@@ -74,7 +76,7 @@ export function ceilingModel(file: CeilingFile, where = file.name): MergedProduc
     for (let x = -w / 2; x < w / 2; x += 0.3) batch.box([x, y, z - 0.14], [x + 0.03, y + 0.012, z + 0.14], TRAY);
     hangers(z - 0.17, H, y);
   }
-  for (const z of lanes(file.pipes ?? 3, 0.5)) {
+  for (const z of lanes(file.pipes, 0.5)) {
     const y = H - 0.2;
     batch.tube([-w / 2, y, z], [w / 2, y, z], 0.025, PIPE, 10);
     // 每 3 米一个往下的喷头

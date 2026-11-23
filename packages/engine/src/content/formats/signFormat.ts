@@ -8,30 +8,43 @@
  * 吊旗（banner：超市顶上吊下来的促销旗，两面都印、不发光，顶上一根横杆、两根吊绳）和地堆的价牌（stand：圆底座、立杆，顶上一块
  * 两面印的卡片，"特价 9.9"）也是招牌。
  *
- * 坐标是米，原点在招牌的中心，字面朝 +Z；价牌的原点在底座的地面上。
+ * 坐标是米，原点在招牌的中心，字面朝 +Z；价牌的原点在底座的地面上。格式用模式（content/schema）声明：SignFile 是文件的样子，
+ * Sign 是解析后的（默认值补齐）。配色没写时按样式不同（灯箱绿底白字、印的红底黄字、地贴黄底白边……），在 modeling/sign.ts 里定。
  */
-export interface SignFile {
-  readonly name: string;
+import { s, type Infer, type InputOf } from '../schema/schema.ts';
+
+export const SIGN = s.object({
+  name: s.string(),
   /** 字，`\n` 换行。 */
-  readonly text: string;
+  text: s.string().describe('the text on the face; line breaks start new lines'),
   /** 字体资源（要有中文就用资源包的 Shared/Fonts/ZCOOLQingKeHuangYou）。 */
-  readonly font: string;
+  font: s.asset('font').describe('font of the text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese)'),
   /** 宽、高、厚（米）；地贴是宽、长（贴图的上方是长的方向），厚不用。 */
-  readonly size: readonly [number, number, number];
+  size: s.vector(3, 'm').describe('width, height, depth (floor stickers: width and length, the length along the top of the texture)'),
   /** 灯箱（字面发光）、挂牌（不发光）、地贴（只出 SVG，用贴花贴到地上）、吊旗、地堆的价牌（见开头）。 */
-  readonly style?: 'lightbox' | 'panel' | 'floor' | 'banner' | 'stand';
-  /** 吊旗的吊绳多长（米，默认 0.5）；价牌从地面到卡片顶多高（米，默认 1.2）。 */
-  readonly hang?: number;
-  readonly standHeight?: number;
+  style: s.oneOf('lightbox', 'panel', 'floor', 'banner', 'stand').default('lightbox').describe('lightbox: the face glows (lit from inside); panel: it does not; floor: a floor sticker, only a transparent SVG of the same name, put on the floor with a decal; banner: a promo flag hanging from the ceiling (printed on both sides, a rod and two cords on top); stand: a price card on a pole with a round base by a floor stack (origin on the floor)'),
+  /** 吊旗的吊绳多长（米）。 */
+  hang: s.number({ min: 0, step: 0.1 }).default(0.5).describe('length of the cords of a banner (m)'),
+  /** 价牌从地面到卡片顶多高（米）。 */
+  standHeight: s.number({ min: 0.2, step: 0.1 }).default(1.2).describe('height from the floor to the top of a stand card (m)'),
   /** 地贴的外形：圆角方块、圆标、箭头（指向贴图的上方，转实体来定方向）。 */
-  readonly shape?: 'rect' | 'round' | 'arrow';
+  shape: s.oneOf('rect', 'round', 'arrow').default('rect').describe('floor sticker shape: rounded rectangle, round badge, arrow (pointing to the top of the texture; turn the entity to aim it)'),
   /** 地贴踩旧了多少（0..1）：按种子擦掉几道、几片。 */
-  readonly wear?: number;
-  readonly seed?: number;
+  wear: s.number({ min: 0, max: 1, step: 0.05 }).default(0).describe('how worn a floor sticker is (0..1): scratches and scuffed patches from the seed'),
+  seed: s.integer(0, 2 ** 31 - 1).default(1).describe('random seed of the wear'),
   /** 两面都有字面（挂在通道上方的）。 */
-  readonly doubleSided?: boolean;
-  /** 配色（sRGB 的 #rrggbb）：字面的底、字、外框（地贴是描边，默认白）。 */
-  readonly colors?: { readonly background?: string; readonly text?: string; readonly frame?: string };
-  /** 灯箱的亮度（自发光的强度），默认 3。 */
-  readonly brightness?: number;
-}
+  doubleSided: s.bool().default(false).describe('a face on the back too (signs hanging over an aisle)'),
+  /** 配色（sRGB 的 #rrggbb）：字面的底、字、外框（地贴是描边）；没写的按样式。 */
+  colors: s.object({
+    background: s.string().optional().describe('face color (sRGB #rrggbb, green when missing)'),
+    text: s.string().optional().describe('text color (sRGB #rrggbb, white when missing)'),
+    frame: s.string().optional().describe('frame color (sRGB #rrggbb, brushed grey when missing; the outline of a floor sticker, white when missing)'),
+  }).default({}).describe('colors of the face, the text and the frame'),
+  /** 灯箱的亮度（自发光的强度）。 */
+  brightness: s.number({ min: 0, step: 0.5 }).default(3).describe('emissive strength of a lightbox face'),
+});
+
+/** 招牌文件的样子（有默认值的可以不写）。 */
+export type SignFile = InputOf<typeof SIGN>;
+/** 解析以后的招牌（默认值补齐）。 */
+export type Sign = Infer<typeof SIGN>;

@@ -24,7 +24,7 @@ describe('店里的器具', () => {
       return max;
     };
     expect(width(big)).toBeGreaterThan(width(small) * 2);
-    expect(() => fixtureModel({ name: 'X', type: 'nope' as FixtureFile['type'] }, undefined)).toThrow(/unknown/);
+    expect(() => fixtureModel({ name: 'X', type: 'nope' as FixtureFile['type'] }, undefined)).toThrow(/X\.type: expected one of checkout/);
   });
 
   test('自助收银机：屏和指示灯发光，图集里有界面（蓝标题栏、绿按钮）和号码牌两格；购物袋架的挂臂往顾客那边伸', () => {

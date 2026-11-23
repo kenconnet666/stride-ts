@@ -112,7 +112,8 @@ function objectDefaults(value: unknown, of: readonly Field[]): unknown {
   for (const field of of) {
     const item = object[field.name];
     if (item === undefined) {
-      if (field.default !== undefined) out[field.name] = structuredClone(field.default);
+      // 默认值照文件的样子写，里面没写的也补上
+      if (field.default !== undefined) out[field.name] = withDefaults(structuredClone(field.default), field.type);
     } else if (item !== null) out[field.name] = withDefaults(item, field.type);
   }
   return out;

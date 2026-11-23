@@ -24,7 +24,8 @@
     },
     "number": {
       "type": "string",
-      "description": "number on the checkout sign (needs the font)"
+      "description": "number on the checkout sign (needs the font)",
+      "default": "1"
     },
     "font": {
       "type": "string",

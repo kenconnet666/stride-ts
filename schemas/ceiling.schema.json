@@ -84,7 +84,8 @@
       },
       "required": [],
       "additionalProperties": false,
-      "description": "light fixtures (they glow; place area lights at the same spots to light the scene)"
+      "description": "light fixtures (they glow; place area lights at the same spots to light the scene)",
+      "default": {}
     },
     "seed": {
       "type": "integer",

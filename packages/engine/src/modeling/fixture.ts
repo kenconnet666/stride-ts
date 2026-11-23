@@ -3,7 +3,7 @@
  * 轨道射灯，都用 ProductBatch 的方块和圆管拼，出一个模型、图集和材质。收银台上方的号码灯箱、自助收银机的屏和指示灯、寄存柜每格的
  * 指示灯、轨道射灯的灯口发光。
  */
-import type { FixtureFile } from '../content/formats/fixtureFormat.ts';
+import { FIXTURE, type Fixture, type FixtureFile } from '../content/formats/fixtureFormat.ts';
 import { textPath } from './product.ts';
 import { ProductBatch, type AtlasCell, type Cell, type MergedProducts } from './productBatch.ts';
 import type { TextFont } from './textOutline.ts';
@@ -29,14 +29,15 @@ export interface TrackSpot {
  * 轨道射灯每个灯头放聚光灯的位置和方向：场景照它放（灯具只发光，同天花板的 ceilingLights）。位置在灯口外 2 厘米——放在灯口上
  * 会被灯头自己的灯身挡住，投阴影时整盏灯是黑的。
  */
-export function trackSpots(file: FixtureFile): TrackSpot[] {
+export function trackSpots(input: FixtureFile): TrackSpot[] {
+  const file = FIXTURE.parse(input, input.name);
   return trackLenses(file).map(({ position, direction }) => ({ position: [position[0] + direction[0] * 0.02, position[1] + direction[1] * 0.02, position[2] + direction[2] * 0.02] as const, direction }));
 }
 
 /** 每个灯头的灯口中心和照的方向（几何用）。 */
-function trackLenses(file: FixtureFile): TrackSpot[] {
-  const length = Math.max(0.2, file.length ?? 3), heads = Math.max(1, Math.round(file.heads ?? 4));
-  const tilt = ((file.tilt ?? 30) * Math.PI) / 180;
+function trackLenses(file: Fixture): TrackSpot[] {
+  const length = Math.max(0.2, file.length), heads = Math.max(1, Math.round(file.heads));
+  const tilt = ((file.tilt) * Math.PI) / 180;
   const direction = [0, -Math.cos(tilt), Math.sin(tilt)] as const;
   return Array.from({ length: heads }, (_, i) => {
     const x = -length / 2 + ((i + 0.5) * length) / heads;
@@ -47,18 +48,20 @@ function trackLenses(file: FixtureFile): TrackSpot[] {
 }
 
 /** 这件器具上要写的字（烘焙时按它取字形）；不写字的种类是空串。 */
-export function fixtureText(file: FixtureFile): string {
-  const number = file.number ?? '1';
+export function fixtureText(input: FixtureFile): string {
+  const file = FIXTURE.parse(input, input.name);
+  const number = file.number;
   return file.type === 'checkout' ? `收银 ${number}` : file.type === 'selfCheckout' ? `${SELF_CHECKOUT_TEXT.join('')}${number}` : '';
 }
 
-export function fixtureModel(file: FixtureFile, font: TextFont | undefined, where = file.name): MergedProducts {
+export function fixtureModel(input: FixtureFile, font: TextFont | undefined, where = input.name): MergedProducts {
+  const file = FIXTURE.parse(input, where);
+  // 种类不对的文件过不了模式，这里一定有颜色
   const main = file.color ?? DEFAULT_COLORS[file.type];
-  if (!main) throw new Error(`${where}: unknown fixture type '${String(file.type)}'`);
   const cells: AtlasCell[] = file.type === 'checkout' ? [{
     size: [700, 260], color: '#d7262b', roughness: 0.3, metalness: 0, emissive: 2.5,
-    draw: ([x, y, w, h]: Cell) => (font ? textPath(font, `收银 ${file.number ?? '1'}`, x + w / 2, y + h / 2, w * 0.8, h * 0.62, '#ffffff') : undefined),
-  }] : file.type === 'selfCheckout' ? selfCheckoutCells(file.number ?? '1', font) : [];
+    draw: ([x, y, w, h]: Cell) => (font ? textPath(font, `收银 ${file.number}`, x + w / 2, y + h / 2, w * 0.8, h * 0.62, '#ffffff') : undefined),
+  }] : file.type === 'selfCheckout' ? selfCheckoutCells(file.number, font) : [];
   const batch = new ProductBatch({ products: new Map(), font: () => undefined }, where, [], {
     solids: [
       { color: main, roughness: 0.45, metalness: file.type === 'gate' ? 0.8 : 0.1 },
@@ -76,7 +79,7 @@ export function fixtureModel(file: FixtureFile, font: TextFont | undefined, wher
     case 'checkout': checkout(batch); break;
     case 'cart': cart(batch); break;
     case 'basket': basket(batch); break;
-    case 'locker': locker(batch, Math.max(1, Math.round(file.columns ?? 6)), Math.max(1, Math.round(file.rows ?? 4))); break;
+    case 'locker': locker(batch, Math.max(1, Math.round(file.columns)), Math.max(1, Math.round(file.rows))); break;
     case 'gate': gate(batch); break;
     case 'track': track(batch, file); break;
     case 'selfCheckout': selfCheckout(batch); break;
@@ -189,8 +192,8 @@ function locker(batch: ProductBatch, columns: number, rows: number): void {
  * 轨道射灯：一根方的轨道（顶面在原点），每个灯头是轨道下的转接块、一根短杆、一个朝着照的方向的圆筒灯身（后头收成一个钝的
  * 圆台），灯口一片发光的圆。
  */
-function track(batch: ProductBatch, file: FixtureFile): void {
-  const length = Math.max(0.2, file.length ?? 3);
+function track(batch: ProductBatch, file: Fixture): void {
+  const length = Math.max(0.2, file.length);
   batch.box([-length / 2, -RAIL, -RAIL / 2], [length / 2, 0, RAIL / 2], MAIN);
   for (const { position, direction } of trackLenses(file)) {
     const x = position[0];

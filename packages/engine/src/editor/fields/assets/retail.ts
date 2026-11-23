@@ -1,7 +1,7 @@
 /** 店里的资源的字段：商品包装、货架、堆放、招牌、天花板、器具。 */
-import { PILE, SHELF, type ProductFile, type DebrisFile, type SignFile, type CeilingFile, type FixtureFile } from '../../../content/formats/format.ts';
+import { CEILING, DEBRIS, FIXTURE, PILE, SHELF, SIGN, type ProductFile } from '../../../content/formats/format.ts';
 import { schemaFields } from '../../../content/schema/schema.ts';
-import { fields, number, integer, bool, string, oneOf, vector, asset, list, object, type FieldSpec } from '../../../content/schema/builders.ts';
+import { fields, number, integer, bool, string, oneOf, vector, asset, object, type FieldSpec } from '../../../content/schema/builders.ts';
 
 /** 颜色写成 sRGB 的 #rrggbb。 */
 export const hexColor = (description: string): FieldSpec => ({ type: string, optional: true, description: `${description} (sRGB #rrggbb; picked from the seed when missing)` });
@@ -56,90 +56,16 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
 export const SHELF_FIELDS = schemaFields(SHELF);
 
 /** 地上的碎石杂物（DebrisFile）：后端跑物理、生成同名的模型、图集和材质。 */
-export const DEBRIS_FIELDS = fields<DebrisFile>({
-  name: string,
-  area: { type: vector(2, 'm'), description: 'width (X) and depth (Z) of the patch of ground, centered on the origin' },
-  items: {
-    type: list(object(fields<DebrisFile['items'][number]>({
-      product: { type: asset('product'), description: 'what lies around (pebbles: nut or tuber in grey, leaves, cigarette butts: small cans)' },
-      count: { type: integer(0, 5000), description: 'how many' },
-      variants: { type: integer(1, 32), optional: true, default: 3, description: 'color or brand variants of it' },
-    }))),
-    description: 'items dropped on the ground; physics lays them down and the result is baked into one model',
-  },
-  edges: {
-    type: object(fields<NonNullable<DebrisFile['edges']>>({
-      sides: { type: list(oneOf('back', 'front', 'left', 'right')), description: 'edges where debris gathers (back is -Z, left is -X)' },
-      width: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.4, description: 'how far in from those edges it gathers' },
-      share: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.7, description: 'share of the items that gather by the edges (denser closer in); the rest is spread over the whole patch' },
-    })),
-    optional: true,
-    description: 'debris piles up along walls and railings; spread evenly when missing',
-  },
-  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the layout' },
-});
+export const DEBRIS_FIELDS = schemaFields(DEBRIS);
 
 /** 物理堆放（PileFile）：后端跑物理、生成同名的模型、标签图集和材质。 */
 export const PILE_FIELDS = schemaFields(PILE);
 
 /** 招牌（SignFile）：后端生成同名的模型、图集和材质。 */
-export const SIGN_FIELDS = fields<SignFile>({
-  name: string,
-  text: { type: string, description: 'the text on the face; line breaks start new lines' },
-  font: { type: asset('font'), description: 'font of the text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese)' },
-  size: { type: vector(3, 'm'), description: 'width, height, depth (floor stickers: width and length, the length along the top of the texture)' },
-  style: { type: oneOf('lightbox', 'panel', 'floor', 'banner', 'stand'), optional: true, default: 'lightbox', description: 'lightbox: the face glows (lit from inside); panel: it does not; floor: a floor sticker, only a transparent SVG of the same name, put on the floor with a decal; banner: a promo flag hanging from the ceiling (printed on both sides, a rod and two cords on top); stand: a price card on a pole with a round base by a floor stack (origin on the floor)' },
-  hang: { type: number({ min: 0, step: 0.1 }), optional: true, default: 0.5, description: 'length of the cords of a banner (m)' },
-  standHeight: { type: number({ min: 0.2, step: 0.1 }), optional: true, default: 1.2, description: 'height from the floor to the top of a stand card (m)' },
-  shape: { type: oneOf('rect', 'round', 'arrow'), optional: true, default: 'rect', description: 'floor sticker shape: rounded rectangle, round badge, arrow (pointing to the top of the texture; turn the entity to aim it)' },
-  wear: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'how worn a floor sticker is (0..1): scratches and scuffed patches from the seed' },
-  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the wear' },
-  doubleSided: { type: bool, optional: true, default: false, description: 'a face on the back too (signs hanging over an aisle)' },
-  colors: {
-    type: object(fields<NonNullable<SignFile['colors']>>({
-      background: { type: string, optional: true, description: 'face color (sRGB #rrggbb, green when missing)' },
-      text: { type: string, optional: true, description: 'text color (sRGB #rrggbb, white when missing)' },
-      frame: { type: string, optional: true, description: 'frame color (sRGB #rrggbb, brushed grey when missing; the outline of a floor sticker, white when missing)' },
-    })),
-    optional: true,
-    description: 'colors of the face, the text and the frame',
-  },
-  brightness: { type: number({ min: 0, step: 0.5 }), optional: true, default: 3, description: 'emissive strength of a lightbox face' },
-});
+export const SIGN_FIELDS = schemaFields(SIGN);
 
 /** 天花板（CeilingFile）：后端生成同名的模型、图集和材质。 */
-export const CEILING_FIELDS = fields<CeilingFile>({
-  name: string,
-  size: { type: vector(2, 'm'), description: 'width along X and depth along Z' },
-  height: { type: number({ min: 0.5, step: 0.1, unit: 'm' }), description: 'height of the slab underside (open) or of the suspended ceiling (grid)' },
-  style: { type: oneOf('open', 'grid'), optional: true, default: 'open', description: 'open: a dark slab with exposed ducts, cable trays, sprinkler pipes and hanging tube lights; grid: a suspended tile ceiling with recessed light panels' },
-  color: { type: string, optional: true, description: 'slab or tile color (sRGB #rrggbb; dark grey for open, white for grid when missing)' },
-  ducts: { type: integer(0, 20), optional: true, default: 2, description: 'air ducts running along X (open)' },
-  trays: { type: integer(0, 20), optional: true, default: 2, description: 'cable trays running along X (open)' },
-  pipes: { type: integer(0, 20), optional: true, default: 3, description: 'sprinkler pipes running along X (open)' },
-  lights: {
-    type: object(fields<NonNullable<CeilingFile['lights']>>({
-      rows: { type: integer(0, 50), optional: true, default: 2, description: 'rows of lights across the depth' },
-      spacing: { type: number({ min: 0.5, step: 0.1, unit: 'm' }), optional: true, default: 2.2, description: 'spacing of lights along X' },
-      length: { type: number({ min: 0.1, step: 0.1, unit: 'm' }), optional: true, default: 1.4, description: 'length of one tube light (open)' },
-      drop: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.6, description: 'how far the lights hang below the slab (open)' },
-    })),
-    optional: true,
-    description: 'light fixtures (they glow; place area lights at the same spots to light the scene)',
-  },
-  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed' },
-});
+export const CEILING_FIELDS = schemaFields(CEILING);
 
 /** 店里的器具（FixtureFile）：后端生成同名的模型、图集和材质。 */
-export const FIXTURE_FIELDS = fields<FixtureFile>({
-  name: string,
-  type: { type: oneOf('checkout', 'cart', 'basket', 'locker', 'gate', 'track', 'selfCheckout'), description: 'checkout counter (belt, scanner, register screens, a lit number sign above), shopping cart, hand basket, coin locker, entrance gate, ceiling track with spotlight heads (origin at the top of the rail; the lights that light things are placed by the scene at trackSpots), self-checkout kiosk (customer at +Z: scanner glass, lit touch screen, receipt printer with a strip of paper, card reader, bagging scale with a bag rack holding an open bag, a numbered status light pole)' },
-  color: { type: string, optional: true, description: 'main color (sRGB #rrggbb; by type when missing)' },
-  number: { type: string, optional: true, description: 'number on the checkout sign (needs the font)' },
-  font: { type: asset('font'), optional: true, description: 'font of the checkout sign' },
-  columns: { type: integer(1, 20), optional: true, default: 6, description: 'locker columns' },
-  rows: { type: integer(1, 10), optional: true, default: 4, description: 'locker rows' },
-  length: { type: number({ min: 0.2, step: 0.1 }), optional: true, default: 3, description: 'track length (m)' },
-  heads: { type: integer(1, 32), optional: true, default: 4, description: 'spotlight heads on the track' },
-  tilt: { type: number({ min: 0, max: 90, step: 5 }), optional: true, default: 30, description: 'how far the heads tilt from straight down toward the front (+Z), degrees' },
-});
+export const FIXTURE_FIELDS = schemaFields(FIXTURE);

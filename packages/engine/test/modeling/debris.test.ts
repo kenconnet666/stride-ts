@@ -46,6 +46,6 @@ describe('地上的碎石杂物', () => {
     expect(model.indices.length).toBeGreaterThan(0);
     expect(() => debrisSpawn({ ...file, area: [0, 1] }, products)).toThrow(/area/);
     expect(() => debrisSpawn({ ...file, items: [{ product: 'D/Nope', count: 1 }] }, products)).toThrow(/unknown product/);
-    expect(() => debrisSpawn({ ...file, edges: { sides: ['up' as 'back'] } }, products)).toThrow(/unknown edge/);
+    expect(() => debrisSpawn({ ...file, edges: { sides: ['up' as 'back'] } }, products)).toThrow(/edges\.sides\[0\]: expected one of back, front, left, right/);
   });
 });

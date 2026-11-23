@@ -222,6 +222,7 @@ export { Ragdoll } from './physics/Ragdoll';
 export { Rope, ropePoints } from './physics/Rope';
 export { Breakable, solidOf } from './physics/Breakable';
 export { Cloth, clothGrid } from './physics/Cloth';
+export { SoftBody, weldModel } from './physics/SoftBody';
 export { Deformable, deformableCopy, subdivideMesh } from './physics/Deformable';
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './physics/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './physics/RecastNavigationComponent';

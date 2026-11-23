@@ -54,6 +54,9 @@ import { CityAsset } from '../world/City';
 import { checkCity, type CityFile } from './formats/cityFormat';
 import { WaterAsset } from '../world/Water';
 import { checkWater, type WaterFile } from './formats/waterFormat';
+import { PROCEDURAL_MODEL_FORMAT, proceduralModelData } from './modelFile';
+import type { ProceduralModel } from '../rendering/mesh/procedural';
+import type { ModelData } from './formats/binaryFormat';
 import { INPUT_MAP, type InputMap } from './formats/inputFormat';
 import { checkTable } from './formats/tableFormat';
 import { DataTable } from './DataTable';
@@ -351,8 +354,18 @@ export class ContentManager {
   }
 
   loadModel(path: string): Promise<LoadedModel> {
-    return this.#once(path + EXTENSIONS.model, async (url) => {
-      const data = readModelFile(await this.#read(url), url.href);
+    return this.#once(path + EXTENSIONS.model, async (url) => this.#modelFromData(readModelFile(await this.#read(url), url.href), path, url));
+  }
+
+  /**
+   * 运行时建一个基本形状的模型（同 JSON 写的模型文件：方块、球、圆柱、胶囊……，材质槽写内容路径）：绳子的段、调试用的形状这类
+   * 代码里要的东西，不用先放一个模型文件。不缓存，每次建一个新的。
+   */
+  createProceduralModel(shape: ProceduralModel, materials: readonly (string | null)[] = [], name = `procedural-${shape.type}`): Promise<LoadedModel> {
+    return this.#modelFromData(proceduralModelData({ format: PROCEDURAL_MODEL_FORMAT, procedural: shape, materials }, name), name, new URL(`${name}.model`, this.root));
+  }
+
+  async #modelFromData(data: ModelData, path: string, url: URL): Promise<LoadedModel> {
       const [meshes, materials, skeleton] = await Promise.all([
         this.#decodeMeshes(data.meshes, url),
         Promise.all(data.materials.map((material) => (material === null ? Promise.resolve(null) : this.loadMaterial(material)))),
@@ -371,7 +384,6 @@ export class ContentManager {
       for (const { mesh } of loaded) if (mesh.data.morph) mesh.cullBounds = expand(mesh.cullBounds, 2 * mesh.morphReach);
       if (loaded.some(({ mesh }) => mesh.data.morph) && !data.morphTargets) throw new Error(`${url.href}: the model has morphed meshes but no morph targets`);
       return { meshes: loaded, materials, ...(skeleton ? { skeleton } : {}), ...(data.morphTargets ? { morphTargets: data.morphTargets } : {}) };
-    });
   }
 
   loadSkeleton(path: string): Promise<Skeleton> {

@@ -13,16 +13,14 @@ const COMPRESSION: readonly (readonly [GPUFeatureName, TextureTarget])[] = [
 const BASIC_FEATURES: readonly GPUFeatureName[] = ['depth-clip-control', 'timestamp-query', 'indirect-first-instance'];
 
 /**
- * 适配器有就请求的特性：引擎按 GraphicsDevice.has 选路，没有的走原来的路（画面一样、只是慢）。用户 2026-11-23 定以开了实验特性的
- * 最新版 Chrome 为主，`chromium-experimental-` 的只在 `--enable-unsafe-webgpu` 时有。各自用在哪见 docs/research.md 的
- * "浏览器的新特性和实验特性"。
+ * 适配器有就请求的特性：引擎按 GraphicsDevice.has 选路，没有的走原来的路（画面一样、只是慢）。只用正式发布的特性，不用
+ * `chromium-experimental-` 的实验特性（用户 2026-11-23 定）。各自用在哪见 docs/research.md 的"浏览器的新特性和实验特性"。
  */
 const OPTIONAL_FEATURES: readonly string[] = [
   ...BASIC_FEATURES,
   'shader-f16', 'subgroups', 'subgroup-size-control', 'primitive-index', 'atomic-vec2u-min-max',
   'texture-formats-tier1', 'texture-formats-tier2', 'float32-filterable', 'float32-blendable', 'rg11b10ufloat-renderable',
   'dual-source-blending', 'clip-distances', 'texture-component-swizzle', 'depth32float-stencil8', 'bgra8unorm-storage',
-  'chromium-experimental-multi-draw-indirect', 'chromium-experimental-sampling-resource-table', 'chromium-experimental-timestamp-query-inside-passes',
 ];
 
 /**
@@ -136,7 +134,7 @@ export class GraphicsDevice {
     });
   }
 
-  /** 设备有没有这个特性（请求到了的；名字可以是 @webgpu/types 还没有的实验特性）。 */
+  /** 设备有没有这个特性（请求到了的；名字可以是 @webgpu/types 还没收的新特性）。 */
   has(feature: string): boolean {
     return this.device.features.has(feature);
   }

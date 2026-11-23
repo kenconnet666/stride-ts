@@ -6,7 +6,7 @@ const fs = require('node:fs');
   const browser = await chromium.launch({
     executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
     headless: true,
-    args: ['--enable-unsafe-webgpu', '--disable-gpu-vsync', '--disable-frame-rate-limit'],
+    args: ['--disable-gpu-vsync', '--disable-frame-rate-limit'],
   });
   const page = await browser.newPage();
   page.on('pageerror', (e) => console.error('page error:', e.message));

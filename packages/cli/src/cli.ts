@@ -22,9 +22,8 @@ import { listHubs, readBrowser } from './state.ts';
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
 
 Browser and connection
-  open <url> [--headless] [--size 1400x900, headless default 1920x1080] [--dpr 2] [--gpu-debug] [--stable] [--chrome-arg <arg>]...
+  open <url> [--headless] [--size 1400x900, headless default 1920x1080] [--dpr 2] [--gpu-debug] [--chrome-arg <arg>]...
                           open the url in a stride-launched Chrome (new tab if one is running), wait until the game runs
-                          (a new Chrome starts with the experimental WebGPU and web platform flags; --stable or STRIDE_STABLE=1 without them)
   close                   close the stride-launched Chrome
   hubs                    running debug hubs (dev and preview servers) and their pages
   wait [--timeout 30]     wait until a page is connected and its game is running
@@ -135,7 +134,6 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     dpr: { type: 'string' },
     'chrome-arg': { type: 'string', multiple: true },
     'gpu-debug': { type: 'boolean' },
-    stable: { type: 'boolean' },
     name: { type: 'string' },
     with: { type: 'string' },
     limit: { type: 'string' },
@@ -402,7 +400,6 @@ const commands: Record<string, () => Promise<unknown>> = {
       ...(options.headless ? { headless: true } : {}),
       ...(size ? { size } : {}),
       ...(options.dpr ? { dpr: Number(options.dpr) } : {}),
-      ...(options.stable ? { stable: true } : {}),
       ...(options['chrome-arg'] || options['gpu-debug'] ? { chromeArgs: [...(options['gpu-debug'] ? GPU_DEBUG_ARGS : []), ...(options['chrome-arg'] ?? [])] } : {}),
     });
     return { browser, game: await waitForGame(Number(timeoutSeconds ?? 60), gamePagePrefix(url), started) };

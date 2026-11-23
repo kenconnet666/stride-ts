@@ -35,15 +35,7 @@ export const GPU_DEBUG_ARGS: readonly string[] = [
   '--enable-dawn-features=dump_shaders,disable_symbol_renaming,emit_hlsl_debug_symbols,use_user_defined_labels_in_backend',
 ];
 
-/**
- * 默认开的实验开关（用户 2026-11-23 定以开了实验特性的最新版 Chrome 为主）：不安全的 WebGPU（`chromium-experimental-` 的特性，
- * WGSL 的实验语言特性）、实验性的网页平台特性。`stride open --stable`、`STRIDE_STABLE=1` 时不开，查没有这些特性时退回的路。
- */
-export const EXPERIMENTAL_ARGS: readonly string[] = ['--enable-unsafe-webgpu', '--enable-experimental-web-platform-features'];
-
 export interface OpenOptions {
-  /** 不开实验开关（EXPERIMENTAL_ARGS）：只在启动新的 Chrome 时有用。 */
-  readonly stable?: boolean;
   readonly headless?: boolean;
   /** 视口大小 [宽, 高]（CSS 像素）：启动后按页面量出的边框差调整窗口。 */
   readonly size?: readonly [number, number];
@@ -134,7 +126,7 @@ async function browserSocket(browser: BrowserRecord): Promise<string> {
   return ((await (await fetch(`http://127.0.0.1:${browser.port}/json/version`)).json()) as { webSocketDebuggerUrl: string }).webSocketDebuggerUrl;
 }
 
-async function launch(url: string, { headless = false, size, dpr, chromeArgs = [], stable = process.env['STRIDE_STABLE'] === '1' }: OpenOptions): Promise<BrowserRecord> {
+async function launch(url: string, { headless = false, size, dpr, chromeArgs = [] }: OpenOptions): Promise<BrowserRecord> {
   const executable = process.env['CHROME_PATH'] ?? CHROME_PATHS[process.platform]?.find((candidate) => existsSync(candidate));
   if (!executable) throw new Error('Chrome is not installed in the usual place; set CHROME_PATH');
   const profile = headless ? HEADLESS_PROFILE_DIR : PROFILE_DIR;
@@ -158,7 +150,6 @@ async function launch(url: string, { headless = false, size, dpr, chromeArgs = [
     ...(headless ? ['--headless=new'] : []),
     ...(size ? [`--window-size=${size[0]},${size[1]}`] : []),
     ...(dpr ? [`--force-device-scale-factor=${dpr}`] : []),
-    ...(stable ? [] : EXPERIMENTAL_ARGS),
     ...chromeArgs,
     url,
   ];

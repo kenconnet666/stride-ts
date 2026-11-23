@@ -747,6 +747,9 @@ export class BodyControl {
 
   /** 瞬移到世界位姿并唤醒（Stride 的 Teleport）；实体的变换立即更新。 */
   teleport(position: Vec3Like, rotation: QuatLike): void {
+    // 非有限的位姿一路传下去会在渲染原点那里才报错（离出错的地方很远）：在这里就拦住
+    const values = [position.x, position.y, position.z, rotation.x, rotation.y, rotation.z, rotation.w];
+    if (!values.every(Number.isFinite)) throw new TypeError(`teleport: position and rotation need finite x, y, z (and w), got ${JSON.stringify(position)}, ${JSON.stringify(rotation)}`);
     if (!this.#detached) this.#world.teleport(this.#body, [position.x, position.y, position.z], [rotation.x, rotation.y, rotation.z, rotation.w]);
   }
 

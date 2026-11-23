@@ -11,7 +11,7 @@
  * 和 Stride 不同：Stride 在 Draw 里推进动画（用绘制的时间）；这里在 update 里（用更新的时间），暂停和单步因此对动画也生效。
  * 动画组件什么都没在播时 Stride 保留上一个姿势，这里也一样，只有第一次求一次静止姿势（不然蒙皮矩阵全是 0，网格看不见）。
  */
-import { AnimationBatch, type AnimationInstance, type Skin as NativeSkin, type SkinPalette, type StrideNative } from '@stride-ts/native';
+import { AnimationBatch, type AnimationIk, type AnimationInstance, type Skin as NativeSkin, type SkinPalette, type StrideNative } from '@stride-ts/native';
 import type { EntityId } from '../data/prop';
 import { prop } from '../data/prop';
 import { component } from '../engine/component';
@@ -56,6 +56,9 @@ interface SkeletonState {
   posed: boolean;
   /** 姿势由别处写（布娃娃）：每帧调它写好关节矩阵，不求动画，只算蒙皮。 */
   poseSource: (() => void) | undefined;
+  /** 求值以后做的 IK，按来源（脚贴地、看向各一个）；变了要重新交给原生。 */
+  ik: Map<object, readonly AnimationIk[]> | undefined;
+  ikDirty: boolean;
 }
 
 export class AnimationSystem {
@@ -172,7 +175,7 @@ export class AnimationSystem {
       partEntity.add(Skinned.with({ palette: base }));
       return { skin, palette: skin.createPalette(), base };
     });
-    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false, poseSource: undefined };
+    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false, poseSource: undefined, ik: undefined, ikDirty: false };
     const id = this.#freeStates.pop() ?? this.#states.length;
     this.#states[id] = state;
     entity.add(ModelSkeleton.with({ state: id }));
@@ -199,6 +202,20 @@ export class AnimationSystem {
     const state = view ? this.#states[view.state] : undefined;
     if (!state) throw new Error(`setPoseSource: entity '${entity.name}' has no skeleton`);
     state.poseSource = source;
+  }
+
+  /**
+   * 设模型的 IK（每次求动画以后在原生里做，见 @stride-ts/native 的 AnimationIk）：owner 是来源（一个脚本），几个来源的按登记的先后
+   * 依次做；空数组去掉这个来源的。目标在模型空间。没有骨架时报错。
+   */
+  setIk(entity: Entity, owner: object, iks: readonly AnimationIk[]): void {
+    const view = entity.get(ModelSkeleton);
+    const state = view ? this.#states[view.state] : undefined;
+    if (!state) throw new Error(`setIk: entity '${entity.name}' has no skeleton`);
+    state.ik ??= new Map();
+    if (iks.length === 0) state.ik.delete(owner);
+    else state.ik.set(owner, iks);
+    state.ikDirty = true;
   }
 
   /**
@@ -234,6 +251,10 @@ export class AnimationSystem {
       }
       const entity = this.#entities.entity(state.entity);
       const animation = entity.get(AnimationComponent);
+      if (state.ikDirty) {
+        state.instance.setIk([...state.ik!.values()].flat());
+        state.ikDirty = false;
+      }
       this.#stack.begin(state.skeleton, this.morphs(entity));
       batch.instance(state.instance);
       let pushed = 0;
@@ -249,7 +270,7 @@ export class AnimationSystem {
         this.#stack.properties.apply(entity);
       }
       // 没压进骨架的姿势时保留上一个姿势（同 Stride），只有第一次求静止姿势
-      if (this.#stack.poses === 0 && state.posed) continue;
+      if (this.#stack.poses === 0 && state.posed && !state.ik?.size) continue;
       state.posed = true;
       for (const part of state.parts) batch.skin(part.skin, part.palette);
     }

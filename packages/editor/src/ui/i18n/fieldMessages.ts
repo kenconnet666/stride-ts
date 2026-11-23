@@ -38,7 +38,7 @@ const zhCN: FieldMessages = {
     transmission: '透射', factor: '比例', ior: '折射率', attenuationColor: '吸收后的颜色', attenuationDistance: '吸收距离',
     distortion: '扭曲',
     interiorMaterial: '断面的材质',
-    parameters: '参数', states: '状态', initial: '初始状态', transitions: '过渡', motion: '动作', blend1d: '一维混合', when: '条件', exitTime: '退出时间', test: '判断',
+    parameters: '参数', parameter: '参数', loop: '循环', states: '状态', initial: '初始状态', transitions: '过渡', motion: '动作', blend1d: '一维混合', when: '条件', exitTime: '退出时间', test: '判断',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
     frequency: '音高', minFrequency: '最低音高', slide: '滑音', deltaSlide: '滑音的变化', vibratoDepth: '颤音深度', vibratoSpeed: '颤音速度', arpeggio: '琶音',
     arpeggioSpeed: '琶音速度', repeatSpeed: '重复速度', duty: '占空比', dutySweep: '占空比的变化', phaserOffset: '镶边延迟', phaserSweep: '镶边的变化',

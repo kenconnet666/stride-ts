@@ -38,6 +38,8 @@ import { Rope } from '../physics/Rope';
 import { Breakable } from '../physics/Breakable';
 import { Cloth } from '../physics/Cloth';
 import { Animator } from '../animation/Animator';
+import { FootIk } from '../animation/FootIk';
+import { LookAt } from '../animation/LookAt';
 import { SoftBody } from '../physics/SoftBody';
 import { Deformable } from '../physics/Deformable';
 import { cameraRigSystem } from '../rendering/CameraRig';
@@ -365,6 +367,8 @@ export class Game {
       this.registry.register(Breakable);
       this.registry.register(Cloth);
       this.registry.register(Animator);
+      this.registry.register(FootIk);
+      this.registry.register(LookAt);
       this.registry.register(SoftBody);
       this.registry.register(Deformable);
       this.registry.register(Train);

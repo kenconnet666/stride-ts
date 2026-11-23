@@ -63,6 +63,15 @@ try {
     # 测试后置（用户 2026-11-23 定：不用 GitHub 的 CI，提交了直接推，在这里测，有问题回头修）：先类型检查、单测、lint，失败的
     # 记下、不打断，接着跑脚本，最后一起报
     $failed = @()
+    # pnpm install 的 postinstall 重新生成 schemas/：和提交的不一样说明改了字段描述忘了重跑 json-schemas（不然单测的 --check
+    # 也查不出来，工作树还会带着改动、下一次验证拒绝用它）。记成失败，还原文件
+    $generated = git status --porcelain --untracked-files=no -- schemas
+    if ($generated) {
+        Write-Host "FAIL schemas/ is stale (run node tools/json-schemas.ts and commit):"
+        $generated | ForEach-Object { Write-Host "  $_" }
+        $failed += 'schemas/ out of date'
+        git checkout --quiet -- schemas
+    }
     if (-not $NoChecks) {
         foreach ($check in 'typecheck', 'test', 'lint') {
             Write-Host "== pnpm $check"

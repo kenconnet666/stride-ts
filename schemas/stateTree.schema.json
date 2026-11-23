@@ -1,0 +1,588 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "stateTree asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "number",
+              "bool",
+              "vector"
+            ],
+            "description": "number, bool (0 or 1) or vector (a position, x y z)"
+          },
+          "default": {
+            "type": "number",
+            "description": "starting value of a number or bool",
+            "default": 0
+          },
+          "defaultVector": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 3,
+            "maxItems": 3,
+            "description": "starting value of a vector",
+            "default": [
+              0,
+              0,
+              0
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "parent": {
+            "type": "string",
+            "description": "parent state; top level when empty"
+          },
+          "enter": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "parameter"
+                      ]
+                    },
+                    "not": {
+                      "type": "boolean",
+                      "description": "inverts the result",
+                      "default": false
+                    },
+                    "parameter": {
+                      "type": "string"
+                    },
+                    "test": {
+                      "enum": [
+                        ">",
+                        "<",
+                        ">=",
+                        "<=",
+                        "==",
+                        "!="
+                      ],
+                      "default": "=="
+                    },
+                    "value": {
+                      "type": "number",
+                      "default": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "parameter"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "distance"
+                      ]
+                    },
+                    "not": {
+                      "type": "boolean",
+                      "description": "inverts the result",
+                      "default": false
+                    },
+                    "parameter": {
+                      "type": "string",
+                      "description": "vector parameter"
+                    },
+                    "test": {
+                      "enum": [
+                        "<",
+                        ">"
+                      ],
+                      "default": "<"
+                    },
+                    "value": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: m",
+                      "default": 5
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "parameter"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "chance"
+                      ]
+                    },
+                    "not": {
+                      "type": "boolean",
+                      "description": "inverts the result",
+                      "default": false
+                    },
+                    "probability": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1,
+                      "default": 0.5
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "call"
+                      ]
+                    },
+                    "not": {
+                      "type": "boolean",
+                      "description": "inverts the result",
+                      "default": false
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "object",
+                      "description": "values keyed by name; the keys and value kinds the file already has",
+                      "default": {}
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "description": "all must hold for the state to be selected",
+            "default": []
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "wait"
+                      ]
+                    },
+                    "seconds": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s",
+                      "default": 1
+                    },
+                    "random": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s",
+                      "default": 0
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "moveTo"
+                      ]
+                    },
+                    "parameter": {
+                      "type": "string",
+                      "description": "vector parameter with the destination"
+                    },
+                    "point": {
+                      "type": "array",
+                      "items": {
+                        "type": "number"
+                      },
+                      "minItems": 3,
+                      "maxItems": 3,
+                      "description": "destination when no parameter is given; unit: m"
+                    },
+                    "tolerance": {
+                      "type": "number",
+                      "minimum": 0.1,
+                      "description": "unit: m",
+                      "default": 0.6
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "fails when not there after this long (0: never); unit: s",
+                      "default": 60
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "wander"
+                      ]
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1,
+                      "description": "unit: m",
+                      "default": 15
+                    },
+                    "tolerance": {
+                      "type": "number",
+                      "minimum": 0.1,
+                      "description": "unit: m",
+                      "default": 0.8
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s",
+                      "default": 60
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "set"
+                      ]
+                    },
+                    "parameter": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "number",
+                      "default": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "parameter"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "animator"
+                      ]
+                    },
+                    "parameter": {
+                      "type": "string"
+                    },
+                    "value": {
+                      "type": "number",
+                      "default": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "parameter"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "emit"
+                      ]
+                    },
+                    "event": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "event"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "stand"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "call"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "args": {
+                      "type": "object",
+                      "description": "values keyed by name; the keys and value kinds the file already has",
+                      "default": {}
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "default": []
+          },
+          "transitions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "on": {
+                  "enum": [
+                    "completed",
+                    "succeeded",
+                    "failed",
+                    "tick",
+                    "event"
+                  ],
+                  "default": "completed"
+                },
+                "event": {
+                  "type": "string",
+                  "description": "event name when on is event"
+                },
+                "when": {
+                  "type": "array",
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "enum": [
+                              "parameter"
+                            ]
+                          },
+                          "not": {
+                            "type": "boolean",
+                            "description": "inverts the result",
+                            "default": false
+                          },
+                          "parameter": {
+                            "type": "string"
+                          },
+                          "test": {
+                            "enum": [
+                              ">",
+                              "<",
+                              ">=",
+                              "<=",
+                              "==",
+                              "!="
+                            ],
+                            "default": "=="
+                          },
+                          "value": {
+                            "type": "number",
+                            "default": 1
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "parameter"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "enum": [
+                              "distance"
+                            ]
+                          },
+                          "not": {
+                            "type": "boolean",
+                            "description": "inverts the result",
+                            "default": false
+                          },
+                          "parameter": {
+                            "type": "string",
+                            "description": "vector parameter"
+                          },
+                          "test": {
+                            "enum": [
+                              "<",
+                              ">"
+                            ],
+                            "default": "<"
+                          },
+                          "value": {
+                            "type": "number",
+                            "minimum": 0,
+                            "description": "unit: m",
+                            "default": 5
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "parameter"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "enum": [
+                              "chance"
+                            ]
+                          },
+                          "not": {
+                            "type": "boolean",
+                            "description": "inverts the result",
+                            "default": false
+                          },
+                          "probability": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1,
+                            "default": 0.5
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "enum": [
+                              "call"
+                            ]
+                          },
+                          "not": {
+                            "type": "boolean",
+                            "description": "inverts the result",
+                            "default": false
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "args": {
+                            "type": "object",
+                            "description": "values keyed by name; the keys and value kinds the file already has",
+                            "default": {}
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "description": "all must hold",
+                  "default": []
+                },
+                "to": {
+                  "type": "string",
+                  "description": "a state, or $next, $root, $succeeded, $failed"
+                }
+              },
+              "required": [
+                "to"
+              ],
+              "additionalProperties": false
+            },
+            "default": []
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "description": "flat list; parent links make the tree, list order is the order among siblings"
+    }
+  },
+  "required": [
+    "name",
+    "states"
+  ],
+  "additionalProperties": false
+}

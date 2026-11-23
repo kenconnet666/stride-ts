@@ -19,7 +19,7 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Table columns': '列', 'Table rows': '行',
+    'Table columns': '列', 'Table rows': '行', 'Target state': '去哪个状态',
     'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Irradiance volume': '辐照度体', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Persistent': '持久（存档）', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
@@ -39,6 +39,10 @@ const zhCN: FieldMessages = {
     distortion: '扭曲',
     interiorMaterial: '断面的材质',
     parameterX: 'x 参数', parameterY: 'y 参数', mask: '遮罩', weightParameter: '权重参数', blend2d: '二维混合',
+    // 状态树
+    parent: '父状态', enter: '进入条件', tasks: '任务', on: '时机', event: '事件', not: '取反', probability: '概率', seconds: '秒数', random: '随机多等',
+    point: '位置', tolerance: '到达的距离', timeout: '超时', args: '参数值', defaultVector: '默认位置', chance: '概率', wander: '闲逛', moveTo: '走到',
+    stand: '站着', set: '设参数', animator: '动画参数', emit: '发事件', call: '调用代码',
     parameters: '参数', parameter: '参数', loop: '循环', states: '状态', initial: '初始状态', transitions: '过渡', motion: '动作', blend1d: '一维混合', when: '条件', exitTime: '退出时间', test: '判断',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
     frequency: '音高', minFrequency: '最低音高', slide: '滑音', deltaSlide: '滑音的变化', vibratoDepth: '颤音深度', vibratoSpeed: '颤音速度', arpeggio: '琶音',
@@ -89,6 +93,20 @@ const zhCN: FieldMessages = {
     shakeRotation: '晃动的角度', shakePosition: '晃动的位移', shakeFrequency: '晃动的频率', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
+    // 状态树
+    'number, bool (0 or 1) or vector (a position, x y z)': '数、开关（0 或 1）或位置（x y z）',
+    'starting value of a number or bool': '数、开关的初始值',
+    'starting value of a vector': '位置的初始值',
+    'vector parameter': '位置参数',
+    'inverts the result': '结果取反',
+    'vector parameter with the destination': '存着目的地的位置参数',
+    'destination when no parameter is given': '没给参数时的目的地',
+    'fails when not there after this long (0: never)': '这么久还没到就失败（0：不限）',
+    'event name when on is event': '时机是事件时的事件名',
+    'a state, or $next, $root, $succeeded, $failed': '一个状态，或者 $next（下一个兄弟）、$root（从顶层重选）、$succeeded、$failed（整棵树结束）',
+    'parent state; top level when empty': '父状态；空着是顶层',
+    'all must hold for the state to be selected': '都满足才选得上这个状态',
+    'flat list; parent links make the tree, list order is the order among siblings': '平的一张表：parent 连成树，表里的顺序就是兄弟之间的顺序',
     'keep where it was moved (off when something else places it)': '记下挪到的位置、旋转、缩放（位置由别的东西定的关掉）',
     'key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …': '键 key:W、key:Space，鼠标 mouse:left、mouse:delta（移动）、mouse:wheel（滚轮），手柄 pad:a、pad:leftStick（左摇杆）、pad:rightTrigger（右扳机）……',
     'the text; line breaks start new lines': '文字；换行就是另起一行',

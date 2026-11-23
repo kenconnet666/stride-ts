@@ -5,6 +5,7 @@ import { fields, number, integer, bool, string, oneOf, vector, asset, entity, li
 import { textureRef } from './shared.ts';
 import { INPUT_MAP } from '../../../content/formats/inputFormat.ts';
 import { ANIMATION_GRAPH } from '../../../content/formats/animationGraphFormat.ts';
+import { STATE_TREE } from '../../../content/formats/stateTreeFormat.ts';
 import { TABLE } from '../../../content/formats/tableFormat.ts';
 import { schemaFields } from '../../../content/schema/schema.ts';
 
@@ -125,3 +126,6 @@ export const SOUND_FIELDS = fields<SoundFile>({
   spatialized: { type: bool, description: 'can be positioned in 3D by an audio emitter' },
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
+
+/** 状态树（StateTreeFile）：参数、平铺的状态（parent 连成树）、任务、过渡。 */
+export const STATE_TREE_FIELDS = schemaFields(STATE_TREE);

@@ -3,6 +3,7 @@ import { Transform } from '../../engine/transform';
 import { Matrix } from '../../data/Matrix';
 import type { DebugColor } from '../DebugDraw';
 import { roadLanes } from '../../modeling/roadLanes';
+import { StateTreeRunner } from '../../ai/StateTreeRunner';
 import { DEFAULT_NAVIGATION_STREAMING } from '../../physics/NavigationSystem';
 import { Precipitation } from '../../world/Precipitation';
 import type { SaveData } from '../../world/Persistence';
@@ -48,6 +49,22 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
     }
     if (typeof args['avoidance'] === 'number') navigation.crowdAvoidance = Math.max(0, Math.min(3, Math.round(args['avoidance']))) as 0 | 1 | 2 | 3;
     return { streaming: navigation.settings.streaming ?? false, showTiles: navigation.showTiles, ...navigation.streamStats, crowd: navigation.crowdStats, avoidance: navigation.crowdAvoidance };
+  });
+  debug.command('statetree', 'State trees (StateTreeRunner): lists each running tree with its entity, active states (root to leaf), status and transition count. args: entity (name; default all), event (sends it to the trees), set ({ parameter: value } sets parameters), limit (default 20).', (args) => {
+    const name = typeof args['entity'] === 'string' ? args['entity'] : undefined;
+    const runners = game.entities.ids().map((id) => game.entities.entity(id))
+      .filter((entity) => (name === undefined || entity.name === name))
+      .flatMap((entity) => entity.get(StateTreeRunner) ?? []);
+    const set = typeof args['set'] === 'object' && args['set'] !== null ? Object.entries(args['set'] as Record<string, number | boolean>) : [];
+    for (const runner of runners) {
+      if (typeof args['event'] === 'string') runner.send(args['event']);
+      for (const [parameter, value] of set) runner.set(parameter, value);
+    }
+    const limit = typeof args['limit'] === 'number' ? args['limit'] : 20;
+    return {
+      count: runners.length,
+      trees: runners.slice(0, limit).map((runner) => ({ entity: runner.entity.name, tree: runner.tree.path, path: runner.activePath, status: runner.status, transitions: runner.instance.transitions })),
+    };
   });
   debug.command('animation-lod', 'Animation update rate by distance (animation.lod): skeletons within distances[0] m of the main camera evaluate every frame, then every 2nd, 4th and 8th frame. args: distances (array of metres, [] turns it off). Reports the distances, the focus and how many skeletons were evaluated and skipped last frame.', (args) => {
     const animation = game.animation;

@@ -205,6 +205,13 @@
     },
     {
       "fileMatch": [
+        "*.statetree.json",
+        "*.statetree.jsonc"
+      ],
+      "url": "./schemas/stateTree.schema.json"
+    },
+    {
+      "fileMatch": [
         "*.game.json",
         "*.game.jsonc"
       ],

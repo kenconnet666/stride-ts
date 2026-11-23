@@ -1,0 +1,26 @@
+// 行人：平时等一会儿、附近走一走；收到 scare 事件（或者 alarm 开着）就往远处跑开，跑完回到平时
+{
+  "name": "Pedestrian",
+  "parameters": [
+    { "name": "alarm", "type": "bool" }
+  ],
+  "states": [
+    {
+      "name": "Calm",
+      "enter": [{ "type": "parameter", "parameter": "alarm", "value": 0 }],
+      "transitions": [{ "on": "event", "event": "scare", "to": "Panic" }]
+    },
+    { "name": "Idle", "parent": "Calm", "tasks": [{ "type": "wait", "seconds": 1, "random": 4 }], "transitions": [{ "to": "$next" }] },
+    {
+      "name": "Stroll",
+      "parent": "Calm",
+      "tasks": [{ "type": "wander", "radius": 20, "timeout": 40 }],
+      "transitions": [{ "to": "Idle" }]
+    },
+    {
+      "name": "Panic",
+      "tasks": [{ "type": "wander", "radius": 50, "timeout": 30 }],
+      "transitions": [{ "to": "$root" }]
+    }
+  ]
+}

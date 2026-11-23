@@ -39,6 +39,7 @@ import { Breakable } from '../physics/Breakable';
 import { Cloth } from '../physics/Cloth';
 import { CrowdAgent } from '../physics/CrowdAgent';
 import { Animator } from '../animation/Animator';
+import { StateTreeRunner } from '../ai/StateTreeRunner';
 import { FootIk } from '../animation/FootIk';
 import { LookAt } from '../animation/LookAt';
 import { SoftBody } from '../physics/SoftBody';
@@ -369,6 +370,7 @@ export class Game {
       this.registry.register(Cloth);
       this.registry.register(CrowdAgent);
       this.registry.register(Animator);
+      this.registry.register(StateTreeRunner);
       this.registry.register(FootIk);
       this.registry.register(LookAt);
       this.registry.register(SoftBody);

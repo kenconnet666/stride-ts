@@ -52,7 +52,7 @@ export const ANIMATION_CONDITION = s.object({
 
 export const ANIMATION_TRANSITION = s.object({
   from: s.string().describe('source state, or * for any state'),
-  to: s.string(),
+  to: s.string().label('Target state'),
   when: s.list(ANIMATION_CONDITION).default([]).describe('all must hold'),
   exitTime: s.number({ min: 0, max: 1, step: 0.05 }).optional().describe('only after the source state has played this much (0..1 of its length)'),
   duration: s.number({ min: 0, step: 0.05, unit: 's' }).default(0.15).describe('crossfade time'),

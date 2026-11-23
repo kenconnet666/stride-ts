@@ -40,6 +40,7 @@ export * from './signFormat.ts';
 export * from './inputFormat.ts';
 export * from './tableFormat.ts';
 export * from './animationGraphFormat.ts';
+export * from './stateTreeFormat.ts';
 export * from './ceilingFormat.ts';
 export * from './fixtureFormat.ts';
 export * from '../../data/jsonc.ts';

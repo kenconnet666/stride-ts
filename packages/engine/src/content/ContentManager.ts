@@ -62,6 +62,8 @@ import type { ModelData } from './formats/binaryFormat';
 import { INPUT_MAP, type InputMap } from './formats/inputFormat';
 import { ANIMATION_GRAPH, checkAnimationGraph } from './formats/animationGraphFormat';
 import type { AnimationGraph } from '../animation/AnimationGraph';
+import { STATE_TREE, checkStateTree } from './formats/stateTreeFormat';
+import type { StateTree } from '../ai/StateTree';
 import { checkTable } from './formats/tableFormat';
 import { DataTable } from './DataTable';
 import { checkSpline } from '../modeling/spline';
@@ -85,6 +87,7 @@ declare module '../data/prop' {
     input: InputMap;
     table: DataTable;
     animationGraph: AnimationGraph;
+    stateTree: StateTree;
   }
 }
 
@@ -291,6 +294,7 @@ export class ContentManager {
     input: (path) => this.loadInputMap(path),
     table: (path) => this.loadTable(path),
     animationGraph: (path) => this.loadAnimationGraph(path),
+    stateTree: (path) => this.loadStateTree(path),
   };
 
   constructor({ root = 'content/', read, readRange, manifest, shaderClass = () => undefined }: ContentOptions = {}) {
@@ -738,6 +742,14 @@ export class ContentManager {
   /** 输入映射（.input.json）：开它用 `game.input.actions.add(map)`，见 input/InputActions.ts。 */
   loadInputMap(path: string): Promise<InputMap> {
     return this.#once(path + EXTENSIONS.input, async (url) => INPUT_MAP.parse(this.#json<unknown>(await this.#read(url)), url.href));
+  }
+
+  /** 状态树（.statetree.json）：名字都对得上才返回；见 ai/StateTree.ts。 */
+  loadStateTree(path: string): Promise<StateTree> {
+    return this.#once(path + EXTENSIONS.stateTree, async (url) => ({
+      path,
+      data: checkStateTree(STATE_TREE.parse(this.#json<unknown>(await this.#read(url)), url.href), url.href),
+    }));
   }
 
   /** 动画状态机（.animgraph.json）连同它引用的剪辑：名字都对得上才返回；见 animation/AnimationGraph.ts。 */

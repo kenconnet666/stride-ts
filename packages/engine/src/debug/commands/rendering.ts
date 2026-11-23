@@ -248,6 +248,12 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
       ...(cycle ? { cycle: { timeOfDay: cycle.timeOfDay, dayLength: cycle.dayLength, dayOfYear: cycle.dayOfYear, latitude: cycle.latitude, north: cycle.north, moonPhase: cycle.moonPhase } } : {}),
     };
   });
+  debug.command('pipelines', 'Render and compute pipelines: how many were created on the spot (they stall a frame) and how many were compiled in the background (warm), the labels of the last ones created on the spot, and the slowest background compiles (request to done, ms; they overlap, so the sum is more than the wall time). args: top (how many slowest to list, default 15).', (args) => {
+    const pipelines = game.graphicsDevice.pipelines;
+    const top = Number(args['top'] ?? 15);
+    const slowest = [...pipelines.warmTimes].sort((a, b) => b.ms - a.ms).slice(0, top).map(({ label, ms }) => `${Math.round(ms)} ms  ${label}`);
+    return { sync: pipelines.sync, warmed: pipelines.warmed, recentSync: pipelines.recentSync.slice(-10), warmTotalMs: Math.round(pipelines.warmTimes.reduce((sum, t) => sum + t.ms, 0)), slowest };
+  });
   debug.command('ssr','Screen-space reflections of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;
     ssr.enabled = switchArg(args, ssr.enabled);

@@ -3,7 +3,7 @@
 //   卡顿：按固定路线飞一圈时的帧间隔（中位数、p95、p99、最长、超过 50 毫秒的帧数）；
 //   下载量：页面请求数、传输字节；
 //   流式加载：飞行中加载、卸载的格子数；当场建的管线数（着色器的编译堵住一帧，应该是 0）和后台预热的数。
-//   node tools/dev/streaming-bench.ts [--sync] [--check] [--world Worlds/Valley] [--seconds 30] [--speed 60] [--port 5232] [--size 1280x720] [--out result.json]
+//   node tools/dev/streaming-bench.ts [--sync] [--check] [--headed] [--cold] [--world Worlds/Valley] [--seconds 30] [--speed 60] [--port 5232] [--size 1280x720] [--out result.json]
 // --sync：对照用，关掉"管线没好先不画"（MeshRenderFeature.deferPipelines），回到当场编译的老做法。
 // 借开放世界的开发服务器（没开就开一个，用完 pwsh tools/stop-dev.ps1 停）和自己的无头 Chrome（不限帧率、关垂直同步）。开发服务器
 // 上每个模块一个请求，下载量比构建出来的大得多：要量发布的样子用 preview 的地址（--url）。路线：相机从 (0, 40, 0) 出发往 +X
@@ -13,7 +13,8 @@ import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
-process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', 'streaming-bench');
+// --cold：每次用全新的浏览器用户目录（没有磁盘上的着色器缓存），量第一次访问的启动；不加是同一个目录，量再次访问
+process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', process.argv.includes('--cold') ? `streaming-bench-cold-${Date.now()}` : 'streaming-bench');
 const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('@stride-ts/cli/chrome');
 
 const option = (name: string, fallback: string) => {
@@ -102,7 +103,7 @@ const measure = `(async () => {
 
 await closeBrowser();
 // 不限帧率、关垂直同步：量的是引擎能多快，不是显示器的刷新率
-const browser = await openUrl(url, { headless: true, size, dpr: 1, chromeArgs: ['--disable-frame-rate-limit', '--disable-gpu-vsync'] });
+const browser = await openUrl(url, { headless: !process.argv.includes('--headed'), size, dpr: 1, chromeArgs: ['--disable-frame-rate-limit', '--disable-gpu-vsync'] });
 try {
   const cdp = await CdpSession.connect((await pageTarget(browser, base)).webSocketDebuggerUrl);
   const reply = (await cdp.send('Runtime.evaluate', { expression: measure, awaitPromise: true, returnByValue: true, timeout: (seconds + 120) * 1000 })) as { result: { value?: unknown }; exceptionDetails?: { exception?: { description?: string } } };

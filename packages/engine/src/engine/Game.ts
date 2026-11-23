@@ -247,7 +247,12 @@ export class Game {
   status: GameStatus = 'starting';
   error: string | undefined;
   /** 启动各阶段完成的时刻（页面开始加载后的毫秒数）：原生模块就绪、loadContent 完成、第一帧画完。 */
-  readonly startup: { native?: number; content?: number; firstFrame?: number } = {};
+  /**
+   * 启动各阶段的时刻（performance.now，相对页面开始）：native 原生模块好了、content 内容（loadContent）好了、firstFrame 第一帧画完；
+   * warmStart、warmEnd 是预热管线的第一次开始、最后一次完成（后台编译，和别的资源并行，内容要等它），warmedPipelines 是启动时后台
+   * 编的管线数（到第一帧）——内容阶段里编译占多少看这三项。
+   */
+  readonly startup: { native?: number; content?: number; firstFrame?: number; warmStart?: number; warmEnd?: number; warmedPipelines?: number } = {};
   /** 内容加载完成（或换了根场景）时的帧号。 */
   sceneFrame: number | undefined;
   /**
@@ -366,12 +371,15 @@ export class Game {
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
       // 预热：加载场景、预制体时，它们的模型要用的管线在后台编好（和别的资源一起等），建实体以后不用当场编译着色器
       this.content.pipelineWarmer = (uses, postEffects, files) => {
+        this.startup.warmStart ??= performance.now();
         const stages = postEffects === undefined ? this.graphicsCompositor.warmStages() : this.graphicsCompositor.warmStages(postEffects !== null, postEffects?.localReflections !== undefined);
         return Promise.all([
           ...uses.map(({ mesh, material, skinned, isShadowCaster }) => this.meshes.warm(mesh, material, skinned, isShadowCaster, stages)),
           ...this.renderSystem.features.flatMap((feature) => feature.warmFiles(files, stages)),
           this.graphicsCompositor.warmPostEffects(postEffects),
-        ]).then(() => undefined);
+        ]).then(() => {
+          this.startup.warmEnd = performance.now();
+        });
       };
       this.rootRenderer = this.graphicsCompositor;
       this.#registerMetrics();
@@ -852,6 +860,7 @@ export class Game {
       this.graphicsDevice.submitFrame();
       const end = performance.now();
       this.startup.firstFrame ??= end;
+      this.startup.warmedPipelines ??= this.graphicsDevice.pipelines.warmed;
       finishLoading();
       this.debug.frames.record(interval, advance !== undefined ? drawStart - start : 0, end - drawStart);
       this.debug.endFrame();

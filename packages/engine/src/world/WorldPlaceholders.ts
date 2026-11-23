@@ -78,7 +78,8 @@ export class WorldPlaceholders {
     const key = color.join(',');
     let model = this.#models.get(key);
     if (!model) {
-      const material = new Material('World placeholder', { baseColor: [color[0], color[1], color[2], 1], metalness: 0, roughness: 1, doubleSided: true });
+      // 单面、不带任何变体：和普通的不透明材质共用同一批管线（两面画的材质是另一条管线，要多编一遍，启动时和格子里真内容的管线抢编译）
+      const material = new Material('World placeholder', { baseColor: [color[0], color[1], color[2], 1], metalness: 0, roughness: 1 });
       model = { meshes: [{ mesh: (this.#mesh ??= quadMesh()), material: 0 }], materials: [material] };
       this.#models.set(key, model);
     }

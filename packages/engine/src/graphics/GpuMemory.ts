@@ -51,6 +51,8 @@ export class PipelineCounts {
   warmed = 0;
   /** 最近当场建的管线的标签（查是谁没预热）。 */
   readonly recentSync: string[] = [];
+  /** 后台编的管线各花了多久（从请求到编好，毫秒）：启动慢时看是哪些管线占大头（`stride call pipelines`）。 */
+  readonly warmTimes: { readonly label: string; readonly ms: number }[] = [];
 
   constructor(device: GPUDevice) {
     const createRender = device.createRenderPipeline.bind(device), createCompute = device.createComputePipeline.bind(device);
@@ -62,8 +64,16 @@ export class PipelineCounts {
     };
     device.createRenderPipeline = (descriptor) => (sync(descriptor.label), createRender(descriptor));
     device.createComputePipeline = (descriptor) => (sync(descriptor.label), createCompute(descriptor));
-    device.createRenderPipelineAsync = (descriptor) => (this.warmed++, createRenderAsync(descriptor));
-    device.createComputePipelineAsync = (descriptor) => (this.warmed++, createComputeAsync(descriptor));
+    const timed = <T>(label: string | undefined, create: () => Promise<T>): Promise<T> => {
+      this.warmed++;
+      const start = performance.now();
+      return create().then((pipeline) => {
+        this.warmTimes.push({ label: label ?? '(unlabeled)', ms: performance.now() - start });
+        return pipeline;
+      });
+    };
+    device.createRenderPipelineAsync = (descriptor) => timed(descriptor.label, () => createRenderAsync(descriptor));
+    device.createComputePipelineAsync = (descriptor) => timed(descriptor.label, () => createComputeAsync(descriptor));
   }
 }
 

@@ -60,6 +60,25 @@ interface Source {
   readonly x: number;
   readonly z: number;
   readonly scale: number;
+  /** 朝向在 XZ 上的单位向量（相机有，带 StreamingSource 的实体没有）：读格子时朝向前方的先读。 */
+  readonly forward?: { readonly x: number; readonly z: number } | undefined;
+}
+
+/**
+ * 读格子的优先级（越小越先读）：到格子的距离，乘一个按朝向的系数——正前方 0.75 倍、侧面 1.5 倍、正后方 2.25 倍。
+ * 转头时先读的是眼前要看到的，而不是身后同样近的。cosine 是源朝向和源到格子中心方向的夹角余弦；没有朝向的源传 undefined（按纯距离）。
+ */
+export function loadPriority(distance: number, cosine: number | undefined): number {
+  return cosine === undefined ? distance : distance * (1.5 - 0.75 * cosine);
+}
+
+/** 源朝向和源到格子中心方向的夹角余弦；源没有朝向、或者源就在格子里（方向无意义）时是 undefined。 */
+function cosineToCell(file: Pick<WorldFile, 'cellSize'>, source: Source, cellX: number, cellZ: number): number | undefined {
+  if (!source.forward) return undefined;
+  const dx = (cellX + 0.5) * file.cellSize - source.x, dz = (cellZ + 0.5) * file.cellSize - source.z;
+  const length = Math.hypot(dx, dz);
+  if (length < file.cellSize * 0.5) return undefined;
+  return (dx * source.forward.x + dz * source.forward.z) / length;
 }
 
 /** 世界的流式加载（`game.world`）。 */
@@ -192,11 +211,11 @@ export class WorldStreaming {
     this.sources = this.#sources(game);
     if (this.sources.length === 0) return;
     // 要的格子：每个图层、每个源的加载半径里有内容的格子，按到最近的源的距离排
-    const wanted: { key: string; layer: string; x: number; z: number; distance: number }[] = [];
+    const wanted: { key: string; layer: string; x: number; z: number; distance: number; priority: number }[] = [];
     for (const layer of file.layers) {
       const index = this.#index.get(layer.name)!;
       if (index.size === 0) continue;
-      const seen = new Set<string>();
+      const seen = new Map<string, (typeof wanted)[number]>();
       for (const source of this.sources) {
         const radius = layer.loadRadius * source.scale;
         const x0 = Math.floor((source.x - radius) / file.cellSize), x1 = Math.floor((source.x + radius) / file.cellSize);
@@ -204,11 +223,21 @@ export class WorldStreaming {
         for (let x = x0; x <= x1; x++) {
           for (let z = z0; z <= z1; z++) {
             const cell = `${x}_${z}`;
-            if (seen.has(cell) || !index.has(cell)) continue;
+            if (!index.has(cell)) continue;
             const distance = distanceToCell(file, source.x, source.z, x, z);
             if (distance > radius) continue;
-            seen.add(cell);
-            wanted.push({ key: `${layer.name}/${cell}`, layer: layer.name, x, z, distance });
+            const priority = loadPriority(distance, cosineToCell(file, source, x, z));
+            const key = `${layer.name}/${cell}`;
+            const existing = seen.get(cell);
+            if (existing) {
+              // 几个源都要这个格子：距离取最近的，优先级取最高的
+              existing.distance = Math.min(existing.distance, distance);
+              existing.priority = Math.min(existing.priority, priority);
+              continue;
+            }
+            const entry = { key, layer: layer.name, x, z, distance, priority };
+            seen.set(cell, entry);
+            wanted.push(entry);
           }
         }
       }
@@ -223,8 +252,8 @@ export class WorldStreaming {
       this.#cells.delete(key);
       this.unloads++;
     }
-    // 加载：近的先读，同时最多 MAX_LOADING 个
-    wanted.sort((a, b) => a.distance - b.distance);
+    // 加载：优先级高的（近的、在朝向前方的）先读，同时最多 MAX_LOADING 个
+    wanted.sort((a, b) => a.priority - b.priority);
     let loading = this.loading.length;
     for (const cell of wanted) {
       if (loading >= MAX_LOADING) break;
@@ -243,7 +272,7 @@ export class WorldStreaming {
       this.#prefetched.add(path);
       game.content.preloadScene(path).catch(() => this.#prefetched.delete(path));
     }
-    // 状态给界面和占位用：要的格子，近的在前
+    // 状态给界面和占位用：要的格子，先读的在前
     this.cellStates = wanted.map((cell): WorldCellView => {
       const state = this.#cells.get(cell.key);
       return { key: cell.key, layer: cell.layer, x: cell.x, z: cell.z, distance: cell.distance, state: state?.scene ? 'ready' : state ? 'loading' : 'queued' };
@@ -278,7 +307,15 @@ export class WorldStreaming {
     const view = (game.graphicsCompositor as Game['graphicsCompositor'] | undefined)?.mainView;
     // 视图在渲染空间里（D18）：相机的位置加上渲染原点才是世界坐标
     const origin = game.renderOrigin;
-    if (view && Matrix.invert(this.#inverse, view.view)) this.#found.push({ x: this.#inverse[12]! + origin[0], z: this.#inverse[14]! + origin[2], scale: 1 });
+    if (view && Matrix.invert(this.#inverse, view.view)) {
+      // 相机朝 -Z（逆视图矩阵的第三列是相机的 +Z 轴）；几乎朝天朝地时水平方向不可靠，不给朝向
+      const fx = -this.#inverse[8]!, fz = -this.#inverse[10]!;
+      const horizontal = Math.hypot(fx, fz);
+      this.#found.push({
+        x: this.#inverse[12]! + origin[0], z: this.#inverse[14]! + origin[2], scale: 1,
+        forward: horizontal > 0.2 ? { x: fx / horizontal, z: fz / horizontal } : undefined,
+      });
+    }
     return this.#found;
   }
 }

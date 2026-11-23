@@ -17,6 +17,7 @@ import { prop } from '../data/prop';
 import { component } from '../engine/component';
 import type { Entity } from '../engine/Entity';
 import type { EntityManager } from '../engine/EntityManager';
+import { Transform } from '../engine/transform';
 import { system } from '../engine/system';
 import { Skinned } from '../rendering/components';
 import { AnimationComponent, type AnimationBlendStack } from './AnimationComponent';
@@ -61,6 +62,8 @@ interface SkeletonState {
   ikDirty: boolean;
   /** 从 blendFromPose 存的快照淡回动画：还剩多少秒、一共多少秒。 */
   fade: { remaining: number; readonly duration: number } | undefined;
+  /** 按距离降频跳过的帧攒下的时间（秒），下次求值时一起推进。 */
+  pending: number;
 }
 
 export class AnimationSystem {
@@ -74,6 +77,16 @@ export class AnimationSystem {
   readonly #morphSpace = new SlotSpace();
   readonly #stack: BatchStack;
   readonly #cloning: Disposable;
+  /**
+   * 动画按距离降频（Stride 没有；同虚幻的 Update Rate Optimizations、Unity 的 Animator 的 culling）：离关注点（focus，Game 每帧给
+   * 主相机的位置）不到 distances[0] 米的每帧求，不到 distances[1] 的隔一帧，不到 distances[2] 的每 4 帧一次，再远的每 8 帧；跳过的帧
+   * 保留上一个姿势，时间攒着下次一起推进；按实体编号错开，一群人不挤在同一帧。空数组关掉。
+   */
+  readonly lod = { distances: [25, 60, 120] as number[] };
+  /** 降频的关注点（世界位置）；没有时每帧都求。 */
+  focus: readonly [number, number, number] | undefined;
+  /** 上一帧：求了几个骨架、跳过了几个。 */
+  lodStats = { evaluated: 0, skipped: 0 };
 
   /** 每帧推进动画、求姿势和蒙皮矩阵（加进 EntityManager，物理之后跑）。 */
   readonly system = system('AnimationSystem', {
@@ -177,7 +190,7 @@ export class AnimationSystem {
       partEntity.add(Skinned.with({ palette: base }));
       return { skin, palette: skin.createPalette(), base };
     });
-    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false, poseSource: undefined, ik: undefined, ikDirty: false, fade: undefined };
+    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false, poseSource: undefined, ik: undefined, ikDirty: false, fade: undefined, pending: 0 };
     const id = this.#freeStates.pop() ?? this.#states.length;
     this.#states[id] = state;
     entity.add(ModelSkeleton.with({ state: id }));
@@ -252,9 +265,23 @@ export class AnimationSystem {
     this.#batch[Symbol.dispose]();
   }
 
+  /** 这个实体这一帧要不要求动画（按距离降频）。 */
+  #due(state: SkeletonState, entity: Entity, frame: number): boolean {
+    const focus = this.focus, distances = this.lod.distances;
+    if (!focus || distances.length === 0 || !state.posed || state.fade) return true;
+    const world = entity.require(Transform).world;
+    const distance = Math.hypot(world[12]! - focus[0], world[13]! - focus[1], world[14]! - focus[2]);
+    let band = distances.findIndex((limit) => distance < limit);
+    if (band < 0) band = distances.length;
+    const interval = 1 << band;
+    return (frame + state.entity) % interval === 0;
+  }
+
   #update(stateIds: ArrayLike<number>, count: number, elapsed: number): void {
     const batch = this.#batch.clear();
-    const components: AnimationComponent[] = [];
+    const components: [AnimationComponent, number][] = [];
+    const frame = this.#entities.game.updateTime.frameCount;
+    let evaluated = 0, skipped = 0;
     for (let i = 0; i < count; i++) {
       const state = this.#states[stateIds[i]!]!;
       if (state.poseSource) {
@@ -265,6 +292,14 @@ export class AnimationSystem {
         continue;
       }
       const entity = this.#entities.entity(state.entity);
+      if (!this.#due(state, entity, frame)) {
+        state.pending += elapsed;
+        skipped++;
+        continue;
+      }
+      const dt = elapsed + state.pending;
+      state.pending = 0;
+      evaluated++;
       const animation = entity.get(AnimationComponent);
       if (state.ikDirty) {
         state.instance.setIk([...state.ik!.values()].flat());
@@ -277,8 +312,8 @@ export class AnimationSystem {
         animation.blendTreeBuilder.buildBlendTree(this.#stack);
         pushed = this.#stack.pushed;
       } else if (animation) {
-        pushed = animation.advanceAndBuild(elapsed, this.#stack);
-        components.push(animation);
+        pushed = animation.advanceAndBuild(dt, this.#stack);
+        components.push([animation, dt]);
       }
       if (pushed > 0) {
         this.#stack.morphs.apply();
@@ -291,7 +326,7 @@ export class AnimationSystem {
         batch.pushSnapshot();
         if (poses > 0) batch.blend(Math.max(0, fade.remaining / fade.duration));
         poses = 1;
-        fade.remaining -= elapsed;
+        fade.remaining -= dt;
         if (fade.remaining <= 0) state.fade = undefined;
       }
       // 没压进骨架的姿势时保留上一个姿势（同 Stride），只有第一次求静止姿势
@@ -300,7 +335,8 @@ export class AnimationSystem {
       for (const part of state.parts) batch.skin(part.skin, part.palette);
     }
     batch.evaluate();
-    for (const animation of components) animation.updateWeights(elapsed);
+    for (const [animation, dt] of components) animation.updateWeights(dt);
+    this.lodStats = { evaluated, skipped };
   }
 
   /** 没有骨架的实体：形变权重（有的话）和属性曲线。 */

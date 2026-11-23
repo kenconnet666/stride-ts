@@ -36,6 +36,11 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
     for (const key of ['sleepDistance', 'wakeDistance', 'interval'] as const) if (typeof args[key] === 'number') simulation.lod[key] = args[key];
     return { ...simulation.lod, focus: simulation.focus, ...simulation.lodStats };
   });
+  debug.command('animation-lod', 'Animation update rate by distance (animation.lod): skeletons within distances[0] m of the main camera evaluate every frame, then every 2nd, 4th and 8th frame. args: distances (array of metres, [] turns it off). Reports the distances, the focus and how many skeletons were evaluated and skipped last frame.', (args) => {
+    const animation = game.animation;
+    if (Array.isArray(args['distances'])) animation.lod.distances = (args['distances'] as unknown[]).map(Number);
+    return { ...animation.lod, focus: animation.focus, ...animation.lodStats };
+  });
   debug.command('weather', `Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
     const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Weather));
     if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Weather', components: [Transform, Weather, Precipitation] }));

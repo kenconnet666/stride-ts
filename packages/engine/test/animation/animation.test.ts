@@ -24,6 +24,14 @@ class RecordingStack implements AnimationBlendStack {
     this.ops.push(`subtract(${+factor.toFixed(3)})`);
     return this;
   }
+  blendMasked(factor: number, joints: readonly string[]): this {
+    this.ops.push(`blendMasked(${+factor.toFixed(3)}, ${joints.join(',')})`);
+    return this;
+  }
+  addMasked(factor: number, joints: readonly string[]): this {
+    this.ops.push(`addMasked(${+factor.toFixed(3)}, ${joints.join(',')})`);
+    return this;
+  }
 }
 
 const component = (...clips: AnimationClip[]) => {

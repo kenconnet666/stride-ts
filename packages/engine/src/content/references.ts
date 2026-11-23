@@ -310,7 +310,7 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
     }
     case 'animationGraph': {
       const graph = file as AnimationGraphFile;
-      for (const state of graph.states) {
+      for (const state of [...graph.states, ...(graph.layers ?? []).flatMap((layer) => layer.states)]) {
         if (state.motion.type === 'clip') add('animation', state.motion, 'clip');
         else state.motion.points.forEach((point) => add('animation', point, 'clip'));
       }

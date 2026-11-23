@@ -2,7 +2,7 @@
  * 动画的资源：骨架（Stride 的 Skeleton）和动画剪辑（Stride 的 AnimationClip）。数据在 stride-native 里（ozz 的骨架和
  * 动画），这里记着关节名、时长、重复方式和原生对象。内容管理加载 `.skeleton`、`.anim` 时创建它们。
  */
-import type { Animation as NativeAnimation, Skeleton as NativeSkeleton, StrideNative } from '@stride-ts/native';
+import type { Animation as NativeAnimation, AnimationMask as NativeMask, Skeleton as NativeSkeleton, StrideNative } from '@stride-ts/native';
 import type { AnimationRepeatMode, MorphWeightCurve } from '../content/formats/format';
 import type { PropertyCurve } from './curves';
 
@@ -28,6 +28,28 @@ export class Skeleton {
   /** 关节的下标；没有这个名字时是 -1。 */
   jointIndex(name: string): number {
     return this.#indexOf.get(name) ?? -1;
+  }
+
+  readonly #masks = new Map<string, NativeMask>();
+
+  /** 这些关节和它们所有子关节权重 1、别的 0 的遮罩（缓存，分层的混合用）；有名字找不到时报错。 */
+  mask(roots: readonly string[]): NativeMask {
+    const key = roots.join('|');
+    let mask = this.#masks.get(key);
+    if (mask) return mask;
+    const inside = new Uint8Array(this.joints.length);
+    for (const root of roots) {
+      const index = this.jointIndex(root);
+      if (index < 0) throw new Error(`skeleton '${this.name}' has no joint '${root}' (animation mask)`);
+      inside[index] = 1;
+    }
+    // 关节按深度优先排、父关节在前：父关节在里面，子关节也在
+    this.joints.forEach((joint, j) => {
+      if (joint.parent >= 0 && inside[joint.parent]) inside[j] = 1;
+    });
+    mask = this.native.createMask(Array.from(inside));
+    this.#masks.set(key, mask);
+    return mask;
   }
 }
 

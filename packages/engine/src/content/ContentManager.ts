@@ -744,7 +744,7 @@ export class ContentManager {
   loadAnimationGraph(path: string): Promise<AnimationGraph> {
     return this.#once(path + EXTENSIONS.animationGraph, async (url) => {
       const data = checkAnimationGraph(ANIMATION_GRAPH.parse(this.#json<unknown>(await this.#read(url)), url.href), url.href);
-      const paths = [...new Set(data.states.flatMap(({ motion }) => (motion.type === 'clip' ? [motion.clip] : motion.points.map((point) => point.clip))))];
+      const paths = [...new Set([data, ...data.layers].flatMap((machine) => machine.states).flatMap(({ motion }) => (motion.type === 'clip' ? [motion.clip] : motion.points.map((point) => point.clip))))];
       const clips = await Promise.all(paths.map((clip) => this.loadAnimation(clip)));
       return { path, data, clips: new Map(paths.map((clip, i) => [clip, clips[i]!])) };
     });

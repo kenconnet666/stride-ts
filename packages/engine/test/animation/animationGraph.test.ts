@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { AnimationClip, AnimationGraphInstance, type AnimationBlendStack } from '../../src';
+import { AnimationClip, AnimationGraphInstance, blend1d, blend2d, type AnimationBlendStack } from '../../src';
 import { ANIMATION_GRAPH, checkAnimationGraph, type AnimationGraphFile } from '../../src/content/formats/format';
 
 const clip = (name: string, duration: number) => new AnimationClip(name, duration, 'loopInfinite', undefined);
@@ -39,6 +39,8 @@ function record(graph: AnimationGraphInstance): string[] {
     blend(factor) { ops.push(`blend ${factor.toFixed(3)}`); return this; },
     add(factor) { ops.push(`add ${factor}`); return this; },
     subtract(factor) { ops.push(`subtract ${factor}`); return this; },
+    blendMasked(factor, joints) { ops.push(`blendMasked ${factor.toFixed(3)} ${joints.join(',')}`); return this; },
+    addMasked(factor, joints) { ops.push(`addMasked ${factor.toFixed(3)} ${joints.join(',')}`); return this; },
   };
   graph.buildBlendTree(stack);
   return ops;
@@ -106,10 +108,35 @@ describe('动画状态机', () => {
     expect(graph.state).toBe('Run');
   });
 
+  test('二维混合：在点上只取那一个，在两点中间各一半，四个方向的中心是待机；权重加起来是 1', () => {
+    const points: [number, number][] = [[0, 0], [0, 1], [1, 0], [0, -1], [-1, 0]];
+    expect(blend2d([0, 1], points).map((w) => +w.toFixed(6))).toEqual([0, 1, 0, 0, 0]);
+    expect(blend2d([0, 0], points).map((w) => +w.toFixed(6))).toEqual([1, 0, 0, 0, 0]);
+    const diagonal = blend2d([0.5, 0.5], points);
+    expect(diagonal.reduce((a, b) => a + b, 0)).toBeCloseTo(1, 9);
+    expect(diagonal[1]).toBeCloseTo(diagonal[2]!, 9);
+    expect(diagonal[3]).toBe(0);
+    expect(blend1d(0.5, [{ at: 0 }, { at: 1 }, { at: 2 }])).toEqual([{ index: 0, weight: 0.5 }, { index: 1, weight: 0.5 }]);
+  });
+
+  test('分层：基础层之后压上层的动作、按遮罩盖上去，权重乘上权重参数；参数为 0 时不压', () => {
+    const graph = instance({
+      ...TPP,
+      parameters: [...TPP.parameters!, { name: 'aim', type: 'number', default: 0.5 }],
+      layers: [{ name: 'Upper', mask: ['spine'], weightParameter: 'aim', states: [{ name: 'Wave', motion: { type: 'clip', clip: 'JumpLoop' } }], initial: 'Wave' }],
+    });
+    expect(graph.layerState('Upper')).toBe('Wave');
+    expect(record(graph)).toEqual(['Idle@0.000', 'JumpLoop@0.000', 'blendMasked 0.500 spine']);
+    graph.set('aim', 0);
+    expect(record(graph)).toEqual(['Idle@0.000']);
+  });
+
   test('名字对不上时报错', () => {
     const check = (file: AnimationGraphFile) => () => checkAnimationGraph(ANIMATION_GRAPH.parse(file, 'g'), 'g');
     expect(check({ ...TPP, initial: 'Swim' })).toThrow(/initial state 'Swim'/);
     expect(check({ ...TPP, transitions: [{ from: 'Walk', to: 'Fly' }] })).toThrow(/goes to state 'Fly'/);
     expect(check({ ...TPP, transitions: [{ from: 'Walk', to: 'Land', when: [{ parameter: 'runSpeed', test: 'true' }] }] })).toThrow(/needs a bool parameter/);
+    expect(check({ ...TPP, layers: [{ name: 'Upper', mask: [], states: [{ name: 'A', motion: { type: 'clip', clip: 'Idle' } }], initial: 'A' }] })).toThrow(/layer 'Upper' has an empty mask/);
+    expect(check({ ...TPP, layers: [{ name: 'Upper', mask: ['spine'], states: [{ name: 'A', motion: { type: 'clip', clip: 'Idle' } }], initial: 'B' }] })).toThrow(/layer 'Upper': initial state 'B'/);
   });
 });

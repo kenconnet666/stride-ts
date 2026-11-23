@@ -445,6 +445,21 @@ class BatchStack implements AnimationBlendStack {
     return this;
   }
 
+  blendMasked(factor: number, joints: readonly string[]): this {
+    if (this.#combine()) this.#batch.blendMasked(factor, this.#skeleton!.mask(joints));
+    // 形变权重、属性曲线不按关节分：留下面那层的
+    this.morphs.blend(0);
+    this.properties.blend(0);
+    return this;
+  }
+
+  addMasked(factor: number, joints: readonly string[]): this {
+    if (this.#combine()) this.#batch.addMasked(factor, this.#skeleton!.mask(joints));
+    this.morphs.add(0);
+    this.properties.add(0);
+    return this;
+  }
+
   /** 合并栈顶的两项：两边都有骨架的姿势时返回 true（原生的栈上要做这次运算）；只有一边有时那个姿势原样留在原生的栈顶。 */
   #combine(): boolean {
     if (this.#posed.length < 2) throw new Error('animation blend stack: an operation needs two poses');

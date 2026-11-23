@@ -30,6 +30,13 @@ export interface AnimationBlendStack {
   add(factor: number): this;
   /** 弹出 a、b，压入从 a 往 a − b 插值 factor 的结果。 */
   subtract(factor: number): this;
+  /**
+   * 弹出 a、b，只在 joints 列的关节和它们的子关节上从 a 往 b 插值 factor（分层：上半身的动作盖在下半身上）；别的关节、形变权重、
+   * 属性曲线留 a 的。
+   */
+  blendMasked(factor: number, joints: readonly string[]): this;
+  /** 同 blendMasked，b 是叠加动画。 */
+  addMasked(factor: number, joints: readonly string[]): this;
 }
 
 /** 自己搭混合栈（Stride 的 IBlendTreeBuilder），动画系统每帧调用。 */

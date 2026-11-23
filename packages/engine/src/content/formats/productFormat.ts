@@ -91,5 +91,10 @@ export interface ProductFile {
    * 颜色），印上去的（盖子、图案、字）不透；果蔬、器皿不看它。
    */
   readonly transmission?: number;
+  /**
+   * 旧了多少（0..1，默认 0.5；0 是刚出厂）：每个变体按种子褪一点色、沾几块手印似的灰、边上几道擦痕（只画在颜色上，不挡透光）。
+   * 果蔬、器皿不看它。
+   */
+  readonly wear?: number;
   readonly seed?: number;
 }

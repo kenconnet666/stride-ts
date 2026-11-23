@@ -3,6 +3,7 @@ import type { ProductFile } from '../../src/content/formats/productFormat';
 import type { ShelfFile } from '../../src/content/formats/shelfFormat';
 import { mergedClearMaterial, mergedMaterial } from '../../src/modeling/productBatch';
 import { deliLamps, planShelf, shelfModel } from '../../src/modeling/shelf';
+import { productFootprint } from '../../src/modeling/product';
 
 const products = new Map<string, ProductFile>([
   ['P/Water', { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], seed: 1 }],
@@ -35,13 +36,41 @@ describe('货架', () => {
 
   test('双面：两面都摆，背面的转半圈；同一个种子摆出来一样，换种子不一样', () => {
     const { items, tags } = planShelf(island, products);
-    expect(items.some((item) => item.position[2] > 0 && item.yaw === 0)).toBe(true);
-    expect(items.some((item) => item.position[2] < 0 && item.yaw === Math.PI)).toBe(true);
+    // 背面的转半圈（摆得乱：圆的瓶罐再转最多 ±45°×0.5）
+    expect(items.some((item) => item.position[2] > 0 && Math.abs(item.yaw) <= Math.PI / 8 + 1e-9)).toBe(true);
+    expect(items.some((item) => item.position[2] < 0 && Math.abs(item.yaw - Math.PI) <= Math.PI / 8 + 1e-9)).toBe(true);
     expect(tags.some((tag) => tag.side === -1)).toBe(true);
     const again = planShelf(island, products);
     expect(again.items).toEqual(items);
     expect(again.tags).toEqual(tags);
     expect(planShelf({ ...island, seed: 8 }, products).items).not.toEqual(items);
+  });
+
+  test('摆得乱：messiness 0 时整整齐齐；默认时圆的转过、方的只歪一点，同一层相邻的两件不重叠', () => {
+    const tidy = planShelf({ ...island, stock: { ...island.stock!, messiness: 0 } }, products);
+    expect(tidy.items.every((item) => item.yaw === 0 || item.yaw === Math.PI)).toBe(true);
+    const { items } = planShelf(island, products);
+    const turned = items.filter((item) => item.yaw !== 0 && item.yaw !== Math.PI);
+    expect(turned.length).toBeGreaterThan(items.length / 2);
+    for (const item of items) {
+      const product = products.get(item.product)!, off = Math.abs(Math.atan2(Math.sin(item.yaw), Math.cos(item.yaw))) % Math.PI;
+      const yaw = Math.min(off, Math.PI - off);
+      expect(yaw).toBeLessThanOrEqual(product.shape === 'box' || product.shape === 'pouch' ? 0.12 : Math.PI / 8 + 1e-9);
+    }
+    // 同一层、同一面、同一排（z 差不到半件）里左右挨着的两件：中心距不小于两件的半宽之和（圆的按直径，方的按转过的外接宽）
+    const rows = new Map<string, typeof items>();
+    for (const item of items) {
+      const key = `${item.position[1].toFixed(3)}|${Math.sign(item.position[2])}|${Math.round(item.position[2] * 20)}`;
+      rows.set(key, [...(rows.get(key) ?? []), item]);
+    }
+    const half = (item: (typeof items)[number]) => {
+      const [w, , d] = productFootprint(products.get(item.product)!);
+      return products.get(item.product)!.shape === 'box' ? (w * Math.abs(Math.cos(item.yaw)) + d * Math.abs(Math.sin(item.yaw))) / 2 : w / 2;
+    };
+    for (const row of rows.values()) {
+      row.sort((a, b) => a.position[0] - b.position[0]);
+      for (let i = 1; i < row.length; i++) expect(row[i]!.position[0] - row[i - 1]!.position[0]).toBeGreaterThanOrEqual(half(row[i]!) + half(row[i - 1]!) - 1e-6);
+    }
   });
 
   test('单面只摆正面；没有货时是空架子；规则不对时报错', () => {
@@ -105,6 +134,16 @@ describe('货架', () => {
     expect(stuck.vertices.length / 8 - plain.vertices.length / 8).toBe(2 * (2 * 4 + 2 * 24));
     expect(stuck.colorSvg).toContain('fill="#5a2d91"');
     expect(plain.colorSvg).not.toContain('#5a2d91');
+  });
+
+  test('木纹层板：写了 boardColor 时层板贴木纹的格子（UV 铺满一格，不是纯色的一点），图集里有木纹的线', () => {
+    const plain = shelfModel(island, sources), wood = shelfModel({ ...island, boardColor: '#bfb8ac' }, sources);
+    const lines = (svg: string) => (svg.match(/fill="none" stroke=/g) ?? []).length;
+    expect(lines(wood.colorSvg) - lines(plain.colorSvg)).toBeGreaterThanOrEqual(60);
+    // 顶点一样多（还是盒子），但层板的 UV 散开了：不同的 UV 比纯色的多
+    expect(wood.vertices.length).toBe(plain.vertices.length);
+    const uvs = (vertices: Float32Array) => new Set(Array.from({ length: vertices.length / 8 }, (_, i) => `${vertices[i * 8 + 6]},${vertices[i * 8 + 7]}`)).size;
+    expect(uvs(wood.vertices)).toBeGreaterThan(uvs(plain.vertices));
   });
 
   test('电子价签：每个价签多一个外壳（6 个面），屏比纸价签凸出来；图集里画了二维码的方块', () => {

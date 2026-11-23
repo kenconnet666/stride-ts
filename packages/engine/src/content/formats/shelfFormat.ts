@@ -20,6 +20,11 @@ export interface ShelfStockFile {
   /** 架上空着的比例（0..1，卖掉了的空位），默认 0.05。 */
   readonly gaps?: number;
   /**
+   * 摆得有多乱（0..1，默认 0.5；0 是出厂一样整整齐齐）：圆的瓶罐被转过（标签朝向不一，最多 ±45°），方的盒子歪一点（挤得紧，
+   * 只能歪到碰不着旁边的），一些列被往里推（前面那件被拿走过），左右前后在缝里错开一点。按种子，同一个文件摆出来一样。
+   */
+  readonly messiness?: number;
+  /**
    * 按层摆（从下往上第 i 个是第 i 层，同 levels）：这一层只从这些商品里挑（超市里一层常是一类货）；没写、null 的层用 products。
    */
   readonly levels?: readonly (readonly string[] | null)[];

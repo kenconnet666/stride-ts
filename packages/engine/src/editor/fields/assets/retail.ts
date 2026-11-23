@@ -46,6 +46,7 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
   motif: { type: oneOf('leaf', 'drop', 'peanut', 'corn', 'sunflower', 'wheat', 'sesame', 'none'), optional: true, description: 'small picture of the ingredient on both sides of the brand (on a white disc); picked from the seed when missing (leaf, drop, wheat, sunflower or none)' },
   badge: { type: string, optional: true, description: 'text of the starburst in the lower right corner ("5L", "non-GMO"); none when missing' },
   detail: { type: bool, optional: true, default: true, description: 'print details: emblem, ingredient pictures, fine print, badge, trim lines and shading of the band; false draws only the color blocks, pattern and text (a cartoon look)' },
+  wear: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.5, description: 'how handled the package looks (0..1): each variant fades a little and gets a few grimy smudges and scuffs near the edges, from the seed; 0 is fresh from the factory; produce and ware ignore it' },
   transmission: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'how much light passes through the body (0..1: oil and drink bottles show what is inside); the label background is the body, printed parts (cap, pattern, text) stay opaque; produce and ware ignore it' },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of everything not written: another number is another brand of the same product' },
 });
@@ -71,6 +72,7 @@ export const SHELF_FIELDS = fields<ShelfFile>({
       facings: { type: vector(2), optional: true, default: [2, 5], description: 'how many of one item stand side by side (min, max)' },
       rows: { type: integer(1, 16), optional: true, default: 4, description: 'at most this many rows deep (fewer when the board is shallower)' },
       gaps: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.05, description: 'share of empty spots (sold out)' },
+      messiness: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.5, description: 'how messy the stock is: round bottles and jars turned (labels facing different ways), boxes tilted a little, some columns pushed back, small shifts within the gaps; 0 is factory tidy' },
       levels: { type: { kind: 'list', item: list(asset('product')), nullableItems: true }, optional: true, description: 'products per level (from the bottom, like levels): a level only takes these (stores often keep one kind per level); missing or null levels use products' },
     })),
     optional: true,

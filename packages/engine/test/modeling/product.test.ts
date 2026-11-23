@@ -119,6 +119,16 @@ describe('商品包装', () => {
     expect(ellipses({ ...jar, shape: 'bottle' })).toBe(ellipses({ ...jar, shape: 'bottle', surface: 'plastic' }));
   });
 
+  test('包装旧了：默认褪一点色、沾灰、有擦痕，wear 0 是新的；果蔬不加；只画在颜色上，表面贴图（透光的遮罩）不变', () => {
+    const bottle: ProductFile = { name: 'Oil', shape: 'bottle', size: [0.07, 0.25, 0], seed: 5, transmission: 0.8 };
+    const size = productMesh(bottle).labelSize;
+    expect(productLabelSvg(bottle, size, undefined)).toContain('#4a4036');
+    expect(productLabelSvg({ ...bottle, wear: 0 }, size, undefined)).not.toContain('#4a4036');
+    expect(productSurfaceSvg(bottle, size, undefined)).toBe(productSurfaceSvg({ ...bottle, wear: 0 }, size, undefined));
+    const onion: ProductFile = { name: 'Onion', shape: 'onion', size: [0.08, 0.085, 0], seed: 2 };
+    expect(productLabelSvg(onion, productMesh(onion).labelSize, undefined)).not.toContain('#4a4036');
+  });
+
   test('旋转体的法线朝外：侧面的法线和从轴出来的方向同向', () => {
     const { vertices } = productMesh({ name: 'Can', shape: 'can', size: [0.066, 0.12, 0] });
     for (let i = 0; i < vertices.length; i += 8) {

@@ -435,7 +435,27 @@ export function productLabelShapes(file: ProductFile, labelSize: readonly [numbe
   const [W, H] = labelSize;
   const background = `<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`;
   if (isWare(file.shape)) return wareSkin(file, labelSize, design.colors.background, design.colors.accent, design.pattern === 'floral', variant);
-  return background + labelPrint(file, design, labelSize, font, variant);
+  const wear = isProduce(file.shape) ? 0 : Math.min(1, Math.max(0, file.wear ?? 0.5));
+  return background + labelPrint(file, design, labelSize, font, variant) + (wear > 0 ? labelWear(labelSize, wear, seededRandom(hash32(hash32(file.seed ?? 1, variant), 131))) : '');
+}
+
+/**
+ * 包装旧了的样子（只画在颜色上）：整张褪一点色（一层很淡的白）、几块手印似的灰（深一点的椭圆斑，边上糊开）、上下边上几道擦痕
+ * （细的浅色短线）。amount 是 ProductFile.wear。
+ */
+function labelWear([W, H]: readonly [number, number], amount: number, random: () => number): string {
+  const shapes = [`<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="#ffffff" opacity="${svgNumber(amount * (0.02 + random() * 0.05))}"/>`];
+  const smudges = Math.round(amount * (1 + random() * 4));
+  for (let i = 0; i < smudges; i++) {
+    const cx = random() * W, cy = random() * H, r = Math.min(W, H) * (0.04 + random() * 0.08);
+    shapes.push(`<ellipse cx="${svgNumber(cx)}" cy="${svgNumber(cy)}" rx="${svgNumber(r * 1.3)}" ry="${svgNumber(r)}" fill="#4a4036" opacity="${svgNumber(amount * (0.05 + random() * 0.08))}"/>`);
+  }
+  const scuffs = Math.round(amount * (2 + random() * 6));
+  for (let i = 0; i < scuffs; i++) {
+    const x = random() * W, y = random() < 0.5 ? random() * H * 0.15 : H * (0.85 + random() * 0.15), length = W * (0.01 + random() * 0.04);
+    shapes.push(`<rect x="${svgNumber(x)}" y="${svgNumber(y)}" width="${svgNumber(length)}" height="${svgNumber(0.3 + random() * 0.4)}" fill="#ffffff" opacity="${svgNumber(amount * (0.25 + random() * 0.3))}" transform="rotate(${Math.round((random() - 0.5) * 30)} ${svgNumber(x)} ${svgNumber(y)})"/>`);
+  }
+  return `<g>${shapes.join('')}</g>`;
 }
 
 /** 瓶身透多少光（ProductFile.transmission，限在 0..1）：只有包装算，果蔬、器皿是 0。 */

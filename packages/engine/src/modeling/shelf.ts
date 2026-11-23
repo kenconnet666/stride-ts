@@ -12,6 +12,7 @@ import type { ProductFile } from '../content/formats/productFormat.ts';
 import type { ShelfFile } from '../content/formats/shelfFormat.ts';
 import { hash32, seededRandom } from '../data/hash.ts';
 import { productFootprint, svgNumber, textPath } from './product.ts';
+import { shadeColor } from './svg.ts';
 import type { TextFont } from './textOutline.ts';
 import { ProductBatch, type AtlasCell, type Cell, type MergedProducts, type ProductSources } from './productBatch.ts';
 
@@ -59,6 +60,9 @@ export interface ShelfHook {
   readonly side: 1 | -1;
 }
 
+/** 绕竖直轴转了占的地方不变的外形（摆货乱的时候随便转）。 */
+const ROUND_SHAPES: ReadonlySet<ProductFile['shape']> = new Set(['bottle', 'can', 'jar', 'tub', 'bowl']);
+
 /** 挂钩架：商品挂在钩子下面多远（米）；洞洞板以上第一排挂钩下面留多少。 */
 const HOOK_DROP = 0.015, HOOK_BOTTOM = 0.12;
 
@@ -82,6 +86,7 @@ export function planShelf(file: ShelfFile, products: ReadonlyMap<string, Product
   const [minFacings, maxFacings] = stock.facings ?? [2, 5];
   const maxRows = Math.max(1, Math.round(stock.rows ?? 4));
   const gaps = Math.min(1, Math.max(0, stock.gaps ?? 0.05));
+  const messiness = Math.min(1, Math.max(0, stock.messiness ?? 0.5));
   const sides: readonly (1 | -1)[] = file.sides === 2 ? [1, -1] : [1];
   const back = file.sides === 2 ? SPINE : 0;
   const xMin = -file.length / 2 + 0.03, xMax = file.length / 2 - 0.03;
@@ -108,13 +113,21 @@ export function planShelf(file: ShelfFile, products: ReadonlyMap<string, Product
           ? { position: [x + w / 2, level + 0.02, side * (back + file.depth + 0.003)], side, price: Math.floor(random() * PRICES) }
           : { position: [x + Math.min(TAG[0], w) / 2 + 0.005, level - STRIP[0] / 2, side * (back + file.depth + STRIP[1] + 0.001)], side, price: Math.floor(random() * PRICES) });
         const y = pegboard ? level - HOOK_DROP - choice.footprint[1] : level;
+        // 乱：圆的转起来不占地方，随便转；方的转了会碰到旁边的，最多转到对角刚好碰不着（sin θ ≤ 缝 / 深）
+        const round = ROUND_SHAPES.has(choice.product.shape);
+        const maxYaw = messiness * (round ? Math.PI / 4 : Math.min(0.12, Math.asin(Math.min(1, GAP / Math.max(d, GAP)))));
+        // 挂钩上的东西挂在钩尖上，不左右前后挪
+        const nudge = pegboard ? 0 : messiness * GAP * 0.45;
         for (let f = 0; f < facings; f++) {
           if (pegboard) hooks.push({ x: x + f * (w + GAP) + w / 2, y: level, side });
-          // 卖掉了的：这一列的前几排空着
+          // 卖掉了的：这一列的前几排空着；被拿过的：整列往里推了一截，最里面放不下的那件不要
           const missing = random() < gaps ? 1 + Math.floor(random() * rows) : 0;
+          const pushed = !pegboard && random() < 0.3 * messiness ? random() * 0.5 * (d + GAP) : 0;
           for (let r = missing; r < rows; r++) {
-            const z = back + file.depth - 0.01 - d / 2 - r * (d + GAP);
-            items.push({ product: choice.path, variant, position: [x + f * (w + GAP) + w / 2, y, side * z], yaw: side > 0 ? 0 : Math.PI, front: r === missing });
+            const z = back + file.depth - 0.01 - d / 2 - r * (d + GAP) - pushed;
+            if (z - d / 2 < back + 0.003) break;
+            const jitter = () => (random() * 2 - 1) * nudge;
+            items.push({ product: choice.path, variant, position: [x + f * (w + GAP) + w / 2 + jitter(), y, side * (z + jitter())], yaw: (side > 0 ? 0 : Math.PI) + (random() * 2 - 1) * maxYaw, front: r === missing });
           }
         }
         x += facings * (w + GAP);
@@ -264,8 +277,10 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       // 冷柜顶上的灯箱：蓝底白字，整块发光
       size: [file.length * 1000, (HEADER - 0.04) * 1000] as const, color: file.doorColor ?? '#1e64c8', roughness: 0.3, metalness: 0, emissive: 2,
       draw: ([x, y, w, h]: Cell) => (file.header && tagFont ? textPath(tagFont, file.header, x + w / 2, y + h / 2, w * 0.6, h * 0.62, '#ffffff') : undefined),
-    }, ...stickerCells(file, tagFont)] : []),
+    }, ...stickerCells(file, tagFont)] : []).concat(file.boardColor ? [woodCell(file.boardColor, file.seed ?? 1)] : []),
   });
+  // 木纹层板那一格：在所有格子的最后
+  const woodBoard = file.boardColor ? PRICES + (type === 'fridge' ? 1 + stickerCells(file, undefined).length : 0) : -1;
   if (type === 'freezer') {
     freezerBody(batch, file);
     return { ...batch.finish(), items: items.length };
@@ -300,7 +315,11 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
     const zs = [Math.min(z0, z1), Math.max(z0, z1)] as const;
     // 底座（第一层的下面是实心的踢脚板）和每一层的层板
     batch.box([-L + SPINE, 0, zs[0]], [L - SPINE, file.levels[0]!, zs[1]], BASE);
-    for (const level of file.levels.slice(1)) batch.box([-L + SPINE, level - (file.boardThickness ?? BOARD), zs[0]], [L - SPINE, level, zs[1]], BOARD_SOLID);
+    for (const level of file.levels.slice(1)) {
+      const min = [-L + SPINE, level - (file.boardThickness ?? BOARD), zs[0]], max = [L - SPINE, level, zs[1]];
+      if (woodBoard >= 0) batch.texturedBox(min, max, woodBoard);
+      else batch.box(min, max, BOARD_SOLID);
+    }
     for (const level of file.levels) {
       if (rail) {
         tagRail(batch, -L + SPINE, L - SPINE, level, zFar, side);
@@ -410,6 +429,37 @@ function eslCell(price: string, k: number, font: TextFont | undefined, seed: num
         }
       }
       return shapes.join('');
+    },
+  };
+}
+
+/**
+ * 木纹层板的一格（boardColor 写了时）：顺着层板长的木纹（深浅不一、微微起伏的细线）、几个节疤、前沿一带用旧了的擦痕和灰；
+ * 一整条层板铺满这一格（u 顺着长），按种子。
+ */
+function woodCell(color: string, seed: number): AtlasCell {
+  const size = [1200, 300] as const;
+  return {
+    size, color, roughness: 0.55, metalness: 0,
+    draw: ([x, y, w, h]: Cell) => {
+      const random = seededRandom(hash32(seed, 3001));
+      const shapes: string[] = [];
+      for (let i = 0; i < 60; i++) {
+        const y0 = y + random() * h, amplitude = h * (0.004 + random() * 0.012), waves = 2 + Math.floor(random() * 4);
+        let d = `M${svgNumber(x)} ${svgNumber(y0)}`;
+        for (let k = 1; k <= waves; k++) d += `Q${svgNumber(x + (w * (k - 0.5)) / waves)} ${svgNumber(y0 + (k % 2 ? amplitude : -amplitude))} ${svgNumber(x + (w * k) / waves)} ${svgNumber(y0)}`;
+        shapes.push(`<path d="${d}" fill="none" stroke="${shadeColor(color, 0.78 + random() * 0.3)}" stroke-width="${svgNumber(0.6 + random() * 2.2)}" opacity="${svgNumber(0.35 + random() * 0.4)}"/>`);
+      }
+      for (let i = 0; i < 4; i++) {
+        const cx = x + random() * w, cy = y + random() * h, r = h * (0.02 + random() * 0.03);
+        shapes.push(`<ellipse cx="${svgNumber(cx)}" cy="${svgNumber(cy)}" rx="${svgNumber(r * 2.2)}" ry="${svgNumber(r)}" fill="${shadeColor(color, 0.62)}" opacity="0.6"/>`);
+      }
+      // 前沿（v 大的那边，顶面朝外的那一侧）磨得发白、沾灰
+      for (let i = 0; i < 40; i++) {
+        const sx = x + random() * w, sy = y + h * (0.75 + random() * 0.25), length = w * (0.004 + random() * 0.02);
+        shapes.push(`<rect x="${svgNumber(sx)}" y="${svgNumber(sy)}" width="${svgNumber(length)}" height="${svgNumber(0.6 + random())}" fill="${random() < 0.6 ? '#ffffff' : '#3a332c'}" opacity="${svgNumber(0.15 + random() * 0.25)}"/>`);
+      }
+      return `<g>${shapes.join('')}</g>`;
     },
   };
 }

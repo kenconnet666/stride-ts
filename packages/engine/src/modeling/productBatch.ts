@@ -136,6 +136,20 @@ export class ProductBatch {
     addBox(this.#vertices, this.#indices, min, max, (x + w / 2) / this.#atlas, (y + h / 2) / this.#atlas);
   }
 
+  /**
+   * 轴对齐的盒子，六个面都贴第 cell 个单独的格子（木纹的层板）：格子的 u 顺着盒子的 x（x 不变的两头顺着 z），v 是面上另一个
+   * 方向，每个面都铺满整格。
+   */
+  texturedBox(min: readonly number[], max: readonly number[], cell: number): void {
+    const [cx, cy, cw, ch] = this.#extraCells[cell]!;
+    addBox(this.#vertices, this.#indices, min, max, 0, 0, (axis, sa, sb) => {
+      // 面上变的两个轴是 (axis + 1) % 3 和 (axis + 2) % 3；u 取 x（没有 x 时取 z），v 取另一个
+      const a = (axis + 1) % 3, alongU = a === 0 || (axis === 0 && a === 2) ? sa : sb;
+      const alongV = alongU === sa ? sb : sa;
+      return [(cx + alongU * cw) / this.#atlas, (cy + alongV * ch) / this.#atlas];
+    });
+  }
+
   /** 轴对齐的一块玻璃（冷柜的门、冰柜的盖）：进玻璃那个网格。 */
   glassBox(min: readonly number[], max: readonly number[]): void {
     addBox(this.#glassVertices, this.#glassIndices, min, max, 0, 0);
@@ -284,7 +298,7 @@ const normalize3 = (v: readonly number[]) => {
 };
 
 /** 轴对齐的盒子的六个面，UV 都是 (u, v)。 */
-function addBox(vertices: number[], indices: number[], min: readonly number[], max: readonly number[], u: number, v: number): void {
+function addBox(vertices: number[], indices: number[], min: readonly number[], max: readonly number[], u: number, v: number, uvOf?: (axis: number, sa: 0 | 1, sb: 0 | 1) => readonly [number, number]): void {
   for (let axis = 0; axis < 3; axis++) {
     for (const sign of [-1, 1]) {
       const normal = [0, 0, 0];
@@ -296,7 +310,8 @@ function addBox(vertices: number[], indices: number[], min: readonly number[], m
         p[axis] = sign > 0 ? max[axis]! : min[axis]!;
         p[a] = sa ? max[a]! : min[a]!;
         p[b] = sb ? max[b]! : min[b]!;
-        vertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, u, v);
+        const [fu, fv] = uvOf ? uvOf(axis, sa, sb) : [u, v];
+        vertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, fu, fv);
       }
       // a、b、axis 是右手系的顺序：(0,0)→(1,0)→(1,1) 绕着 +axis 逆时针，负的那面反过来
       if (sign > 0) indices.push(base, base + 1, base + 2, base, base + 2, base + 3);

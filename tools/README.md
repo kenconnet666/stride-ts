@@ -46,6 +46,7 @@
 
 | 测试 | 作用 | 怎么跑 |
 |---|---|---|
+| `packages/editor/experiments/generator-latency.ts` | 生成模型的资源（货架、商品、堆放、SDF……）从改参数到烘出文件要多久：所有样例里的每个生成资源按编辑器后端的烘焙表烘一遍（不写文件），按种类报中位数、最慢的 | `node packages/editor/experiments/generator-latency.ts [apps/<工程> ...]` |
 | `dev/streaming-bench.ts` | 加载与流式：启动各阶段、按路线飞行的帧间隔、下载量、同步建管线数、飞行前后显存和内存的增长；`--check` 比 `streaming-budgets.json`（Valley 无格子，Town 飞过 172 个格子） | `node tools/dev/streaming-bench.ts --world Worlds/Town --seconds 40 --speed 100 --check`；要在验证没跑的时候量（冒烟会关掉共用的无头 Chrome） |
 | `dev/loading-timeline.ts` | 页面外壳、骨架、第一帧的时间线 | 见文件头 |
 | `dev/instance-stress.eval.ts` | 实例化压力：10 万、100 万个共用一个模型的静态实体，生成时间、变换更新、绘制耗时 | 开放世界页面里 `stride eval --file tools/dev/instance-stress.eval.ts`，再 `stride perf`、`stride metrics` |
@@ -53,7 +54,7 @@
 | `apps/bench`（`dev/bench.cjs`、`dev/gc-trace.cjs`） | 早期的数据布局、跨边界开销、GC、内存、位移微图基准（结论在 docs/architecture.md） | 见下面 |
 | `packages/pipeline/experiments/` | 几何实验 E1（位移微图的大小）、E4（规则生成对下载）、Basis 编码耗时（`basis-bench.ts`：2K 单张 76 秒，线程池默认开以后 1K 19.6 → 3.9 秒） | `node packages/pipeline/experiments/<脚本>.ts` |
 | `dev/shelf-stats.ts` | 货架生成的统计（商品数、顶点和三角形、图集大小） | 见文件头 |
-| `dev/frame-bench.ts` | 4K 帧时间的预算（帧率目标：稳定的 4K 30 Hz）：站台、超市、开放世界的山谷各开 3840×2160 的无头 Chrome，CPU、GPU 每帧的 p99 要在 33.3 毫秒以内，`--check` 再比 `frame-budgets.json` 的基线 | `node tools/dev/frame-bench.ts --check`（`--update` 重记基线，`--only Subway` 只量一处）；要独占显卡，阶段结束时跑 |
+| `dev/frame-bench.ts` | 4K 帧时间的预算（帧率目标：跑满 4K 120 Hz）：站台、超市、开放世界的山谷各开 3840×2160 的无头 Chrome，CPU、GPU 每帧的 p99 要在 8.33 毫秒以内（全实时的路线做完之前会报超），`--check` 再比 `frame-budgets.json` 的基线 | `node tools/dev/frame-bench.ts --check`（`--update` 重记基线，`--only Subway` 只量一处）；要独占显卡，阶段结束时跑 |
 | `dev/pedestrians.eval.ts` | 海量行人（海量实体的模拟层）：主相机周围 600 米撒 2000 个挂 SimulationLod、CrowdAgent、状态树的行人；`__pedestrians`、`__radius`、`__noLod` 改人数、范围、对照不分档 | 开放世界的山谷里 `stride eval --file tools/dev/pedestrians.eval.ts`，再 `stride perf`、`stride call simlod` |
 | `dev/many-lights.eval.ts` | 大量局部光：主画面前撒 300 盏点光（每像素重叠四五十盏），看着色和局部光的光追阴影随重叠的灯数怎么涨 | 超市页面（4K）里 `stride perf`，`stride eval --file tools/dev/many-lights.eval.ts`，再 `stride perf` |
 

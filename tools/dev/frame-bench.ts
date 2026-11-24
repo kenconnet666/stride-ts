@@ -1,8 +1,8 @@
-// 4K 帧时间的预算（项目的帧率目标：这台机器上稳定的 4K 30 Hz，用户 2026-11-24；4K 守住了 1080p 不另量）：在几个代表性的
+// 4K 帧时间的预算（项目的帧率目标：这台机器上跑满 4K 120 Hz，用户 2026-11-24；4K 守住了 1080p 不另量）：在几个代表性的
 // 画面里开 3840×2160 的无头 Chrome（画质用默认的极高），等画面稳下来，stride perf 量几秒，看
 //   CPU：每帧的更新加绘制（updateMs + drawMs）的 p99；
 //   GPU：每帧各通道加起来（gpu.frameTotalMs）的 p99 和最长；
-// 都要在一帧 33.3 毫秒以内，--check 时还和 tools/frame-budgets.json 里记的基线比（基线是上次 --update 量到的乘 1.15，CPU 再加 1 毫秒）。
+// 都要在一帧 8.33 毫秒以内（4K 120 Hz，docs/principles.md），--check 时还和 tools/frame-budgets.json 里记的基线比（基线是上次 --update 量到的乘 1.15，CPU 再加 1 毫秒）。
 //   node tools/dev/frame-bench.ts [--check] [--update] [--only <名字的一部分>] [--seconds 4]
 // 要独占显卡（量帧时间），别和回归、别的测量同时跑；借各样例的开发服务器（没开就开一个，用完 pwsh tools/stop-dev.ps1 停）。
 import { spawn, spawnSync } from 'node:child_process';
@@ -11,8 +11,8 @@ import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const budgetsFile = path.join(root, 'tools', 'frame-budgets.json');
-/** 一帧的上限（毫秒）：30 Hz。 */
-const FRAME_LIMIT_MS = 1000 / 30;
+/** 一帧的上限（毫秒）：120 Hz。 */
+const FRAME_LIMIT_MS = 1000 / 120;
 /** --update 时基线比量到的宽多少：GPU 每帧很稳，乘 1.15；CPU 的 p99（4 秒里最慢的几帧）同一个画面前后差半毫秒到一毫秒，再加 1 毫秒。 */
 const MARGIN = 1.15;
 const CPU_SLACK_MS = 1;
@@ -93,8 +93,8 @@ for (const entry of CASES.filter((c) => c.name.includes(only))) {
   const measured = await measure(entry);
   const budget = budgets[entry.name];
   const problems: string[] = [];
-  if (measured.cpuP99 > FRAME_LIMIT_MS) problems.push(`CPU p99 ${round(measured.cpuP99)} ms over the 30 Hz frame`);
-  if (measured.gpuP99 > FRAME_LIMIT_MS) problems.push(`GPU p99 ${round(measured.gpuP99)} ms over the 30 Hz frame`);
+  if (measured.cpuP99 > FRAME_LIMIT_MS) problems.push(`CPU p99 ${round(measured.cpuP99)} ms over the 120 Hz frame`);
+  if (measured.gpuP99 > FRAME_LIMIT_MS) problems.push(`GPU p99 ${round(measured.gpuP99)} ms over the 120 Hz frame`);
   if (check && budget && measured.cpuP99 > budget.cpuP99) problems.push(`CPU p99 ${round(measured.cpuP99)} ms over the budget ${budget.cpuP99}`);
   if (check && budget && measured.gpuP99 > budget.gpuP99) problems.push(`GPU p99 ${round(measured.gpuP99)} ms over the budget ${budget.gpuP99}`);
   console.log(`${problems.length ? 'FAIL' : 'ok  '} ${entry.name}: CPU p99 ${round(measured.cpuP99)} ms, GPU p99 ${round(measured.gpuP99)} ms (max ${round(measured.gpuMax)})${budget ? ` budget CPU ${budget.cpuP99} GPU ${budget.gpuP99}` : ''}`);

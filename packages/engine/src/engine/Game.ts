@@ -297,7 +297,6 @@ export class Game {
 
   status: GameStatus = 'starting';
   error: string | undefined;
-  /** 启动各阶段完成的时刻（页面开始加载后的毫秒数）：原生模块就绪、loadContent 完成、第一帧画完。 */
   /**
    * 启动各阶段的时刻（performance.now，相对页面开始）：native 原生模块好了、content 内容（loadContent）好了、firstFrame 第一帧画完；
    * warmStart、warmEnd 是预热管线的第一次开始、最后一次完成（后台编译，和别的资源并行，内容要等它），warmedPipelines 是启动时后台

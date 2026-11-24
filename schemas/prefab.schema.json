@@ -1224,6 +1224,14 @@
                       6
                     ]
                   },
+                  "followFrame": {
+                    "enum": [
+                      "world",
+                      "target"
+                    ],
+                    "description": "space of the offset: world, or turning with the target around the vertical (a chase camera; +Z is behind the target)",
+                    "default": "world"
+                  },
                   "followDamping": {
                     "type": "number",
                     "minimum": 0,

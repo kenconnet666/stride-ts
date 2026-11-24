@@ -67,6 +67,16 @@ export const CONCRETE_MATERIALS: readonly LibraryMaterial[] = [
       ['normal', 'normalFromHeight', { strength: 0.5 }, { height: 'trowel', uv: 'uv' }],
     ], { baseColor: 'tone', normal: 'normal' }),
   }),
+  // 室内墙面漆（乳胶漆，蛋壳光）：白里带一点暖，滚筒留下很淡的橘皮
+  plain('interiorPaint', 'concrete', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.6,
+    graph: nodeGraph([
+      ['uv', 'uv'],
+      ['roller', 'noise', { tileable: true, scale: 120, octaves: 2, seed: 8 }, { uv: 'uv' }],
+      ['color', 'colorRamp', { from: [0.78, 0.77, 0.74], to: [0.8, 0.79, 0.76] }, { t: 'roller' }],
+      ['normal', 'normalFromHeight', { strength: 0.25 }, { height: 'roller', uv: 'uv' }],
+    ], { baseColor: 'color', normal: 'normal' }),
+  }),
   // 拉毛灰泥：满是小疙瘩的外墙
   plain('stucco', 'concrete', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.95,

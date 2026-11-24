@@ -4,7 +4,7 @@
  *
  * 材质按类别在 materials/ 下各一个文件（类别照 Poly Haven 的材质分类：金属、塑料橡胶、玻璃、石头、砖、混凝土沥青、陶瓷、木头、织物
  * 皮革、纸和卡、有机、地面，加发光和智能材质），都不用贴图：纯参数的（金属、塑料、玻璃、霓虹）和材质节点图算出来的（混凝土、砖、
- * 石板、木头、大理石、布……），下载量是零，放大不糊（vector-assets.md 的方向）。"智能材质"带着磨损、脏污的规则：按模型的棱边、缝
+ * 石板、木头、大理石、布……），世界模拟补的路面标线、车辆（车漆带清漆层），下载量是零，放大不糊（vector-assets.md 的方向）。"智能材质"带着磨损、脏污的规则：按模型的棱边、缝
  * （curvatureMask）和遮蔽（occlusionMask）自动长在该长的地方，用在什么模型上都对（要场景开环境光遮蔽）。特效是 Stride 格式的粒子系统
  * 组件（和粒子编辑器改的是同一种），柔和的圆点
  *
@@ -27,6 +27,8 @@ import { SMART_MATERIALS } from './materials/smart.ts';
 import { STONE_MATERIALS } from './materials/stone.ts';
 import { TERRAIN_MATERIALS } from './materials/terrain.ts';
 import { WOOD_MATERIALS } from './materials/wood.ts';
+import { ROAD_MATERIALS } from './materials/road.ts';
+import { VEHICLE_MATERIALS } from './materials/vehicle.ts';
 
 export { libraryAssetName, libraryMaterialPath, nodeGraph, type LibraryMaterial, type MaterialCategory, type NodeSpec } from './define.ts';
 
@@ -44,7 +46,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   ...METAL_MATERIALS, ...PLASTIC_MATERIALS, ...GLASS_MATERIALS, ...EMISSIVE_MATERIALS,
   ...STONE_MATERIALS, ...BRICK_MATERIALS, ...CONCRETE_MATERIALS, ...CERAMIC_MATERIALS,
   ...WOOD_MATERIALS, ...FABRIC_MATERIALS, ...PAPER_MATERIALS, ...ORGANIC_MATERIALS,
-  ...TERRAIN_MATERIALS, ...SMART_MATERIALS,
+  ...TERRAIN_MATERIALS, ...ROAD_MATERIALS, ...VEHICLE_MATERIALS, ...SMART_MATERIALS,
 ];
 
 // ---- 特效 ----

@@ -326,7 +326,7 @@ const zhCN: EditorMessages = {
   },
   library: {
     materials: '材质', effects: '特效', all: '全部',
-    categories: { metal: '金属', plastic: '塑料、橡胶', glass: '玻璃、水、冰', emissive: '发光', stone: '石头', brick: '砖、瓦', concrete: '混凝土、沥青', ceramic: '陶瓷、瓷砖', wood: '木头', fabric: '织物、皮革', paper: '纸和卡', organic: '有机', terrain: '地面', smart: '智能材质', fire: '火', smoke: '烟', sparks: '火花', magic: '魔法', ambient: '氛围', water: '水' },
+    categories: { metal: '金属', plastic: '塑料、橡胶', glass: '玻璃、水、冰', emissive: '发光', stone: '石头', brick: '砖、瓦', concrete: '混凝土、沥青', ceramic: '陶瓷、瓷砖', wood: '木头', fabric: '织物、皮革', paper: '纸和卡', organic: '有机', terrain: '地面', road: '路面、标线', vehicle: '车辆', smart: '智能材质', fire: '火', smoke: '烟', sparks: '火花', magic: '魔法', ambient: '氛围', water: '水' },
     names: {
       silver: '银', roseGold: '玫瑰金', brass: '黄铜', aluminium: '铝', titanium: '钛', gunmetal: '枪灰金属',
       mirror: '镜子', anodizedTitanium: '阳极氧化钛（彩虹色）', castIron: '铸铁', rustedIron: '生锈的铁', galvanizedSteel: '镀锌钢板', corrugatedMetal: '波纹板',
@@ -349,6 +349,9 @@ const zhCN: EditorMessages = {
       orangePeel: '橙子皮', eggshell: '蛋壳', bone: '骨头', sand: '沙', dirt: '泥土', mud: '烂泥',
       meadow: '草地', gravel: '碎石', snow: '雪', forestFloor: '林地', crackedEarth: '龟裂的泥地', rustingSteel: '生锈的钢',
       dirtyConcrete: '脏混凝土', snowyRock: '积雪的岩石', peelingPaint: '剥落的漆',
+      roadMarkingWhite: '白色标线', roadMarkingYellow: '黄色标线', crosswalk: '斑马线', tactilePaving: '盲道',
+      metallicCarPaint: '金属车漆', solidCarPaint: '纯色车漆', matteCarPaint: '亚光车漆', tintedCarGlass: '贴膜车窗', headlightLens: '车灯罩', tailLightLens: '尾灯罩',
+      roofMembrane: '屋面卷材', vinylSiding: '外墙挂板', interiorPaint: '室内墙面漆',
       gold: '金', copper: '铜', chrome: '铬', brushedSteel: '拉丝钢', carPaint: '车漆', glossyPlastic: '亮面塑料', mattePlastic: '哑光塑料', rubber: '橡胶', clearGlass: '透明玻璃', frostedGlass: '磨砂玻璃', crystal: '水晶',
       neonCyan: '霓虹（青）', neonMagenta: '霓虹（品红）', concrete: '混凝土', redBrick: '红砖', stoneTiles: '石板', wallTiles: '白瓷砖', wood: '木头', marble: '大理石', fabric: '布', alpineTerrain: '高山地形（草、岩、雪）', wornPaint: '掉漆的金属', mossyStone: '长青苔的石头',
       campfire: '篝火', smokeColumn: '烟柱', steam: '蒸汽', sparks: '火花', magicOrb: '魔法光球', dustMotes: '浮尘', fountain: '喷泉',
@@ -648,7 +651,7 @@ const enUS: EditorMessages = {
   },
   library: {
     materials: 'Materials', effects: 'Effects', all: 'All',
-    categories: { metal: 'Metal', plastic: 'Plastic and rubber', glass: 'Glass, water, ice', emissive: 'Emissive', stone: 'Stone', brick: 'Brick and tiles', concrete: 'Concrete and asphalt', ceramic: 'Ceramic and tile', wood: 'Wood', fabric: 'Fabric and leather', paper: 'Paper and card', organic: 'Organic', terrain: 'Ground', smart: 'Smart materials', fire: 'Fire', smoke: 'Smoke', sparks: 'Sparks', magic: 'Magic', ambient: 'Ambient', water: 'Water' },
+    categories: { metal: 'Metal', plastic: 'Plastic and rubber', glass: 'Glass, water, ice', emissive: 'Emissive', stone: 'Stone', brick: 'Brick and tiles', concrete: 'Concrete and asphalt', ceramic: 'Ceramic and tile', wood: 'Wood', fabric: 'Fabric and leather', paper: 'Paper and card', organic: 'Organic', terrain: 'Ground', road: 'Road', vehicle: 'Vehicle', smart: 'Smart materials', fire: 'Fire', smoke: 'Smoke', sparks: 'Sparks', magic: 'Magic', ambient: 'Ambient', water: 'Water' },
     names: {
       silver: 'Silver', roseGold: 'Rose gold', brass: 'Brass', aluminium: 'Aluminium', titanium: 'Titanium', gunmetal: 'Gunmetal',
       mirror: 'Mirror', anodizedTitanium: 'Anodized titanium (iridescent)', castIron: 'Cast iron', rustedIron: 'Rusted iron', galvanizedSteel: 'Galvanized steel', corrugatedMetal: 'Corrugated metal',
@@ -671,6 +674,9 @@ const enUS: EditorMessages = {
       orangePeel: 'Orange peel', eggshell: 'Eggshell', bone: 'Bone', sand: 'Sand', dirt: 'Dirt', mud: 'Mud',
       meadow: 'Meadow', gravel: 'Gravel', snow: 'Snow', forestFloor: 'Forest floor', crackedEarth: 'Cracked earth', rustingSteel: 'Rusting steel',
       dirtyConcrete: 'Dirty concrete', snowyRock: 'Snowy rock', peelingPaint: 'Peeling paint',
+      roadMarkingWhite: 'White road marking', roadMarkingYellow: 'Yellow road marking', crosswalk: 'Crosswalk', tactilePaving: 'Tactile paving',
+      metallicCarPaint: 'Metallic car paint', solidCarPaint: 'Solid car paint', matteCarPaint: 'Matte car paint', tintedCarGlass: 'Tinted car glass', headlightLens: 'Headlight lens', tailLightLens: 'Tail light lens',
+      roofMembrane: 'Roof membrane', vinylSiding: 'Vinyl siding', interiorPaint: 'Interior wall paint',
       gold: 'Gold', copper: 'Copper', chrome: 'Chrome', brushedSteel: 'Brushed steel', carPaint: 'Car paint', glossyPlastic: 'Glossy plastic', mattePlastic: 'Matte plastic', rubber: 'Rubber', clearGlass: 'Clear glass', frostedGlass: 'Frosted glass', crystal: 'Crystal',
       neonCyan: 'Neon (cyan)', neonMagenta: 'Neon (magenta)', concrete: 'Concrete', redBrick: 'Red brick', stoneTiles: 'Stone tiles', wallTiles: 'White wall tiles', wood: 'Wood', marble: 'Marble', fabric: 'Fabric', alpineTerrain: 'Alpine terrain (grass, rock, snow)', wornPaint: 'Worn paint', mossyStone: 'Mossy stone',
       campfire: 'Campfire', smokeColumn: 'Smoke column', steam: 'Steam', sparks: 'Sparks', magicOrb: 'Magic orb', dustMotes: 'Dust motes', fountain: 'Fountain',

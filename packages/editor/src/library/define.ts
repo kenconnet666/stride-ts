@@ -5,7 +5,7 @@
 import type { GraphFile, GraphNodeFile } from '@stride-ts/engine/node-graph';
 import type { MaterialFile } from '@stride-ts/engine/content-format';
 
-export type MaterialCategory = 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'brick' | 'concrete' | 'ceramic' | 'wood' | 'fabric' | 'paper' | 'organic' | 'terrain' | 'smart';
+export type MaterialCategory = 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'brick' | 'concrete' | 'ceramic' | 'wood' | 'fabric' | 'paper' | 'organic' | 'terrain' | 'road' | 'vehicle' | 'smart';
 
 export interface LibraryMaterial {
   /** 小驼峰的 id：缩略图、翻译表、MCP 按它找；拷进工程时的名字是它的大驼峰。 */

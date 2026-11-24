@@ -4,8 +4,9 @@ import { nodeGraph, plain, type LibraryMaterial } from '../define.ts';
 export const METAL_MATERIALS: readonly LibraryMaterial[] = [
   plain('gold', 'metal', { baseColor: [1, 0.766, 0.336, 1], metalness: 1, roughness: 0.25 }),
   plain('copper', 'metal', { baseColor: [0.955, 0.638, 0.538, 1], metalness: 1, roughness: 0.3 }),
-  plain('chrome', 'metal', { baseColor: [0.55, 0.556, 0.554, 1], metalness: 1, roughness: 0.05 }),
-  plain('brushedSteel', 'metal', { baseColor: [0.56, 0.57, 0.58, 1], metalness: 1, roughness: 0.35, anisotropy: { strength: 0.8 } }),
+  // 铬、拉丝不锈钢的 F0 取自 Physically Based 数据库（Chromium、Stainless Steel）
+  plain('chrome', 'metal', { baseColor: [0.654, 0.685, 0.701, 1], metalness: 1, roughness: 0.05 }),
+  plain('brushedSteel', 'metal', { baseColor: [0.669, 0.639, 0.598, 1], metalness: 1, roughness: 0.35, anisotropy: { strength: 0.8 } }),
   plain('silver', 'metal', { baseColor: [0.972, 0.96, 0.915, 1], metalness: 1, roughness: 0.15 }),
   plain('roseGold', 'metal', { baseColor: [0.96, 0.66, 0.6, 1], metalness: 1, roughness: 0.2 }),
   plain('brass', 'metal', { baseColor: [0.91, 0.78, 0.42, 1], metalness: 1, roughness: 0.3 }),

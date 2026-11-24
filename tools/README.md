@@ -53,6 +53,7 @@
 | `apps/bench`（`dev/bench.cjs`、`dev/gc-trace.cjs`） | 早期的数据布局、跨边界开销、GC、内存、位移微图基准（结论在 docs/architecture.md） | 见下面 |
 | `packages/pipeline/experiments/` | 几何实验 E1（位移微图的大小）、E4（规则生成对下载）、Basis 编码耗时（`basis-bench.ts`：2K 单张 76 秒，线程池默认开以后 1K 19.6 → 3.9 秒） | `node packages/pipeline/experiments/<脚本>.ts` |
 | `dev/shelf-stats.ts` | 货架生成的统计（商品数、顶点和三角形、图集大小） | 见文件头 |
+| `dev/many-lights.eval.ts` | 大量局部光：主画面前撒 300 盏点光（每像素重叠四五十盏），看着色和局部光的光追阴影随重叠的灯数怎么涨 | 超市页面（4K）里 `stride perf`，`stride eval --file tools/dev/many-lights.eval.ts`，再 `stride perf` |
 
 原生部分的脚本（PowerShell 7）：
 

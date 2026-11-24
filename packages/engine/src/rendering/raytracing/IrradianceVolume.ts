@@ -217,7 +217,7 @@ ${rayTracedLightingWgsl(0, 6, 5)}
   // 上一轮的探针给的间接光（多次反弹）；盒子外面的表面受天空盒光
   let indirect = giSample(atlas, linearClamp, params.volume, p, n, -dir);
   light += mix(rtSkyLight(n), indirect.rgb, indirect.a);
-  rays[id.x] = vec4f(rtAlbedo(hit) * light + rtEmissive(hit), hit.t);
+  rays[id.x] = vec4f(rtAlbedo(hit) * light + rtEmission(hit), hit.t);
 }
 `;
 

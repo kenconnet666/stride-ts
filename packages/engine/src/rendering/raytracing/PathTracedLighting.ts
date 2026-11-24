@@ -128,7 +128,8 @@ fn cosineDirection(n: vec3f, u: vec2f) -> vec3f {
       let hp = p + dir * hit.t;
       let hn = rtNormal(hit, dir);
       let albedo = rtAlbedo(hit);
-      sum += throughput * (albedo * rtDirectLight(hp, hn) + rtEmissive(hit));
+      // 第一次弹到的发光体照亮的光另算时（RayTracedEmissive）不再加；再往后弹到的照旧
+      sum += throughput * (albedo * rtDirectLight(hp, hn) + select(rtEmissive(hit), rtEmission(hit), b == 0u));
       throughput *= albedo;
       seed = hash(seed + vec3u(b + 1u));
       // 第三次反弹起按俄罗斯轮盘赌停（留下的按留下的概率放大）

@@ -34,6 +34,7 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   glossinessTexture: { type: json, optional: true, group: 'advanced' },
   emissive: { type: colorLinear3, optional: true, group: 'emissive', description: 'linear color times intensity (can exceed 1 for bloom)' },
   emissiveTexture: { type: object(textureSlot), optional: true, group: 'emissive' },
+  emissiveLighting: { type: bool, optional: true, default: false, group: 'emissive', description: 'lights nearby surfaces through ray tracing (screens, light boxes, neon; uses the average emission of the whole mesh)' },
   emissiveTree: { type: json, optional: true, group: 'advanced' },
   normalMap: { type: json, optional: true, group: 'advanced' },
   normalTree: { type: json, optional: true, group: 'advanced' },

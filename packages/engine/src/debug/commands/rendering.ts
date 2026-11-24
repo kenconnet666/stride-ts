@@ -148,6 +148,13 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
     if (!shadows.enabled || !local.enabled) local.reset();
     return { enabled: shadows.enabled, local: local.enabled, lightAngle: game.renderSystem.lighting.directionalShadow?.lightAngle ?? null };
   });
+  debug.command('emissive', 'Emissive surfaces light the main view (materials with emissiveLighting: screens, light boxes, neon; ReSTIR over the emissive triangles, one shadow ray per pixel). Needs the global illumination quality. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
+    const emissive = game.graphicsCompositor.rayTracedEmissive;
+    emissive.enabled = switchArg(args, emissive.enabled);
+    if (!emissive.enabled) emissive.reset();
+    const { emitters } = game.renderSystem.rayTracing;
+    return { enabled: emissive.enabled, emitters: emitters.count };
+  });
   debug.command('ssgi', 'Screen-space global illumination of the main view (indirect diffuse light and occlusion; replaces GTAO while on). args: on (true/false, or "toggle"; omitted keeps it and just reports), radius, thickness (world units), intensity, feedback.', (args) => {
     const gi = game.graphicsCompositor.globalIllumination;
     gi.enabled = switchArg(args, gi.enabled);

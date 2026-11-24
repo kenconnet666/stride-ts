@@ -226,7 +226,10 @@ export class MeshGpu {
    * 视图绑定组：阴影图集 → 环境光遮蔽 → 接触阴影 → 绑定组。按绑在阴影位置上的深度图分开：画阴影图集时不能同时采样它。
    */
   /** 按阴影图集、屏幕遮蔽、接触阴影、平面反射图分的视图绑定组。 */
-  readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>>();
+  /** 视图绑定组按用到的几张贴图缓存（键是它们的编号连起来，#textureId）。 */
+  readonly #viewBindGroups = new Map<string, GPUBindGroup>();
+  readonly #textureIds = new WeakMap<GPUTexture, number>();
+  #nextTextureId = 0;
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
@@ -274,7 +277,7 @@ export class MeshGpu {
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        ...(planar.supported ? [{ binding: 26, visibility: GPUShaderStage.FRAGMENT, texture: {} }, { binding: 27, visibility: GPUShaderStage.FRAGMENT, texture: {} }] : []),
+        ...(planar.supported ? [26, 27, 28].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: {} })) : []),
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -716,7 +719,7 @@ export class MeshGpu {
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
       data.set([wetness, snowCover, puddles, rain], o + 240);
       const refraction = this.#refraction;
-      data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, view.rayTracedLocalLights ? 1 : 0, 0], o + 244);
+      data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, view.rayTracedLocalLights ? 1 : 0, view.rayTracedEmissive ? 1 : 0], o + 244);
       data.set(clusterParams(view), o + 248);
       data.set(planar.active && view === planar.receiver ? planar.params : PLANAR_OFF, o + 256);
       // 原点是 1024 米的整数倍，按 65536 米取模（图案 65 公里重复一次，单精度在这个范围里是毫米级）
@@ -757,18 +760,15 @@ export class MeshGpu {
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
    * contact 是接触阴影，没有时都用白图；screen 是第 26 个绑定（平面反射图或者折射拷的画面），没有时用 1x1 的空图。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture, emissive?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.openOcclusion;
     const shadow = contact ?? this.#resources.white;
     const reflection = screen ?? this.#planar.empty;
-    let byAtlas = this.#viewBindGroups.get(atlas);
-    if (!byAtlas) this.#viewBindGroups.set(atlas, (byAtlas = new Map()));
-    let byOcclusion = byAtlas.get(ao);
-    if (!byOcclusion) byAtlas.set(ao, (byOcclusion = new Map()));
-    let groups = byOcclusion.get(shadow);
-    if (!groups) byOcclusion.set(shadow, (groups = new Map()));
-    let group = groups.get(reflection);
+    // 没有时绑白图：视图常量的 decal.w 关着，着色器不读
+    const emissiveLight = emissive ?? this.#resources.white;
+    const key = [atlas, ao, shadow, reflection, emissiveLight].map((texture) => this.#textureId(texture)).join(',');
+    let group = this.#viewBindGroups.get(key);
     if (!group) {
       group = this.device.createBindGroup({
         label: 'MeshRenderFeature view',
@@ -799,12 +799,22 @@ export class MeshGpu {
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
           { binding: 24, resource: { buffer: this.#clusters.buffer } },
           { binding: 25, resource: { buffer: this.#localLights.ltc } },
-          ...(this.#planar.supported ? [{ binding: 26, resource: reflection.createView() }, { binding: 27, resource: this.#weather.irradianceVolumes.atlas.createView() }] : []),
+          ...(this.#planar.supported ? [
+            { binding: 26, resource: reflection.createView() },
+            { binding: 27, resource: this.#weather.irradianceVolumes.atlas.createView() },
+            { binding: 28, resource: emissiveLight.createView() },
+          ] : []),
         ],
       });
-      groups.set(reflection, group);
+      this.#viewBindGroups.set(key, group);
     }
     return group;
+  }
+
+  #textureId(texture: GPUTexture): number {
+    let id = this.#textureIds.get(texture);
+    if (id === undefined) this.#textureIds.set(texture, (id = this.#nextTextureId++));
+    return id;
   }
 
   /** 视图绑定组都作废（换了天空盒、探针、云影、天空遮挡，缓冲换大了）。 */

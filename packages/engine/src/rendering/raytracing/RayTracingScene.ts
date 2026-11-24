@@ -15,8 +15,18 @@ import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from '../mesh/HeightPages';
 import type { MeshBatch } from '../mesh/MeshRenderFeature';
 import { rayTraceable } from '../mesh/rayTraceable';
 
-/** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质）、表面颜色的格号 + 1（0 是没有）、材质的颜色（rgba）、自发光（rgb、0）。 */
+/**
+ * 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质，第 2 位：随风摆，第 3 位：
+ * 自发光照亮周围、在发光体表里）、表面颜色的格号 + 1（0 是没有）、材质的颜色（rgba）、自发光（rgb、0）。
+ */
 export const RT_INSTANCE_WORDS = 24;
+/** 实例标志：自发光照亮周围（在发光体表里，RayTracedEmissive 直接对它抽样；别的光追打到它时不再加它的自发光，免得算两遍）。 */
+export const RT_INSTANCE_EMITTER = 4;
+/**
+ * 发光体表的一项几个 32 位：世界矩阵（3 行 × 4，网格坐标到渲染坐标），三角形的起点和个数、实例的下标、按功率的累积分布（含自己，
+ * 最后一项是 1）。
+ */
+export const RT_EMITTER_WORDS = 16;
 /** 宽 BVH 的一个节点（原生的 sn_bvh_*，布局见 Runtime.h）：32 个 32 位，GPU 上是 8 个 vec4u。 */
 const NODE_WORDS = 32;
 /**
@@ -314,7 +324,7 @@ export class RayTracingScene {
   #wastedWords = 0;
   #blasVersion = 0;
   #uploadedBlas = -1;
-  #tlas: { nodes: Uint32Array; instances: Float32Array } | undefined;
+  #tlas: { nodes: Uint32Array; instances: Float32Array; emitters: Float32Array } | undefined;
   #tlasBuilding = false;
   #tlasDirty = true;
   #uploadedTlas: object | undefined;
@@ -333,6 +343,10 @@ export class RayTracingScene {
   instanceCount = 0;
   /** 传上去的场景变了（新的 BLAS 或者 TLAS）就加一：用光追结果的特性按它判断要不要重算。 */
   version = 0;
+  /** 发光体表（自发光照亮周围的实例，RT_EMITTER_WORDS 一项）；count 是 0 时没有，version 随顶层换。 */
+  readonly emitters: { buffer: GPUBuffer | undefined; count: number; version: number } = { buffer: undefined, count: 0, version: 0 };
+  /** 着色器里别把发光体的自发光再加一遍（RayTracedEmissive 这一帧在算它们照亮的光；前向渲染器每帧设）。 */
+  emittersLit = false;
 
   constructor(device: GPUDevice) {
     this.#device = device;
@@ -475,6 +489,8 @@ export class RayTracingScene {
     }
     if (entries.length === 0) {
       // 没有能光追的实例：不建 TLAS（空的 BVH 的根是个数为 0、盒子反着的节点，GPU 上会当成指回自己的内部节点死循环），也不给绑定组
+      this.emitters.count = 0;
+      this.emitters.version++;
       this.#tlas = undefined;
       this.#uploadedTlas = undefined;
       this.#group = undefined;
@@ -491,19 +507,22 @@ export class RayTracingScene {
       // 实例按叶子的顺序排：叶子里的"第一个图元"直接是实例的下标
       const instances = new Float32Array(Math.max(1, entries.length) * RT_INSTANCE_WORDS);
       const words = new Uint32Array(instances.buffer);
+      const emitters: Emitter[] = [];
       for (let k = 0; k < entries.length; k++) {
         const { blas, slot, batch, surface } = entries[order[k]!]!;
         const o = k * RT_INSTANCE_WORDS;
         inverseAffine(world, slot * 16, instances, o);
         words[o + 12] = blas.nodeOffset;
         words[o + 13] = blas.triangleOffset;
-        // 第 1 位：双面的材质；第 2 位：随风动的（顶点着色器里摆，光追里是静止的：阴影射线跳过，影子交给阴影图）
-        words[o + 14] = (batch.material.doubleSided ? 1 : 0) | (batch.material.wind ? 2 : 0);
+        const { baseColor, emissive, emissiveLighting } = batch.material;
+        const power = emissiveLighting ? (0.2126 * emissive[0] + 0.7152 * emissive[1] + 0.0722 * emissive[2]) * worldArea(world, slot * 16, this.#triangles, blas) : 0;
+        if (power > 0) emitters.push({ instance: k, slot, blas, power });
+        // 第 1 位：双面的材质；第 2 位：随风动的（顶点着色器里摆，光追里是静止的：阴影射线跳过，影子交给阴影图）；第 3 位：发光体
+        words[o + 14] = (batch.material.doubleSided ? 1 : 0) | (batch.material.wind ? 2 : 0) | (power > 0 ? RT_INSTANCE_EMITTER : 0);
         words[o + 15] = (this.surfaces.tileOf(surface) ?? -1) + 1;
-        const { baseColor, emissive } = batch.material;
         instances.set([baseColor.r, baseColor.g, baseColor.b, 1, emissive[0], emissive[1], emissive[2], 0], o + 16);
       }
-      this.#tlas = { nodes, instances };
+      this.#tlas = { nodes, instances, emitters: emitterTable(world, emitters) };
       this.instanceCount = entries.length;
     }, (error: unknown) => console.error('ray tracing: building the top-level BVH failed', error)).finally(() => {
       this.#tlasBuilding = false;
@@ -534,6 +553,7 @@ export class RayTracingScene {
     if (tlas && tlas !== this.#uploadedTlas) {
       write('tlas', 'TLAS nodes', tlas.nodes, tlas.nodes.length);
       write('instances', 'instances', tlas.instances, tlas.instances.length);
+      this.#uploadEmitters(tlas.emitters);
       this.#uploadedTlas = tlas;
       this.version++;
     }
@@ -544,6 +564,18 @@ export class RayTracingScene {
       this.#surfaceBuffer = surfaces;
       this.#group = device.createBindGroup({ label: 'RayTracingScene', layout: this.bindGroupLayout, entries: [t, instances, blas, triangles, surfaces].map((buffer, binding) => ({ binding, resource: { buffer } })) });
     }
+  }
+
+  #uploadEmitters(table: Float32Array): void {
+    const emitters = this.emitters;
+    emitters.count = table.length / RT_EMITTER_WORDS;
+    emitters.version++;
+    if (emitters.count === 0) return;
+    if (!emitters.buffer || emitters.buffer.size < table.byteLength) {
+      emitters.buffer?.destroy();
+      emitters.buffer = this.#device.createBuffer({ label: 'RayTracingScene emitters', size: 2 ** Math.ceil(Math.log2(table.byteLength)), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    }
+    this.#device.queue.writeBuffer(emitters.buffer, 0, table);
   }
 
   /** 读回 GPU 上的四个缓冲（调试：check、和 CPU 上照着着色器走一遍比）；还没建好时 undefined。 */
@@ -610,6 +642,7 @@ export class RayTracingScene {
     this.surfaces.destroy();
     this.lighting.destroy();
     for (const buffer of Object.values(this.#buffers)) buffer?.destroy();
+    this.emitters.buffer?.destroy();
   }
 }
 
@@ -670,6 +703,48 @@ function worldBox(world: Float32Array, m: number, bounds: { readonly min: readon
 }
 
 /** 仿射的世界矩阵（列主序）的逆，按 3 行 × 4 写到 out[at..at+12]（第 r 行：local[r] = dot(row, (x, y, z, 1))）。 */
+/** 发光体表里的一项（建表前）。 */
+export interface Emitter {
+  readonly instance: number;
+  readonly slot: number;
+  readonly blas: Blas;
+  readonly power: number;
+}
+
+/** 一个 BLAS 的三角形在世界里的总面积（实例的世界矩阵在 world 的 m 处；三角形是 v0、e1、e2，各占一个 vec4）。 */
+function worldArea(world: Float32Array, m: number, triangles: Float32Array, blas: Blas): number {
+  let area = 0;
+  for (let t = 0; t < blas.triangles; t++) {
+    const o = (blas.triangleOffset + t) * TRIANGLE_WORDS;
+    const e1 = transformDirection(world, m, triangles, o + 4), e2 = transformDirection(world, m, triangles, o + 8);
+    area += 0.5 * Math.hypot(e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]);
+  }
+  return area;
+}
+
+function transformDirection(world: Float32Array, m: number, v: Float32Array, o: number): [number, number, number] {
+  const x = v[o]!, y = v[o + 1]!, z = v[o + 2]!;
+  return [world[m]! * x + world[m + 4]! * y + world[m + 8]! * z, world[m + 1]! * x + world[m + 5]! * y + world[m + 9]! * z, world[m + 2]! * x + world[m + 6]! * y + world[m + 10]! * z];
+}
+
+/** 发光体表（RT_EMITTER_WORDS 一项）：世界矩阵的三行、三角形的起点和个数、实例、按功率的累积分布。 */
+export function emitterTable(world: Float32Array, emitters: readonly Emitter[]): Float32Array {
+  const table = new Float32Array(emitters.length * RT_EMITTER_WORDS);
+  const words = new Uint32Array(table.buffer);
+  const total = emitters.reduce((sum, emitter) => sum + emitter.power, 0);
+  let cumulative = 0;
+  emitters.forEach(({ instance, slot, blas, power }, k) => {
+    const o = k * RT_EMITTER_WORDS, m = slot * 16;
+    for (let r = 0; r < 3; r++) table.set([world[m + r]!, world[m + 4 + r]!, world[m + 8 + r]!, world[m + 12 + r]!], o + r * 4);
+    words[o + 12] = blas.triangleOffset;
+    words[o + 13] = blas.triangles;
+    words[o + 14] = instance;
+    cumulative += power;
+    table[o + 15] = k === emitters.length - 1 ? 1 : cumulative / total;
+  });
+  return table;
+}
+
 function inverseAffine(world: Float32Array, m: number, out: Float32Array, at: number): void {
   const a = world[m]!, b = world[m + 4]!, c = world[m + 8]!;
   const d = world[m + 1]!, e = world[m + 5]!, f = world[m + 9]!;

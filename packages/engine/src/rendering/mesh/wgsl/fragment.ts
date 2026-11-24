@@ -840,6 +840,8 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   // 辐照度体盖住的地方漫反射的环境光用探针的（有遮挡、有反弹），盖不住的部分（1 - a）才用环境光和天空盒的
   let volume = volumeIrradiance(in.world, n, v);
   scattered += diffuse * celEnvironment(volume.rgb) * ao * volume.a;
+  // 发光体（屏幕、灯箱）照亮的光：光追里带影子算好的，辐照度体这时不再含它们
+  scattered += diffuse * emissiveLight(in.position);
   if (hasAmbient || hasSky) {
     scattered += diffuse * celEnvironment(view.ambientColor.rgb) * ao * (1.0 - volume.a);
     environment += environmentSpecular * view.ambientColor.rgb * ao * (1.0 - probe.a);

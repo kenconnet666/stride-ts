@@ -147,6 +147,12 @@ export interface MaterialDesc {
   /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];
   readonly emissiveTexture?: MaterialTexture;
+  /**
+   * 自发光照亮周围（光追，合成器开着 emissiveLighting 时）：屏幕、灯箱、霓虹这类大致均匀发光的面当光源，照到附近的表面上、带
+   * 软影子（RayTracedEmissive）。按整个网格的平均自发光算（贴图里只有一小块发光的、旁边已经放了灯的灯具别开：光会从整个面出来、
+   * 或者算两遍）。默认关。
+   */
+  readonly emissiveLighting?: boolean;
   /** 编译好的颜色树（自发光、法线贴图、位移贴图）；有自发光树时不看 emissive、emissiveTexture。 */
   readonly shaderTrees?: MaterialShaderTrees;
   /** 两面都画（Stride 的 CullMode 是 None），默认只画正面。 */
@@ -315,6 +321,8 @@ export class Material {
   readonly glossinessMap: Required<MaterialTexture> & GlossinessChannels | undefined;
   readonly emissive: readonly [number, number, number];
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
+  /** 自发光照亮周围（见 MaterialDesc.emissiveLighting）。 */
+  readonly emissiveLighting: boolean;
   readonly shaderTrees: MaterialShaderTrees | undefined;
   readonly doubleSided: boolean;
   readonly ambientOcclusion: { readonly value: number; readonly texture: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a' } | undefined; readonly directLighting: number };
@@ -365,6 +373,7 @@ export class Material {
     this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert, ...(gloss.metalnessChannel ? { metalnessChannel: gloss.metalnessChannel } : {}), ...(gloss.transmissionChannel ? { transmissionChannel: gloss.transmissionChannel } : {}) };
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
+    this.emissiveLighting = desc.emissiveLighting ?? false;
     this.shaderTrees = desc.shaderTrees;
     this.doubleSided = desc.doubleSided ?? false;
     const occlusion = desc.ambientOcclusion;

@@ -191,6 +191,8 @@ export interface CompositorSettings extends SceneForwardRenderer {
   readonly particlesOverUI?: true;
   /** 光追的阴影（见 SceneCompositor.rayTracedShadows）。 */
   readonly rayTracedShadows?: true;
+  /** 自发光的面照亮周围（见 SceneCompositor.emissiveLighting）。 */
+  readonly emissiveLighting?: true;
   /** 网格效果的名字（见 SceneCompositor.meshEffect）。 */
   readonly meshEffect?: string;
 }
@@ -450,6 +452,7 @@ export class ContentManager {
         ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert, ...(file.glossinessTexture!.metalnessChannel ? { metalnessChannel: file.glossinessTexture!.metalnessChannel } : {}), ...(file.glossinessTexture!.transmissionChannel ? { transmissionChannel: file.glossinessTexture!.transmissionChannel } : {}) } } : {}),
         ...(file.emissive ? { emissive: file.emissive } : {}),
         ...(emissiveTexture ? { emissiveTexture } : {}),
+        ...(file.emissiveLighting ? { emissiveLighting: true } : {}),
         ...(shaderTrees ? { shaderTrees } : {}),
         ...(file.doubleSided ? { doubleSided: true } : {}),
         ...(occlusion ? { ambientOcclusion: { value: occlusion.value, directLighting: occlusion.directLighting, ...(occlusionTexture ? { texture: { ...occlusionTexture, channel: occlusion.texture!.channel } } : {}) } } : {}),

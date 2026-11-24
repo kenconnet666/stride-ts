@@ -1,0 +1,12 @@
+{
+  "name": "ScreenRoom",
+  "compositor": { "clearColor": [0, 0, 0, 1], "postEffects": { "toneMap": true, "antialiasing": true, "antialiasingMode": "temporal" }, "transparent": true, "emissiveLighting": true },
+  "entities": [
+    { "id": "e0e0e0e0-0001-4000-8000-000000000001", "name": "Camera", "parent": null, "position": [1.2, 1.4, 2.6], "rotation": [-0.087, 0.12, 0.0105, 0.989], "scale": [1, 1, 1], "components": { "camera": { "verticalFieldOfView": 67, "nearClipPlane": 0.05, "farClipPlane": 100 } } },
+    { "id": "e0e0e0e0-0001-4000-8000-000000000002", "name": "Ambient", "parent": null, "position": [0, 3, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1], "components": { "light": { "type": "ambient", "color": [1, 1, 1], "intensity": 0.02 } } },
+    { "id": "e0e0e0e0-0001-4000-8000-000000000003", "name": "Floor", "parent": null, "position": [0, -0.05, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1], "components": { "model": { "model": "ScreenRoom/Floor", "materials": [] } } },
+    { "id": "e0e0e0e0-0001-4000-8000-000000000004", "name": "Wall", "parent": null, "position": [0, 1.5, -2], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1], "components": { "model": { "model": "ScreenRoom/Wall", "materials": [] } } },
+    { "id": "e0e0e0e0-0001-4000-8000-000000000005", "name": "Box", "parent": null, "position": [0.5, 0.25, -0.9], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1], "components": { "model": { "model": "ScreenRoom/Box", "materials": [] } } },
+    { "id": "e0e0e0e0-0001-4000-8000-000000000006", "name": "Screen", "parent": null, "position": [0, 0.9, -1.85], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1], "components": { "model": { "model": "ScreenRoom/Screen", "materials": [] } } }
+  ]
+}

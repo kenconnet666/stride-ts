@@ -183,6 +183,12 @@ export class RenderView {
   screenIndirect = false;
   /** 投阴影的方向光的接触阴影（ContactShadows.record 的结果），着色时乘那盏光；只有主画面有。 */
   screenShadow: GPUTexture | undefined;
+  /**
+   * 发光体照亮的漫反射光（RayTracedEmissive.record 的结果：rgb 是余弦加权的平均辐亮度，着色时乘漫反射颜色加上）；只有主画面
+   * 不透明的像素有。rayTracedEmissive 在写视图的 uniform（prepare）之前定下来（视图常量的 decal.w），贴图在分簇之后才有。
+   */
+  screenEmissive: GPUTexture | undefined;
+  rayTracedEmissive = false;
   /** 运动向量用（TemporalAntialiasing.jitter 设）：这一帧没挪过亚像素的视图投影、上一帧的。 */
   readonly unjitteredViewProjection = Matrix.identity();
   readonly previousViewProjection = Matrix.identity();

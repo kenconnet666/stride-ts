@@ -1,0 +1,1 @@
+{ "format": 1, "procedural": { "type": "cube", "size": [8, 0.1, 8] }, "materials": ["ScreenRoom/Gray"] }

@@ -336,6 +336,12 @@ export interface MaterialFile {
   readonly emissive?: Vec3Tuple;
   readonly emissiveTexture?: TextureSlot;
   /**
+   * 自发光照亮周围（光追，合成器开着 emissiveLighting 时）：屏幕、灯箱、霓虹这类大致均匀发光的面当光源，照到附近的表面上、带
+   * 软影子（RayTracedEmissive）。按整个网格的平均自发光算（贴图里只有一小块发光的、旁边已经放了灯的灯具别开：光会从整个面出来、
+   * 或者算两遍）。默认关。
+   */
+  readonly emissiveLighting?: boolean;
+  /**
    * 化不成"贴图乘颜色"的自发光（比如有着色器类）：整棵颜色树（格式同粒子材质的，见 ParticleModuleFile），运行时编译成 WGSL；
    * 有它时不看 emissive、emissiveTexture。useAlpha：输出的 alpha 用自发光的 alpha（Stride 的 UseAlpha）。
    */

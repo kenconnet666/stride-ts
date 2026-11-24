@@ -773,6 +773,10 @@
           "type": "boolean",
           "default": false
         },
+        "emissiveLighting": {
+          "type": "boolean",
+          "default": false
+        },
         "meshEffect": {
           "type": "string"
         }

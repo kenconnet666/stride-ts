@@ -615,6 +615,7 @@ export const SCENE_FIELDS: { readonly [K in SceneSettingKey]: ComponentDescripti
       shadows: optional(bool, true),
       particlesOverUI: optional(bool, false),
       rayTracedShadows: optional(bool, false),
+      emissiveLighting: optional(bool, false),
       meshEffect: optional(string),
     })),
     initial: { clearColor: [0.01, 0.0134, 0.022, 1], postEffects: null, transparent: true },

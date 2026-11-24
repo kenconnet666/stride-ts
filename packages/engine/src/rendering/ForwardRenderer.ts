@@ -35,6 +35,7 @@ import { ScreenSpaceReflections } from './screenspace/ScreenSpaceReflections';
 import { ContactShadows } from './screenspace/ContactShadows';
 import { RayTracedShadows } from './raytracing/RayTracedShadows';
 import { RayTracedLocalLights } from './raytracing/RayTracedLocalLights';
+import { RayTracedEmissive } from './raytracing/RayTracedEmissive';
 import { DepthOfField } from './screenspace/DepthOfField';
 import { MotionBlur } from './screenspace/MotionBlur';
 import { Skybox } from './lighting/Skybox';
@@ -151,6 +152,9 @@ export class ForwardRenderer {
   /** 局部光的光追阴影（ReSTIR，开关同 rayTracedShadows）。 */
   readonly rayTracedLocalLights: RayTracedLocalLights;
   #rayTracedLocalLights = false;
+  /** 自发光的面照亮周围（合成器的 emissiveLighting）。 */
+  readonly rayTracedEmissive: RayTracedEmissive;
+  #rayTracedEmissive = false;
   /** 屏幕空间反射（开不开照合成器的 LocalReflections，见 ScreenSpaceReflections.ts）。 */
   readonly screenSpaceReflections: ScreenSpaceReflections;
   /** 屏幕空间反射开着时的不透明阶段：颜色之外写表面（法线、粗糙度、环境镜面反射）。 */
@@ -320,6 +324,7 @@ export class ForwardRenderer {
     this.contactShadows = new ContactShadows(renderSystem.device);
     this.rayTracedShadows = new RayTracedShadows(renderSystem.device);
     this.rayTracedLocalLights = new RayTracedLocalLights(renderSystem.device);
+    this.rayTracedEmissive = new RayTracedEmissive(renderSystem.device);
     this.motionBlur = new MotionBlur(renderSystem.device);
     this.depthOfField = new DepthOfField(renderSystem.device);
     this.#pool = new GraphTexturePool(renderSystem.device);
@@ -346,11 +351,13 @@ export class ForwardRenderer {
   }
 
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering, rayTracedShadows }: CompositorSettings): void {
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering, rayTracedShadows, emissiveLighting }: CompositorSettings): void {
     this.subsurfaceScattering.enabled = subsurfaceScattering === true;
     this.rayTracedShadows.enabled = rayTracedShadows === true;
     this.rayTracedShadows.reset();
     this.rayTracedLocalLights.reset();
+    this.rayTracedEmissive.enabled = emissiveLighting === true;
+    this.rayTracedEmissive.reset();
     this.particlesOverUI = particlesOverUI === true;
     this.#mainView.cullingMask = ((renderMask ?? RENDER_GROUP_ALL) & RENDER_GROUP_VISIBLE) >>> 0;
     this.clearColor.set(r, g, b, a);
@@ -419,6 +426,7 @@ export class ForwardRenderer {
     }
     this.#mainView.screenOcclusion = undefined;
     this.#mainView.screenShadow = undefined;
+    this.#mainView.screenEmissive = undefined;
     // 屏幕空间全局光照要上一帧的 HDR 画面：只在画进 HDR 缓冲时做；没做的帧以后重新开始累积。screenIndirect 要在 prepare 写视图的
     // uniform 之前定下来（着色器按它解读 screenOcclusion），贴图本身在深度预通道之后才算出来
     this.#indirect = this.hasCamera && post && this.globalIllumination.enabled && this.quality.globalIllumination;
@@ -470,16 +478,20 @@ export class ForwardRenderer {
     const rayTracedShadowsWanted = rayTracedWanted && renderSystem.lighting.shadowLight >= 0;
     // 局部光（点光、聚光、面光源）的光追阴影：有局部光时
     const rayTracedLocalWanted = rayTracedWanted && this.rayTracedLocalLights.enabled && renderSystem.lighting.localCount > 0;
-    if (rayTracedReflections || pathTracingWanted || rayTracedShadowsWanted || rayTracedLocalWanted) renderSystem.rayTracing.update(context.game);
+    const rayTracedEmissiveWanted = this.hasCamera && this.rayTracedEmissive.enabled && this.quality.globalIllumination;
+    if (rayTracedReflections || pathTracingWanted || rayTracedShadowsWanted || rayTracedLocalWanted || rayTracedEmissiveWanted) renderSystem.rayTracing.update(context.game);
     this.#rayTracedShadows = rayTracedShadowsWanted && this.rayTracedShadows.ready(renderSystem.rayTracing);
     if (!this.#rayTracedShadows) this.rayTracedShadows.reset();
     this.#mainView.rayTracedShadows = this.#rayTracedShadows;
     this.#rayTracedLocalLights = rayTracedLocalWanted && this.rayTracedLocalLights.ready(renderSystem.rayTracing);
     if (!this.#rayTracedLocalLights) this.rayTracedLocalLights.reset();
     this.#mainView.rayTracedLocalLights = this.#rayTracedLocalLights;
+    this.#rayTracedEmissive = rayTracedEmissiveWanted && this.rayTracedEmissive.ready(renderSystem.rayTracing);
+    if (!this.#rayTracedEmissive) this.rayTracedEmissive.reset();
+    this.#mainView.rayTracedEmissive = this.#rayTracedEmissive;
     pathTracing.active = pathTracingWanted && pathTracing.ready(renderSystem.rayTracing);
     this.#mainView.screenIndirect = this.#indirect || pathTracing.active;
-    if (volumes.active || rayTracedReflections || pathTracing.active) renderSystem.rayTracing.lighting.write(renderSystem.lighting);
+    if (volumes.active || rayTracedReflections || pathTracing.active) renderSystem.rayTracing.lighting.write(renderSystem.lighting, this.#rayTracedEmissive);
     this.#assignClusters(views.filter((view) => view !== skyView && !impostorViews.includes(view)));
     // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
     probes.watchLighting(renderSystem.lighting);
@@ -654,6 +666,7 @@ export class ForwardRenderer {
     this.contactShadows.destroy();
     this.rayTracedShadows.destroy();
     this.rayTracedLocalLights.destroy();
+    this.rayTracedEmissive.destroy();
     this.motionBlur.destroy();
     this.depthOfField.destroy();
     this.picker.destroy();
@@ -729,6 +742,10 @@ export class ForwardRenderer {
         const { direction } = lighting.directionals[lighting.shadowLight]!;
         const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
         view.screenShadow = this.contactShadows.record(frame, depth, view, [-direction.x / length, -direction.y / length, -direction.z / length]);
+      }
+      // 发光体照亮的光（屏幕、灯箱）
+      if (view === this.#mainView && !isGraphTexture(depth) && this.#rayTracedEmissive) {
+        view.screenEmissive = this.rayTracedEmissive.record(frame, depth, view, renderSystem.rayTracing);
       }
     }
     const surfaces = output.surfaces ?? [];

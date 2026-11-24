@@ -504,7 +504,7 @@ export class ForwardRenderer {
       sky.watch(context.game.meshes.batches, context.game.transforms, context.game.frames);
       renderSystem.cull(context, views);
       // 画进渲染目标贴图的相机也接收阴影：各自一套方向光的级联（同 Stride：每个相机的前向渲染器各算各的）
-      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows));
+      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows), context.game.meshes.shadowCasterChanges(context));
       renderSystem.addViews(shadowViews);
       renderSystem.cull(context, shadowViews);
       // 点光、聚光的阴影下标在阴影收集时才定，之后上传（网格、雾都读）
@@ -516,10 +516,8 @@ export class ForwardRenderer {
     const graph = this.#graph;
     graph.beginFrame();
     const frame = new EffectFrame(encoder, graph, GpuProfiler.of(renderSystem.device) ?? undefined);
-    if (shadowViews.length > 0) {
-      // 阴影图集在图外面（着色时经光照的绑定组读它）：算副作用
-      frame.pass('ShadowMapRenderer', (pass) => pass.sideEffect(), () => this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews));
-    }
+    // 阴影图集在图外面（着色时经光照的绑定组读它）：算副作用；缓存着没变的光这一帧什么都不画，从静态层拷的也在这里
+    frame.pass('ShadowMapRenderer', (pass) => pass.sideEffect(), () => this.shadowMapRenderer.draw(context, encoder, renderSystem));
     // 天空遮挡：能挡阳光的才挡天，用阴影投射者的阶段画（管线和阴影共用）；贴图在图外面，算副作用
     if (skyView) frame.pass('SkyOcclusion', (pass) => pass.sideEffect(), () => sky.draw(context, encoder, renderSystem, this.shadowMapRenderer.casterStage));
     // 烘好的卡片贴图在图外面，算副作用
@@ -870,6 +868,7 @@ export class ForwardRenderer {
     local.radius = radius;
     local.invSquareRadius = 1 / (radius * radius);
     local.shadowIndex = -1;
+    local.slot = transform.slot[i]!;
     if (local.area) {
       // 沿本地 X 轴（带缩放）的那条：矩形的半宽、圆盘的半径、管子的半长
       local.halfWidth.set(world[w]!, world[w + 1]!, world[w + 2]!).scale(light.width[i]! / 2);

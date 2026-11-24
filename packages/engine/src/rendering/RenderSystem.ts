@@ -229,6 +229,11 @@ export class RenderView {
    * 只补光追里没有的投影者（蒙皮的角色、透明的、关了 visibleInRayTracing 的）。
    */
   skipsRayTraced = false;
+  /**
+   * 阴影投射的阶段只画一层投影者（缓存的阴影图，lighting/ShadowMapRenderer.ts）：static 只画静止的（画一次缓存着），dynamic
+   * 只画动的（每帧画在拷过来的静态层上）；undefined 都画。
+   */
+  casterLayer: 'static' | 'dynamic' | undefined = undefined;
   /** 这一帧投阴影的方向光用光追的阴影（RayTracedShadows）：阴影图收集时给它的级联标 skipsRayTraced。 */
   rayTracedShadows = false;
   /**
@@ -472,13 +477,15 @@ export interface LocalLight {
   readonly world: Float32Array;
   /** 这一帧它的阴影在 Lighting.localShadows 里的下标；不投阴影、或者图集放不下时是 -1。ShadowMapRenderer 填。 */
   shadowIndex: number;
+  /** 光源实体的变换槽位：跨帧认出是同一盏光（阴影图按它缓存）。 */
+  slot: number;
 }
 
 /** 一盏还没用上的点光或聚光（Lighting.locals 按需变长，变长的部分留着下一帧复用）。 */
 export function createLocalLight(): LocalLight {
   return {
     spot: false, area: undefined, profile: undefined, axisX: new Vector3(1, 0, 0), halfWidth: new Vector3(), halfHeight: 0, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
-    castsShadow: false, shadow: { size: 'medium', filter: 'none', depthBias: 0.01, normalOffsetScale: 10 }, world: new Float32Array(16), shadowIndex: -1,
+    castsShadow: false, shadow: { size: 'medium', filter: 'none', depthBias: 0.01, normalOffsetScale: 10 }, world: new Float32Array(16), shadowIndex: -1, slot: 0,
   };
 }
 

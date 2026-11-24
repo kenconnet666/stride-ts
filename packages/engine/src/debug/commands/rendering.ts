@@ -133,7 +133,13 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
       verticalFieldOfView: cameraVerticalFieldOfView({ ...camera, projection: camera.projection }),
     };
   });
-  debug.command('contact', 'Contact shadows (screen-space shadows of the shadow-casting directional light). args: on (true/false, or "toggle"; omitted keeps it and just reports), length (world units), steps, thickness.', (args) => {
+  debug.command('shadows', 'Cached shadow maps (rendering/lighting/ShadowMapRenderer.ts): point and spot shadows stay in the atlas; the static layer is redrawn only when the light or static casters in its reach change, lights touching moving casters copy it and draw the moving ones on top. Reports this frame: static faces redrawn, faces copied, dynamic faces drawn, lights with a shadow. args: invalidate (true redraws every cached shadow next frame).', (args) => {
+    const shadows = game.graphicsCompositor.shadowMapRenderer;
+    if (args['invalidate'] === true) shadows.invalidate();
+    game.requestFrames();
+    return { ...shadows.stats };
+  });
+  debug.command('contact','Contact shadows (screen-space shadows of the shadow-casting directional light). args: on (true/false, or "toggle"; omitted keeps it and just reports), length (world units), steps, thickness.', (args) => {
     const contact = game.graphicsCompositor.contactShadows;
     contact.enabled = switchArg(args, contact.enabled);
     for (const key of ['length', 'steps', 'thickness'] as const) if (typeof args[key] === 'number') contact[key] = args[key];

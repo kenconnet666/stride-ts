@@ -33,6 +33,7 @@ import { HeightfieldTile, HeightPages } from './HeightPages';
 import { inRenderMask, RENDER_GROUP_BAKE, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 import { CULL_ALWAYS_VISIBLE, CULL_ON_CPU, GpuCulling, type CullBatchInput, type CullViewInput } from './GpuCulling';
+import { SETTLE_UPDATES, ShadowCasters } from './ShadowCasters';
 import { type CachedPipeline, type CullPass, deformOf, grow, type MaterialPass, MeshGpu, NO_PASSES, SlotParams, SlotTable, transparentPasses, VIEW_STRIDE } from './MeshGpu';
 
 /** 这个材质配这个网格在这些阶段里要哪些管线（阶段、材质的遍）：预热和"都好了没有"共用。 */
@@ -66,6 +67,11 @@ export interface MeshBatch {
   readonly renderGroup: number;
   /** 这批的实体带 Skinned：按蒙皮矩阵画。 */
   readonly skinned: boolean;
+  /**
+   * 这批是最近 SETTLE_UPDATES 次更新里动过的投影者（ShadowCasters.ts）：阴影的缓存每帧画它们（动态层），其余的画一次缓存着。
+   * 不投阴影的批总是 false。
+   */
+  readonly dynamic: boolean;
   /** 实体的变换槽位，前 count 个有效。 */
   slots: Uint32Array;
   count: number;
@@ -95,6 +101,8 @@ export class MeshRenderFeature extends RootRenderFeature {
   /** 这一帧的批次，按第一次出现的顺序；空的批次留着下一帧复用。 */
   readonly batches: MeshBatch[] = [];
   readonly #batchByKey = new Map<number, MeshBatch>();
+  /** 动态的投影者（MeshBatch.dynamic）的批，键同 #batchByKey（多一位会超出双精度能精确表示的整数）。 */
+  readonly #dynamicBatchByKey = new Map<number, MeshBatch>();
   #instanceCount = 0;
   /** 这一帧各视图实际画了多少实例、多少次绘制（剔除之后，所有视图加起来）。 */
   drawnInstances = 0;
@@ -122,9 +130,10 @@ export class MeshRenderFeature extends RootRenderFeature {
           masters.set(id, master);
         }
         if (!master) continue;
-        const batch = this.#batchFor(master.mesh, master.material, master.isShadowCaster, master.visibleInRayTracing, master.visibleInCamera, master.renderGroup, false);
+        const slot = transform.slot[i]!;
+        const batch = this.#batchFor(master.mesh, master.material, master.isShadowCaster, master.visibleInRayTracing, master.visibleInCamera, master.renderGroup, false, master.isShadowCaster && this.#moving(slot));
         if (batch.count === batch.slots.length) batch.slots = grow(batch.slots, batch.count * 2);
-        batch.slots[batch.count++] = transform.slot[i]!;
+        batch.slots[batch.count++] = slot;
       }
     },
   });
@@ -230,6 +239,7 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   override extract(context: RenderContext): void {
     for (const batch of this.batches) batch.count = 0;
+    this.#trackMotion(context);
     this.#game = context.game;
     context.game.entities.run(this.#extractSystem, context.time);
     context.game.entities.run(this.#extractSkinnedSystem, context.time);
@@ -255,6 +265,49 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.drawnInstances = this.drawCalls = 0;
   }
 
+  /** 槽位 → 最后一次动（世界矩阵变了、分配、释放）是第几次更新；#motionUpdate 是记到哪一次。 */
+  #lastMoved = new Float64Array(0);
+  #motionUpdate = Number.NaN;
+  readonly #shadowCasters = new ShadowCasters();
+
+  /** 记下这次更新里动了的槽位（每次更新一次；和上次记的不是相邻的两次更新时，不知道中间谁动过，全部算刚动过）。 */
+  #trackMotion(context: RenderContext): void {
+    const update = context.game.updateTime.frameCount;
+    if (update === this.#motionUpdate) return;
+    const transforms = context.game.transforms, limit = transforms.slotLimit + 1;
+    if (this.#lastMoved.length < limit) {
+      const grown = new Float64Array(Math.max(limit, this.#lastMoved.length * 2)).fill(update);
+      grown.set(this.#lastMoved);
+      this.#lastMoved = grown;
+    }
+    if (update !== this.#motionUpdate + 1) this.#lastMoved.fill(update);
+    else for (const slot of transforms.changedSlots()) this.#lastMoved[slot] = update;
+    this.#motionUpdate = update;
+  }
+
+  /** 槽位最近 SETTLE_UPDATES 次更新里动过。 */
+  #moving(slot: number): boolean {
+    return !(this.#motionUpdate - (this.#lastMoved[slot] ?? this.#motionUpdate) >= SETTLE_UPDATES);
+  }
+
+  /**
+   * 这批的影子每帧要重画（阴影缓存的动态层）：最近动过的实例，或者顶点自己在动（蒙皮、形变、风里摆、朝着相机转的远处卡片、
+   * 动态网格）。
+   */
+  isDynamicCaster(batch: MeshBatch): boolean {
+    const deform = deformOf(batch.mesh);
+    return batch.dynamic || batch.skinned || deform === 'morph' || deform === 'impostor' || batch.mesh.dynamic || batch.material.wind !== undefined;
+  }
+
+  /**
+   * 这一帧阴影投射者在静态层里变了的地方和动态的投影者（ShadowCasters.ts）：剔除之后调（批的包围盒是这一帧的），同一次更新
+   * 里只算一次。
+   */
+  shadowCasterChanges(context: RenderContext): ShadowCasters {
+    this.#trackBatchChanges(context);
+    return this.#shadowCasters.track(this.batches, context.game.transforms, context.game.updateTime.frameCount, (batch) => this.isDynamicCaster(batch));
+  }
+
   /** 这一帧用不用 GPU 剔除。 */
   #gpuCullingOn(): boolean {
     return this.gpuCulling && !this.system.wireframe && this.system.graphicsDevice.indirectFirstInstance;
@@ -266,10 +319,10 @@ export class MeshRenderFeature extends RootRenderFeature {
   #batchOfSlotStale = true;
 
   /**
-   * 各批跟上这一帧（剔除前调，一帧一次）：槽位列表变了的批、这次更新里有实例动了的批记下动了（movedAt）、GPU 剔除时重算世界
-   * 包围盒（只隔一次更新时按 changedSlots 找，隔得多了全部算动了）。静止的世界每帧几乎不花时间。
+   * 各批跟上这一帧（剔除前调，一帧一次）：槽位列表变了的批、这次更新里有实例动了的批记下动了（movedAt）、重算这些批的世界
+   * 包围盒（GPU 剔除和阴影的缓存用；只隔一次更新时按 changedSlots 找，隔得多了全部算动了）。静止的世界每帧几乎不花时间。
    */
-  #trackBatchChanges(context: RenderContext, bounds: boolean): void {
+  #trackBatchChanges(context: RenderContext): void {
     const update = context.game.updateTime.frameCount;
     if (update === this.#boundsUpdate) return;
     const transforms = context.game.transforms;
@@ -302,7 +355,6 @@ export class MeshRenderFeature extends RootRenderFeature {
     }
     this.#boundsUpdate = update;
     for (const batch of this.batches) if (batch.bounds.dirty) batch.movedAt = update;
-    if (!bounds) return;
     const world = transforms.renderWorld;
     for (const batch of this.batches) {
       const { bounds } = batch;
@@ -374,7 +426,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     pass.slotCount = slotCount;
     pass.batchCount = batchCount;
     pass.gpuView = gpu ? this.#gpuViews.length : -1;
-    this.#trackBatchChanges(context, gpu);
+    this.#trackBatchChanges(context);
     views.forEach((view, i) => {
       this.#viewCulling.set(view, { pass, index: i });
       if (!gpu) return;
@@ -583,6 +635,8 @@ export class MeshRenderFeature extends RootRenderFeature {
       const count = runs ? runs[i * 3 + 2]! : this.#cpuCount(cullPass, index, b);
       if (!batch.ready || !visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent) || (view.skipsRayTraced && rayTraceable(batch) && !batch.material.wind)) continue;
       if (stage.velocity && !this.#moves(batch, context.game.updateTime.frameCount)) continue;
+      // 阴影缓存的两层（lighting/ShadowMapRenderer.ts）：静态层只画静止的投影者，动态层只画动的
+      if (stage.shadowCasters && view.casterLayer !== undefined && (view.casterLayer === 'dynamic') !== this.isDynamicCaster(batch)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
@@ -649,7 +703,7 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   /** 网格释放了（Mesh.dispose，流式加载的地形块这类）：它的批和显存跟着去掉。 */
   readonly #stopForgetting = Mesh.onDispose((mesh) => {
-    for (const [key, batch] of this.#batchByKey) if (batch.mesh === mesh) this.#batchByKey.delete(key);
+    for (const map of [this.#batchByKey, this.#dynamicBatchByKey]) for (const [key, batch] of map) if (batch.mesh === mesh) map.delete(key);
     const kept = this.batches.filter((batch) => batch.mesh !== mesh);
     this.batches.splice(0, this.batches.length, ...kept);
     // 后面的批下标都挪了：槽位到批的表要重建（不然下一帧按旧下标取到 undefined）
@@ -702,27 +756,29 @@ export class MeshRenderFeature extends RootRenderFeature {
     let batch: MeshBatch | undefined;
     for (let i = 0; i < count; i++) {
       const meshId = mesh[i]!, materialId = material[i]!, caster = isShadowCaster[i] !== 0, traced = visibleInRayTracing[i] !== 0, seen = visibleInCamera[i] !== 0, group = renderGroup[i]!;
-      if (!batch || batch.mesh.id !== meshId || batch.material.id !== materialId || batch.isShadowCaster !== caster || batch.visibleInRayTracing !== traced || batch.visibleInCamera !== seen || batch.renderGroup !== group) {
-        batch = this.#batchFor(meshId, materialId, caster, traced, seen, group, skinned);
+      const moving = caster && this.#moving(slots[i]!);
+      if (!batch || batch.mesh.id !== meshId || batch.material.id !== materialId || batch.isShadowCaster !== caster || batch.visibleInRayTracing !== traced || batch.visibleInCamera !== seen || batch.renderGroup !== group || batch.dynamic !== moving) {
+        batch = this.#batchFor(meshId, materialId, caster, traced, seen, group, skinned, moving);
       }
       if (batch.count === batch.slots.length) batch.slots = grow(batch.slots, batch.count * 2);
       batch.slots[batch.count++] = slots[i]!;
     }
   }
 
-  #batchFor(meshId: number, materialId: number, isShadowCaster: boolean, visibleInRayTracing: boolean, visibleInCamera: boolean, renderGroup: number, skinned: boolean): MeshBatch {
-    // 两个 id 都小于 2^22，拼成一个整数键不会冲突（最大约 2^53，在双精度的整数范围里）
+  #batchFor(meshId: number, materialId: number, isShadowCaster: boolean, visibleInRayTracing: boolean, visibleInCamera: boolean, renderGroup: number, skinned: boolean, dynamic: boolean): MeshBatch {
+    // 两个 id 都小于 2^22，拼成一个整数键不会冲突（最大约 2^53，在双精度的整数范围里）；动态的另一张表
     const flags = (isShadowCaster ? 8 : 0) + (visibleInRayTracing ? 4 : 0) + (visibleInCamera ? 2 : 0) + (skinned ? 1 : 0);
     const key = ((meshId * 0x400000 + materialId) * 32 + renderGroup) * 16 + flags;
-    let batch = this.#batchByKey.get(key);
+    const byKey = dynamic ? this.#dynamicBatchByKey : this.#batchByKey;
+    let batch = byKey.get(key);
     if (!batch) {
       const mesh = Mesh.byId(meshId);
       const material = Material.byId(materialId);
       if (!mesh) throw new Error(`Model refers to mesh ${meshId}, which does not exist`);
       if (!material) throw new Error(`Model refers to material ${materialId}, which does not exist`);
       if (skinned && !mesh.layout.joints) throw new Error(`mesh '${mesh.name}' is drawn skinned but has no joints and weights`);
-      batch = { ready: true, mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) }, movedAt: Infinity, vertexVersion: mesh.vertexVersion };
-      this.#batchByKey.set(key, batch);
+      batch = { ready: true, mesh, material, isShadowCaster, visibleInRayTracing, visibleInCamera, renderGroup, skinned, dynamic, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) }, movedAt: Infinity, vertexVersion: mesh.vertexVersion };
+      byKey.set(key, batch);
       this.batches.push(batch);
       this.#prepareBatch(batch);
     }

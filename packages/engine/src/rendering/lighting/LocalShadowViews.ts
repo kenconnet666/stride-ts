@@ -7,7 +7,7 @@
  */
 import { Matrix, type Matrix4 } from '../../data/Matrix';
 import { RenderView, type LocalLight, type LocalShadowReceiver } from '../RenderSystem';
-import type { PackedRectangle } from './GuillotinePacker';
+import type { PackedRectangle } from './ShadowAtlasAllocator';
 
 /** 立方体每个面四周留的边（Stride 的 LightPointShadowMapRendererCubeMap.BorderPixels）。 */
 const BORDER_PIXELS = 8;

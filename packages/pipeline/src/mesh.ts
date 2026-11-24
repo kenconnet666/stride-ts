@@ -163,20 +163,31 @@ function positionVolume(meshes: readonly SourceMesh[]): Volume {
 function reorder(mesh: SourceMesh, tools: StrideTools): SourceMesh {
   const count = mesh.vertices.length / VERTEX_FLOATS;
   if (count === 0) return mesh;
+  // 逐个数地拷：合成的货架有上百万个顶点，每个顶点一次 subarray 的开销比拷贝本身大
+  const source = mesh.vertices, sourceTangents = mesh.tangents;
   const positions = new Float32Array(count * 3);
-  for (let v = 0; v < count; v++) positions.set(mesh.vertices.subarray(v * VERTEX_FLOATS, v * VERTEX_FLOATS + 3), v * 3);
-  const optimized = tools.optimizeMesh(mesh.indices, positions);
+  for (let v = 0; v < count; v++) {
+    for (let k = 0; k < 3; k++) positions[v * 3 + k] = source[v * VERTEX_FLOATS + k]!;
+  }
+  const indices = tools.optimizeMesh(mesh.indices, positions);
   const remap = new Int32Array(count).fill(-1);
   let next = 0;
-  const indices = optimized.map((i) => (remap[i] === -1 ? (remap[i] = next++) : remap[i]!));
+  for (let i = 0; i < indices.length; i++) {
+    const v = indices[i]!;
+    if (remap[v] === -1) remap[v] = next++;
+    indices[i] = remap[v]!;
+  }
   const vertices = new Float32Array(next * VERTEX_FLOATS);
-  const tangents = mesh.tangents && new Float32Array(next * TANGENT_FLOATS);
+  const tangents = sourceTangents && new Float32Array(next * TANGENT_FLOATS);
   const sources = new Uint32Array(next);
   for (let v = 0; v < count; v++) {
-    if (remap[v]! < 0) continue;
-    vertices.set(mesh.vertices.subarray(v * VERTEX_FLOATS, (v + 1) * VERTEX_FLOATS), remap[v]! * VERTEX_FLOATS);
-    tangents?.set(mesh.tangents!.subarray(v * TANGENT_FLOATS, (v + 1) * TANGENT_FLOATS), remap[v]! * TANGENT_FLOATS);
-    sources[remap[v]!] = v;
+    const to = remap[v]!;
+    if (to < 0) continue;
+    for (let k = 0; k < VERTEX_FLOATS; k++) vertices[to * VERTEX_FLOATS + k] = source[v * VERTEX_FLOATS + k]!;
+    if (tangents) {
+      for (let k = 0; k < TANGENT_FLOATS; k++) tangents[to * TANGENT_FLOATS + k] = sourceTangents![v * TANGENT_FLOATS + k]!;
+    }
+    sources[to] = v;
   }
   const skin = remapSkin(mesh.skin, sources), morph = remapMorph(mesh.morph, sources);
   return { ...mesh, vertices, indices, ...(tangents ? { tangents } : {}), ...(skin ? { skin } : {}), ...(morph ? { morph } : {}) };
@@ -201,19 +212,19 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
   const offsets = vertexLayoutOffsets(layout);
   const bytes = new DataView(new ArrayBuffer(count * offsets.stride));
   const unorm16 = (value: number, min: number, range: number) => Math.round(Math.min(1, Math.max(0, range === 0 ? 0 : (value - min) / range)) * 65535);
+  const source = mesh.vertices;
   for (let v = 0; v < count; v++) {
-    const source = mesh.vertices.subarray(v * VERTEX_FLOATS, (v + 1) * VERTEX_FLOATS);
-    const at = v * offsets.stride;
+    const from = v * VERTEX_FLOATS, at = v * offsets.stride;
     for (let k = 0; k < 3; k++) {
-      if (volume.quantize) bytes.setUint16(at + k * 2, unorm16(source[k]!, volume.min[k]!, volume.extent[k]!), true);
-      else bytes.setFloat32(at + k * 4, source[k]!, true);
+      if (volume.quantize) bytes.setUint16(at + k * 2, unorm16(source[from + k]!, volume.min[k]!, volume.extent[k]!), true);
+      else bytes.setFloat32(at + k * 4, source[from + k]!, true);
     }
-    const [ox, oy] = octEncode(source[3]!, source[4]!, source[5]!);
+    const [ox, oy] = octEncode(source[from + 3]!, source[from + 4]!, source[from + 5]!);
     bytes.setInt16(at + offsets.normal, Math.round(ox * 32767), true);
     bytes.setInt16(at + offsets.normal + 2, Math.round(oy * 32767), true);
     for (let k = 0; k < 2; k++) {
-      if (uv.quantize) bytes.setUint16(at + offsets.uv + k * 2, unorm16(source[6 + k]!, uv.min[k]!, uv.range[k]!), true);
-      else bytes.setFloat32(at + offsets.uv + k * 4, source[6 + k]!, true);
+      if (uv.quantize) bytes.setUint16(at + offsets.uv + k * 2, unorm16(source[from + 6 + k]!, uv.min[k]!, uv.range[k]!), true);
+      else bytes.setFloat32(at + offsets.uv + k * 4, source[from + 6 + k]!, true);
     }
     if (mesh.tangents) {
       for (let k = 0; k < 4; k++) bytes.setInt8(at + offsets.tangent! + k, Math.round(Math.min(1, Math.max(-1, mesh.tangents[v * TANGENT_FLOATS + k]!)) * 127));

@@ -266,6 +266,11 @@ export class ToneMap {
   exposure = 0;
   temporalAdaptation = true;
   adaptationRate = 1;
+  /**
+   * 这一帧不适应、直接用量到的亮度（不改场景的 temporalAdaptation）：编辑器里（game.editing）由 ForwardRenderer 打开，改了灯
+   * 马上是最终的亮度，不慢慢变（docs/realtime.md 的"改了马上看到"）。试玩、游戏里照旧适应。
+   */
+  instantAdaptation = false;
   /** Hejl2 算子的白点。 */
   whitePoint = 5;
   /** 输出是 8 位的 sRGB 时加抖动（见文件头）。和桌面 Stride 的截图逐像素比对时关掉。 */
@@ -373,7 +378,7 @@ export class ToneMap {
     const histogram = this.metering === 'histogram' && (this.#histogram ??= new HistogramMetering(this.#device)).ready() ? this.#histogram : undefined;
     // 平均测光的亮度图跟着画面尺寸（尺寸变了要从头适应，所以在读 #reset 之前）
     const targets = histogram ? undefined : this.#targetsFor(input.width, input.height);
-    const reset = this.#reset || !this.temporalAdaptation;
+    const reset = this.#reset || !this.temporalAdaptation || this.instantAdaptation;
     this.#reset = false;
     // 适应：读上一帧的结果，写另一张
     const previous = this.#adapted[this.#current]!;

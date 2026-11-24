@@ -284,24 +284,39 @@ export class ProductBatch {
   /** 加上商品，出网格和图集。 */
   finish(): MergedProducts {
     const cellOf = new Map(this.#variantKeys.map((key, i) => [key, this.#labelCells[i]!]));
-    for (const item of this.#items) {
-      const mesh = this.#mesh(item.product, item.fine);
-      const [cx, cy, cw, ch] = cellOf.get(`${item.variant}|${item.product}`)!;
-      const [qx, qy, qz, qw] = item.rotation;
-      const rotate = (x: number, y: number, z: number): [number, number, number] => {
-        const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
-        return [x + qw * tx + qy * tz - qz * ty, y + qw * ty + qz * tx - qx * tz, z + qw * tz + qx * ty - qy * tx];
-      };
-      // 透光的商品每一排都用透射的材质：前后排不透明、透射混着画，同一个价签后面的油看着像两种（用户 11-23 指出）
-      const clear = productTransmission(this.#sources.products.get(item.product)!) > 0;
-      const vertices = clear ? this.#clearVertices : this.#vertices, indices = clear ? this.#clearIndices : this.#indices;
-      const base = vertices.length / 8, src = mesh.vertices, [px, py, pz] = item.position;
-      for (let i = 0; i < src.length; i += 8) {
-        const p = rotate(src[i]!, src[i + 1]!, src[i + 2]!), n = rotate(src[i + 3]!, src[i + 4]!, src[i + 5]!);
-        vertices.push(px + p[0], py + p[1], pz + p[2], n[0], n[1], n[2], (cx + src[i + 6]! * cw) / this.#atlas, (cy + src[i + 7]! * ch) / this.#atlas);
+    // 透光的商品每一排都用透射的材质：前后排不透明、透射混着画，同一个价签后面的油看着像两种（用户 11-23 指出）
+    const placed = this.#items.map((item) => ({ item, mesh: this.#mesh(item.product, item.fine), clear: productTransmission(this.#sources.products.get(item.product)!) > 0 }));
+    // 商品直接写进定长的数组：货架上几千件商品、上百万个顶点，往 number[] 里逐个 push 慢
+    const merge = (vertices: readonly number[], indices: readonly number[], clear: boolean): MeshArrays => {
+      const mine = placed.filter((entry) => entry.clear === clear);
+      const out = new Float32Array(vertices.length + mine.reduce((sum, { mesh }) => sum + mesh.vertices.length, 0));
+      const outIndices = new Uint32Array(indices.length + mine.reduce((sum, { mesh }) => sum + mesh.indices.length, 0));
+      out.set(vertices);
+      outIndices.set(indices);
+      let at = vertices.length, indexAt = indices.length;
+      const atlas = this.#atlas;
+      for (const { item, mesh } of mine) {
+        const [cx, cy, cw, ch] = cellOf.get(`${item.variant}|${item.product}`)!;
+        const [qx, qy, qz, qw] = item.rotation, [px, py, pz] = item.position, src = mesh.vertices, base = at / 8;
+        // 四元数转位置和法线（v + 2w(q×v) + 2q×(q×v)），展开写，不出小数组
+        for (let i = 0; i < src.length; i += 8, at += 8) {
+          const x = src[i]!, y = src[i + 1]!, z = src[i + 2]!, nx = src[i + 3]!, ny = src[i + 4]!, nz = src[i + 5]!;
+          const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
+          const sx = 2 * (qy * nz - qz * ny), sy = 2 * (qz * nx - qx * nz), sz = 2 * (qx * ny - qy * nx);
+          out[at] = px + x + qw * tx + qy * tz - qz * ty;
+          out[at + 1] = py + y + qw * ty + qz * tx - qx * tz;
+          out[at + 2] = pz + z + qw * tz + qx * ty - qy * tx;
+          out[at + 3] = nx + qw * sx + qy * sz - qz * sy;
+          out[at + 4] = ny + qw * sy + qz * sx - qx * sz;
+          out[at + 5] = nz + qw * sz + qx * sy - qy * sx;
+          out[at + 6] = (cx + src[i + 6]! * cw) / atlas;
+          out[at + 7] = (cy + src[i + 7]! * ch) / atlas;
+        }
+        for (const index of mesh.indices) outIndices[indexAt++] = base + index;
       }
-      for (const index of mesh.indices) indices.push(base + index);
-    }
+      return { vertices: out, indices: outIndices };
+    };
+    const opaque = merge(this.#vertices, this.#indices, false), clear = merge(this.#clearVertices, this.#clearIndices, true);
 
     const color: string[] = [], surface: string[] = [], glow: string[] = [], defs = new Set<string>();
     const strongest = Math.max(0, ...this.#solids.map((solid) => solid.emissive ?? 0), ...this.#cells.map((cell) => cell.emissive ?? 0));
@@ -338,10 +353,10 @@ export class ProductBatch {
     });
     const svg = (shapes: string[], background?: string, definitions = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${this.#atlas} ${this.#atlas}" width="${this.#atlas}" height="${this.#atlas}">${definitions ? `<defs>${definitions}</defs>` : ''}${background ? `<rect width="${this.#atlas}" height="${this.#atlas}" fill="${background}"/>` : ''}${shapes.join('')}</svg>`;
     return {
-      vertices: Float32Array.from(this.#vertices), indices: Uint32Array.from(this.#indices), colorSvg: svg(color), surfaceSvg: svg(surface, undefined, [...defs].join('')),
+      vertices: opaque.vertices, indices: opaque.indices, colorSvg: svg(color), surfaceSvg: svg(surface, undefined, [...defs].join('')),
       emissiveSvg: strongest > 0 ? svg(glow, '#000000') : undefined, emissive: strongest, atlasPixels: this.#atlas,
       glass: this.#glassIndices.length > 0 ? { vertices: Float32Array.from(this.#glassVertices), indices: Uint32Array.from(this.#glassIndices) } : undefined,
-      clear: this.#clearIndices.length > 0 ? { vertices: Float32Array.from(this.#clearVertices), indices: Uint32Array.from(this.#clearIndices) } : undefined,
+      clear: clear.indices.length > 0 ? clear : undefined,
       wire: this.#wireIndices.length > 0 ? { vertices: Float32Array.from(this.#wireVertices), indices: Uint32Array.from(this.#wireIndices) } : undefined,
       haze: this.#hazeIndices.length > 0 ? { vertices: Float32Array.from(this.#hazeVertices), indices: Uint32Array.from(this.#hazeIndices) } : undefined,
     };

@@ -524,6 +524,7 @@ export class ForwardRenderer {
       if (postEffects) {
         const post = (this.#texturePost[i] ??= new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp));
         post.configure(postEffects);
+        post.toneMap.instantAdaptation = context.game.editing;
         post.record(frame, color, renderSystem.resources.texture(texture).createView(), texture.data.format, context.time.elapsed, this.quality);
         this.#texturePostUsed.push(post);
         return;
@@ -563,6 +564,8 @@ export class ForwardRenderer {
       // 景深、运动模糊在抗锯齿之后、泛光这些之前（亮的东西糊开以后再泛光）；景深在前（同虚幻）
       const focused = focus ? this.depthOfField.record(frame, antialiased, depth, this.#mainView, lens!) : antialiased;
       const input = blur ? this.motionBlur.record(frame, focused, depth, velocity!, this.#mainView) : focused;
+      // 编辑器里曝光不慢慢适应：改了灯马上是最终的亮度
+      this.postEffects.toneMap.instantAdaptation = context.game.editing;
       this.postEffects.record(frame, input, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed, temporal ? { ...this.quality, antialiasing: false } : this.quality);
     } else {
       this.#viewPasses(context, frame, mainView, this.#backBufferOutput(canvas.width, canvas.height), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);

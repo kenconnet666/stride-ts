@@ -87,7 +87,7 @@ describe('反射探针（ReflectionProbes）', () => {
     const { game, probes, frame } = setup();
     game.entities.create({ components: [Transform, ReflectionProbe.with({ size: [4, 4, 4] })] });
     const sun = { direction: new Vector3(0, -1, 0), color: new Color4(5, 5, 5, 1), entity: -1 as EntityId, angle: 0.53, shadow: undefined };
-    const lighting = { directionals: [sun], directionalCount: 1, ambient: new Color4(0, 0, 0, 1), skybox: undefined } as unknown as Lighting;
+    const lighting = { directionals: [sun], directionalCount: 1, ambient: new Color4(0, 0, 0, 1), skybox: undefined, locals: [], localCount: 0 } as unknown as Lighting;
     const framesToSettle = () => {
       let frames = 0;
       for (;;) {

@@ -406,7 +406,8 @@ const ceilingAt: Vec3 = [0, 0, -4];
 const ceilingEntity = (id: string) => entity(id, 'Ceiling', ceilingAt, { model: { model: 'Shop/Ceilings/Market', materials: [] } }, euler(90));
 // 转 90°：天花板本地的 (x, z) 到世界是 (z, -x)
 const lights = ceilingLights(ceiling).map((light, i) => entity(sid(0x40 + i), `Light ${i}`, [ceilingAt[0] + light.center[2], light.center[1] - 0.015, ceilingAt[2] - light.center[0]], {
-  light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: light.length, range: 9, shadow: TUBE_SHADOW },
+  // 射程 6 米（以前 9）：一个像素算的灯从二十来盏降到十来盏（4K 不透明着色省约 2 毫秒），整体只暗约 4%，货堆底下的影子更像照片
+  light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: light.length, range: 6, shadow: TUBE_SHADOW },
 }, euler(0, -90)));
 await write('scene', 'Supermarket', {
   name: 'Supermarket',

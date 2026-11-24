@@ -944,7 +944,7 @@ export class ForwardRenderer {
   }
 
   /**
-   * 预热后处理的管线（PostProcessingEffects.warm）、场景开着的 GTAO 和屏幕空间反射的，以及画质档位允许的 TAA、接触阴影、
+   * 预热后处理的管线（PostProcessingEffects.warm）、场景开着的 GTAO 和屏幕空间反射的、阴影图集的，以及画质档位允许的 TAA、接触阴影、
    * 运动模糊的：这三个是运行中打开的（画质设置里一开），不先编好的话打开的那一帧要当场编译。都在后台编，不挡加载。
    * settings 是要加载的场景的后处理设置；没给（不知道）、不做后处理又直接画进后备缓冲时不用预热。
    */
@@ -958,7 +958,9 @@ export class ForwardRenderer {
     const contact = this.quality.contactShadows ? this.contactShadows.warm() : undefined;
     const blur = this.quality.motionBlur ? this.motionBlur.warm() : undefined;
     const focus = this.quality.depthOfField ? this.depthOfField.warm() : undefined;
-    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, indirect, scatter, contact, blur, focus]).then(() => undefined);
+    // 阴影图集清空、拷贝块和矩图的管线（缓存的阴影图第一次画、第一盏投阴影的局部光出现时用）
+    const shadows = this.quality.shadows ? this.shadowMapRenderer.warm() : undefined;
+    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, indirect, scatter, contact, blur, focus, shadows]).then(() => undefined);
   }
 
   /**

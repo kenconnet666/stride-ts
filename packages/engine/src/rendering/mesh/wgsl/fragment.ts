@@ -169,8 +169,11 @@ fn coatSurfaceOf(s: Surface) -> Surface {
     vec3f(0.0), 1.0, 1.0, 0.0, s.t, s.b, 0u, 0.0, s.coatAlpha);
 }
 
-/** 离发光面中心超过它半径的这么多倍时漫反射当小光源算（形状因子的误差约 (1 / AREA_FAR)²，1.5% 以内）。 */
-const AREA_FAR = 8.0;
+/**
+ * 离发光面中心超过它半径的这么多倍时漫反射当小光源算（形状因子的误差约 (1 / AREA_FAR)²，6% 以内，平滑变化）。以前是 8（1.5%）：
+ * 4K 超市不透明着色多 1.3 毫秒，画面平均差 0.56/255（docs/realtime.md 第 7 步）。
+ */
+const AREA_FAR = 4.0;
 
 /**
  * 矩形光（LTC，Heitz 2016；同 three.js 的 RectAreaLight、虚幻的 Rect Light）：漫反射是余弦分布在矩形上的积分，镜面反射是

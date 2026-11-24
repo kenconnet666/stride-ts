@@ -297,6 +297,48 @@ fn evsmVisibility(moments: vec4f, depth: f32, a: f32) -> f32 {
   return min(chebyshevVisibility(moments.xy, positive), chebyshevVisibility(moments.zw, negative));
 }
 
+/**
+ * 面光源的软阴影，全在矩图上做（ShadowMoments，两次采样，没有散开的点采样）：
+ * 1. 找遮挡物：在搜索范围（发光面的 1 / AREA_SEARCH_NEAR − 1 倍投到图上的椭圆）里取一次矩，按切比雪夫估出照得到的比例 p，
+ *    再由一次矩 μ = p · 接收面的值 + (1 − p) · 遮挡物的值 解出遮挡物（正指数变换后）的平均，换回距离（方差软阴影 VSSM，
+ *    Yang 2010 的思路）。几乎都照得到就直接是亮的；
+ * 2. 滤波：半影 = 发光面 × (接收距离 − 遮挡距离) / 遮挡距离，按这个椭圆再取一次矩，切比雪夫出可见度。
+ * q、d1、d2、base 同 computeAreaShadow：接收点和发光面两条半轴投到图上的样子，center 是限在块里的采样中心。
+ */
+fn areaMomentShadow(q: vec4f, d1: vec4f, d2: vec4f, base: vec2f, center: vec2f, texel: f32, distance: f32, receiverDepth: f32, params: vec4f) -> f32 {
+  let search = 1.0 / AREA_SEARCH_NEAR - 1.0;
+  let s1 = (areaShadowUv(q, d1, d2, vec2f(search, 0.0)) - base) * 2.0;
+  let s2 = (areaShadowUv(q, d1, d2, vec2f(0.0, search)) - base) * 2.0;
+  let region = sampleShadowMoments(center, s1, s2);
+  let t = saturate((1.0 - params.z) / min(receiverDepth - params.z, -1e-6));
+  let warped = exp(${EVSM_EXPONENT}.0 * (t * 2.0 - 1.0));
+  let lit = chebyshevBound(region.xy, warped);
+  if (lit > 0.98) {
+    return 1.0;
+  }
+  let blocker = max(region.x - lit * warped, 1e-6) / (1.0 - lit);
+  let blockerT = saturate((log(blocker) / ${EVSM_EXPONENT}.0 + 1.0) * 0.5);
+  // 远平面的距离：深度 1 时 B / (1 − A)
+  let zb = blockerT * params.w / (1.0 - params.z);
+  let k = max(distance - zb, 0.0) / max(zb, 1e-3);
+  let e1 = areaShadowUv(q, d1, d2, vec2f(k, 0.0)) - base;
+  let e2 = areaShadowUv(q, d1, d2, vec2f(0.0, k)) - base;
+  let least = 1.5 * texel;
+  let g1 = select(e1 * 2.0, vec2f(least, 0.0), length(e1) * 2.0 < least);
+  let g2 = select(e2 * 2.0, vec2f(0.0, least), length(e2) * 2.0 < least);
+  return evsmVisibility(sampleShadowMoments(center, g1, g2), receiverDepth, params.z);
+}
+
+/** 切比雪夫不等式的上界本身（不减漏光）：均值 m.x、二次矩 m.y 的分布里不比 x 近的比例最多多少。 */
+fn chebyshevBound(m: vec2f, x: f32) -> f32 {
+  if (x <= m.x) {
+    return 1.0;
+  }
+  let variance = max(m.y - m.x * m.x, EVSM_MIN_VARIANCE);
+  let d = x - m.x;
+  return variance / (variance + d * d);
+}
+
 /** 面光源的软阴影比深度时距离缩的比例（接收面自己不挡自己）。 */
 const AREA_RELATIVE_BIAS = 0.01;
 const CUBE_AXES = array<vec3f, 6>(vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, -1.0), vec3f(1.0, 0.0, 0.0), vec3f(-1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, -1.0, 0.0));
@@ -353,6 +395,9 @@ fn computeAreaShadow(index: u32, position: vec3f, normal: vec3f, light: LocalLig
   // 遮挡物（地上一块块按立方体的面分开的暗楔）；按表面在图上的变化把每个采样点要比的深度沿表面外推。外推在 1 / 距离 里做：
   // 平面上 1 / 距离 在透视的图上是线性的（透视插值的性质），外推是准的；深度 A + B / 距离 挤在 1 附近，直接拿它求梯度单精度不够
   let base = q.xy / q.w;
+  if (SHADOW_MOMENTS) {
+    return areaMomentShadow(q, d1, d2, base, clamp(base, lo, hi), texel, distance, receiverDepth, params);
+  }
   let gradient = areaReceiverGradient(m, p, normal, lightPosition, axis, base);
   var blockers = 0.0;
   var blockerDistance = 0.0;
@@ -370,15 +415,6 @@ fn computeAreaShadow(index: u32, position: vec3f, normal: vec3f, light: LocalLig
   }
   let zb = blockerDistance / blockers;
   let k = max(distance - zb, 0.0) / max(zb, 1e-3);
-  if (SHADOW_MOMENTS) {
-    // 矩图取一次：半影的椭圆是发光面的两条半轴乘 k 投到图上（直径，至少 1.5 个像素）
-    let e1 = areaShadowUv(q, d1, d2, vec2f(k, 0.0)) - base;
-    let e2 = areaShadowUv(q, d1, d2, vec2f(0.0, k)) - base;
-    let least = 1.5 * texel;
-    let g1 = select(e1 * 2.0, vec2f(least, 0.0), length(e1) * 2.0 < least);
-    let g2 = select(e2 * 2.0, vec2f(0.0, least), length(e2) * 2.0 < least);
-    return evsmVisibility(sampleShadowMoments(clamp(base, lo, hi), g1, g2), areaCompareDepth(receiverInverse, params), params.z);
-  }
   var lit = 0.0;
   for (var i = 0u; i < AREA_FILTER_TAPS; i++) {
     let o = vogelDisk(i, AREA_FILTER_TAPS, 0.0);

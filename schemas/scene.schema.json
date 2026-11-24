@@ -1937,6 +1937,34 @@
                     "minimum": 0,
                     "description": "seed of the material variation (0: by transform slot, differs per object)",
                     "default": 0
+                  },
+                  "wet": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "wet regardless of the weather (darker, glossier)",
+                    "default": 0
+                  },
+                  "dirt": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "grime in crevices, occluded spots and on downward faces",
+                    "default": 0
+                  },
+                  "wear": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "worn edges: paint rubbed off, lighter and rougher",
+                    "default": 0
+                  },
+                  "snow": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "snow on upward faces regardless of the weather",
+                    "default": 0
                   }
                 },
                 "required": [],

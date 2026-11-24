@@ -133,21 +133,22 @@ export class SlotTable {
 
 /**
  * 按变换槽位存的材质实例参数（MaterialParams）：每个槽 4 个 u32——tint 打包成 rgba8（线性，a 是 255 时有 tint、0 时没有）、
- * 种子（0 是按槽位），后两个留给以后的状态层。没挂 MaterialParams 的槽是 0。
+ * 种子（0 是按槽位）、状态层（湿、脏、旧、雪各一个字节）、留着的一个。没挂 MaterialParams 的槽是 0。
  */
 export class SlotParams {
   values = new Uint32Array(1024);
   dirty = true;
 
-  set(slot: number, tint: number, seed: number): void {
+  set(slot: number, tint: number, seed: number, state: number): void {
     const o = slot * 4;
     if (o + 4 > this.values.length) {
       this.values = grow(this.values, Math.max(o + 4, this.values.length * 2));
       this.dirty = true;
     }
-    if (this.values[o] === tint && this.values[o + 1] === seed) return;
+    if (this.values[o] === tint && this.values[o + 1] === seed && this.values[o + 2] === state) return;
     this.values[o] = tint;
     this.values[o + 1] = seed;
+    this.values[o + 2] = state;
     this.dirty = true;
   }
 }

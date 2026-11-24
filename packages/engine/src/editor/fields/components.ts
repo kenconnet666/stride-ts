@@ -257,6 +257,10 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     type: object(fields<NonNullable<Components['materialParams']>>({
       tint: { type: { kind: 'color', alpha: true, space: 'srgb' }, optional: true, default: [1, 1, 1, 1], description: 'multiplies the diffuse color of this object (white keeps it)' },
       seed: { type: integer(0), optional: true, default: 0, description: 'seed of the material variation (0: by transform slot, differs per object)' },
+      wet: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'wet regardless of the weather (darker, glossier)' },
+      dirt: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'grime in crevices, occluded spots and on downward faces' },
+      wear: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'worn edges: paint rubbed off, lighter and rougher' },
+      snow: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'snow on upward faces regardless of the weather' },
     })),
     initial: {},
   },

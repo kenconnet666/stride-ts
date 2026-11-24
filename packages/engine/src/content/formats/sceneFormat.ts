@@ -636,7 +636,7 @@ export interface SceneEntityFile {
     /** 模拟细节层次（Stride 没有，见 ai/SimulationLod.ts）：按离主相机的距离分档、远处降频推进；distanceScale 大于 1 远一些才降档。 */
     readonly simulationLod?: { readonly distanceScale?: number };
     /** 材质实例的参数（Stride 没有，见 rendering/components.ts 的 MaterialParams）：乘在漫反射色上的颜色（sRGB）、变化的种子。 */
-    readonly materialParams?: { readonly tint?: readonly [number, number, number, number]; readonly seed?: number };
+    readonly materialParams?: { readonly tint?: readonly [number, number, number, number]; readonly seed?: number; readonly wet?: number; readonly dirt?: number; readonly wear?: number; readonly snow?: number };
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */
     readonly cameraRig?: {

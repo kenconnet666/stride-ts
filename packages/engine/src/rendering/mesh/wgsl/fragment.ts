@@ -702,7 +702,10 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   let decaled = applyDecals(in.world, n, coatSurface(in, instanced, coatPass), cluster);
   n = decaled.normal;
   // 水洼的水面是平的（下雨时有涟漪）：天气也可能换法线
-  let weathered = weatherSurface(in.world, n, facingNormal(normalize(in.normal), front), in.skinned != 0u, decaled.surface);
+  // 这个物体的状态层：脏、旧在贴花之上、天气之下（雪盖住脏），湿、雪和全局的天气一起
+  let state = instanceState(in.slot);
+  let aged = ageSurface(in.world, n, in.position, state, decaled.surface);
+  let weathered = weatherSurface(in.world, n, facingNormal(normalize(in.normal), front), in.skinned != 0u, state, aged);
   n = weathered.normal;
   let layered = weathered.surface;
   let albedo = layered.albedo;

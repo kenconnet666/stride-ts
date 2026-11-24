@@ -355,10 +355,16 @@ export const ModelPart = tag('ModelPart');
  * 换变化的种子，不复制材质、不拆批（参数按变换槽位放在一张表里，着色时按槽位取）。tint 乘在漫反射色上（sRGB，白是不变）；
  * seed 是材质的 variation 用的种子（0 是按槽位，每个物体各不相同但不固定；要每次一样就给一个数）。模型多出来的网格（子实体）
  * 跟着一起。
+ * 状态层（对所有材质通用，0 到 1）：wet 湿（和全局天气取大的，不看淋不淋得到：泼湿的、刚洗过的）、dirt 脏（缝里、被遮住的地方、
+ * 朝下的面积灰、偏褐、变暗变粗糙）、wear 旧（凸出的棱边掉色发白、变粗糙）、snow 积雪（朝上的面，同全局的雪，不看淋不淋得到）。
  */
 export const MaterialParams = component('MaterialParams', {
   tint: prop.color(),
   seed: prop.u32().default(0),
+  wet: prop.f32().default(0).min(0).max(1),
+  dirt: prop.f32().default(0).min(0).max(1),
+  wear: prop.f32().default(0).min(0).max(1),
+  snow: prop.f32().default(0).min(0).max(1),
 });
 
 export const Skinned = component('Skinned', {

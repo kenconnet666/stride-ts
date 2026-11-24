@@ -143,19 +143,69 @@ fn valueNoise(p: vec2f) -> f32 {
  *   在动，身上不积雪（湿照样湿）。
  * 竖着的面按往外 30 厘米的那一点判断淋不淋得到：墙面自己正上方是墙头，按自己的位置查总是被挡着。
  */
-fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, s: LayerSurface) -> Decaled {
+/**
+ * 这个物体自己的状态层（MaterialParams 的 wet、dirt、wear、snow，0 到 1）。
+ */
+fn instanceState(slot: u32) -> vec4f {
+  return unpack4x8unorm(instanceParams[slot].z);
+}
+
+/** 表面上的噪声（0 到 1）：按法线最朝的那个轴投影，墙、地、顶都有斑块；世界坐标加回渲染原点，相机走动时不滑。 */
+fn surfaceNoise(world: vec3f, n: vec3f, scale: f32) -> f32 {
+  let p = (world + view.origin.xyz) * scale;
+  let a = abs(n);
+  let plane = select(select(p.xy, p.zy, a.x > a.z), p.xz, a.y > max(a.x, a.z));
+  return valueNoise(plane) * 0.65 + valueNoise(plane * 3.1 + 7.3) * 0.35;
+}
+
+/**
+ * 脏和旧（这个物体的状态层，对所有材质通用）：脏积在缝里（GTAO 顺带算的曲率是凹的）、被遮住的地方、朝下的面，偏褐、变暗、变粗糙；
+ * 旧在凸出的棱边，掉色发白（漆磨掉露出底）、变粗糙。按表面的噪声成斑，不是一层均匀的灰。
+ */
+fn ageSurface(world: vec3f, n: vec3f, position: vec4f, state: vec4f, s: LayerSurface) -> LayerSurface {
+  let dirt = state.y;
+  let wear = state.z;
+  if (dirt <= 0.0 && wear <= 0.0) { return s; }
+  var r = s;
+  let curvature = screenCurvature(position);
+  let occlusion = screenAmbient(position).w;
+  if (dirt > 0.0) {
+    let patches = surfaceNoise(world, n, 1.7);
+    let cavity = saturate(-curvature * 4.0) + (1.0 - occlusion) * 0.8 + saturate(-n.y) * 0.4;
+    // 斑块对比要大：脏是一块一块、一道一道的，不是整个变暗
+    let mask = saturate(dirt * (0.45 + cavity) * smoothstep(0.25, 0.75, patches) * 1.6);
+    r.albedo = mix(r.albedo, r.albedo * vec3f(0.42, 0.36, 0.28) + vec3f(0.035, 0.03, 0.022), mask * 0.85);
+    r.metalness = mix(r.metalness, 0.0, mask * 0.7);
+    r.roughness = mix(r.roughness, 0.92, mask * 0.75);
+  }
+  if (wear > 0.0) {
+    let chips = surfaceNoise(world, n, 6.0);
+    let edge = saturate(curvature * 6.0);
+    // 棱边先旧，再是散开的掉漆斑；wear 越大斑越大（圆滑的东西到处都"凸"，不能光按曲率）
+    let mask = smoothstep(0.55, 0.7, edge * 0.6 + chips * 0.5 + wear * 0.35) * step(0.001, wear);
+    let gray = dot(r.albedo, vec3f(0.2126, 0.7152, 0.0722));
+    r.albedo = mix(r.albedo, vec3f(gray * 0.6 + 0.25), mask * 0.7);
+    r.roughness = mix(r.roughness, min(1.0, r.roughness + 0.35), mask);
+  }
+  return r;
+}
+
+fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, state: vec4f, s: LayerSurface) -> Decaled {
   let wetness = view.weather.x;
   let snowCover = view.weather.y;
   let puddles = view.weather.z;
   var result = Decaled(s, n);
-  if (wetness <= 0.0 && snowCover <= 0.0 && puddles <= 0.0) {
+  // 物体自己的湿、雪（状态层）：不看淋不淋得到
+  let ownWet = state.x;
+  let ownSnow = state.w;
+  if (wetness <= 0.0 && snowCover <= 0.0 && puddles <= 0.0 && ownWet <= 0.0 && ownSnow <= 0.0) {
     return result;
   }
   let exposure = skyExposure(world + vec3f(n.x, 0.0, n.z) * 0.3);
   let up = saturate(n.y);
   var r = s;
   // 水洼之间的地面按 wetness 湿：雨停了它先干（5 分钟），水洼还在（15 分钟）
-  let wet = wetness * exposure;
+  let wet = max(wetness * exposure, ownWet);
   r.albedo *= mix(1.0, 0.45, wet * (1.0 - s.metalness));
   // 水膜让表面光滑一些，但保留材质自己粗糙度的变化（全压到一个很小的值，地面就成了一面映着天的镜子，贴图都看不见了）
   // 金属不吸水，水在上面成珠、不成一层均匀的膜：光滑得少（不然半金属的地面成了映着阴天的镜子）
@@ -177,10 +227,12 @@ fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, s: La
   // 积雪 0 时一点不积（以前写成 up · 1.2 - (1 - 积雪)，没雪时朝上的面也算出 0.9 的雪，下雨的地面成了白的），1 时朝上 0.2 以上都积满；
   // 不满时加上两层噪声（一米多和几十厘米的斑块），积得越多噪声越弱
   var snow = 0.0;
-  if (snowCover > 0.0 && !skinned) {
+  if ((snowCover > 0.0 || ownSnow > 0.0) && !skinned) {
     let ground = world.xz + view.origin.xz;
     let patches = valueNoise(ground * 0.6 + 41.3) * 0.6 + valueNoise(ground * 2.3 + 5.1) * 0.4 - 0.5;
-    snow = exposure * smoothstep(0.0, 0.25, 1.2 * (up - 1.0 + snowCover) + patches * (1.0 - snowCover));
+    snow = max(
+      exposure * smoothstep(0.0, 0.25, 1.2 * (up - 1.0 + snowCover) + patches * (1.0 - snowCover)) * step(0.0001, snowCover),
+      smoothstep(0.0, 0.25, 1.2 * (up - 1.0 + ownSnow) + patches * (1.0 - ownSnow)) * step(0.0001, ownSnow));
   }
   r.albedo = mix(r.albedo, vec3f(0.9), snow);
   r.metalness = mix(r.metalness, 0.0, snow);

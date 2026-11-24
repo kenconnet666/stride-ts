@@ -155,17 +155,19 @@ export class MeshRenderFeature extends RootRenderFeature {
         const c = this.#tint.set(params.tint[i * 4]!, params.tint[i * 4 + 1]!, params.tint[i * 4 + 2]!, 1).toLinear();
         const tint = (Math.round(Math.min(1, c.r) * 255) | (Math.round(Math.min(1, c.g) * 255) << 8) | (Math.round(Math.min(1, c.b) * 255) << 16) | (255 << 24)) >>> 0;
         const seed = params.seed[i]!;
-        this.#setParams(transform.slot[i]!, tint, seed);
+        const byte = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 255);
+        const state = (byte(params.wet[i]!) | (byte(params.dirt[i]!) << 8) | (byte(params.wear[i]!) << 16) | (byte(params.snow[i]!) << 24)) >>> 0;
+        this.#setParams(transform.slot[i]!, tint, seed, state);
         // 模型多出来的网格在子实体上：一起
         for (const child of entities.entity(ids[i]!).require(Transform).children) {
-          if (child.has(ModelPart)) this.#setParams(entities.slotOf(child.id, Transform), tint, seed);
+          if (child.has(ModelPart)) this.#setParams(entities.slotOf(child.id, Transform), tint, seed, state);
         }
       }
     },
   });
 
-  #setParams(slot: number, tint: number, seed: number): void {
-    this.#instanceParams.set(slot, tint, seed);
+  #setParams(slot: number, tint: number, seed: number, state: number): void {
+    this.#instanceParams.set(slot, tint, seed, state);
     this.#nextParamSlots.add(slot);
   }
 
@@ -234,7 +236,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.#nextParamSlots.clear();
     this.#paramEntities = context.game.entities;
     context.game.entities.run(this.#extractParamsSystem, context.time);
-    for (const slot of this.#paramSlots) if (!this.#nextParamSlots.has(slot)) this.#instanceParams.set(slot, 0, 0);
+    for (const slot of this.#paramSlots) if (!this.#nextParamSlots.has(slot)) this.#instanceParams.set(slot, 0, 0, 0);
     [this.#paramSlots, this.#nextParamSlots] = [this.#nextParamSlots, this.#paramSlots];
     context.game.entities.run(this.#extractMorphedSystem, context.time);
     context.game.entities.run(this.#extractHeightfieldSystem, context.time);

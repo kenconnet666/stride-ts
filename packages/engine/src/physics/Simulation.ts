@@ -151,6 +151,12 @@ export class Simulation {
   readonly #controls = new Map<BodyId, BodyControl>();
   /** 接触处理器，按物体编号。 */
   readonly #handlers = new Map<BodyId, ContactHandler>();
+  readonly #vehicles = new Set<EntityId>();
+
+  /** 有车（addVehicle）的车身实体：地形按它们周围建碰撞块（车会开出相机附近）。 */
+  get vehicles(): ReadonlySet<EntityId> {
+    return this.#vehicles;
+  }
   readonly #hit = new PhysicsHit();
 
   readonly #createStatics = system('Simulation.createStatics', {
@@ -449,6 +455,8 @@ export class Simulation {
     const world = this.#worldOrCreate();
     const id = world.addVehicle({ ...desc, body });
     const wheels = desc.wheels.length;
+    const owner = typeof entity === 'number' ? entity : entity.id;
+    this.#vehicles.add(owner);
     let removed = false;
     return {
       input: (forward, right, brake = 0, handBrake = 0) => {
@@ -458,6 +466,7 @@ export class Simulation {
       remove: () => {
         if (removed) return;
         removed = true;
+        this.#vehicles.delete(owner);
         // 车身先被移除（实体销毁）时原生已经一起移除了，这里再移除是空操作
         if (this.#world === world) world.removeVehicle(id);
       },

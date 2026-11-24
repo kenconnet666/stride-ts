@@ -1,0 +1,22 @@
+// 小轿车的车身（能开的车，Vehicle 加 Deformable）：车头朝 -Z，长 4.2、宽 1.8、高 1.45 米，原点在两轴中间的地面上；
+// 轮子是单独的模型（Models/Wheel），挂在车身的子实体上，这里挖出轮拱
+{
+  "name": "Car",
+  "materials": ["Materials/CarPaint", "Materials/CarGlass", "Materials/HeadLight", "Materials/TailLight", "Materials/Tire"],
+  "resolution": 0.025,
+  "shapes": [
+    { "name": "Hull", "kind": "box", "operation": "add", "position": [0, 0.62, 0], "size": [1.8, 0.62, 4.2], "cornerRadius": 0.18 },
+    { "name": "Cabin", "kind": "box", "operation": "add", "smoothness": 0.18, "position": [0, 1.13, 0.25], "size": [1.58, 0.6, 2.2], "cornerRadius": 0.22 },
+    { "name": "Windows", "kind": "box", "operation": "add", "position": [0, 1.17, 0.25], "size": [1.6, 0.4, 2.12], "cornerRadius": 0.16, "material": 1 },
+    { "name": "Arch FL", "kind": "cylinder", "operation": "subtract", "smoothness": 0.04, "position": [0.78, 0.36, -1.3], "rotation": [0, 0, 0.7071, 0.7071], "height": 0.5, "radius": 0.4 },
+    { "name": "Arch FR", "kind": "cylinder", "operation": "subtract", "smoothness": 0.04, "position": [-0.78, 0.36, -1.3], "rotation": [0, 0, 0.7071, 0.7071], "height": 0.5, "radius": 0.4 },
+    { "name": "Arch RL", "kind": "cylinder", "operation": "subtract", "smoothness": 0.04, "position": [0.78, 0.36, 1.3], "rotation": [0, 0, 0.7071, 0.7071], "height": 0.5, "radius": 0.4 },
+    { "name": "Arch RR", "kind": "cylinder", "operation": "subtract", "smoothness": 0.04, "position": [-0.78, 0.36, 1.3], "rotation": [0, 0, 0.7071, 0.7071], "height": 0.5, "radius": 0.4 },
+    { "name": "Head L", "kind": "box", "operation": "add", "position": [0.58, 0.72, -2.08], "size": [0.4, 0.14, 0.08], "cornerRadius": 0.03, "material": 2 },
+    { "name": "Head R", "kind": "box", "operation": "add", "position": [-0.58, 0.72, -2.08], "size": [0.4, 0.14, 0.08], "cornerRadius": 0.03, "material": 2 },
+    { "name": "Tail L", "kind": "box", "operation": "add", "position": [0.6, 0.78, 2.08], "size": [0.36, 0.12, 0.08], "cornerRadius": 0.03, "material": 3 },
+    { "name": "Tail R", "kind": "box", "operation": "add", "position": [-0.6, 0.78, 2.08], "size": [0.36, 0.12, 0.08], "cornerRadius": 0.03, "material": 3 },
+    { "name": "Bumper F", "kind": "box", "operation": "add", "smoothness": 0.05, "position": [0, 0.42, -2.1], "size": [1.7, 0.18, 0.1], "cornerRadius": 0.05, "material": 4 },
+    { "name": "Bumper R", "kind": "box", "operation": "add", "smoothness": 0.05, "position": [0, 0.42, 2.1], "size": [1.7, 0.18, 0.1], "cornerRadius": 0.05, "material": 4 }
+  ]
+}

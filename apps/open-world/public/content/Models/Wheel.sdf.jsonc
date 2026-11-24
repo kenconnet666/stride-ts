@@ -1,0 +1,10 @@
+// 车轮：轮胎加钢圈，轮轴沿 X（Vehicle 的轮子模型要求），半径 0.33 米
+{
+  "name": "Wheel",
+  "materials": ["Materials/Tire", "Materials/Steel"],
+  "resolution": 0.02,
+  "shapes": [
+    { "name": "Tire", "kind": "cylinder", "operation": "add", "position": [0, 0, 0], "rotation": [0, 0, 0.7071, 0.7071], "height": 0.22, "radius": 0.33, "edgeRadius": 0.06 },
+    { "name": "Rim", "kind": "cylinder", "operation": "add", "position": [0, 0, 0], "rotation": [0, 0, 0.7071, 0.7071], "height": 0.235, "radius": 0.2, "edgeRadius": 0.02, "material": 1 }
+  ]
+}

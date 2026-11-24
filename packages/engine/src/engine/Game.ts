@@ -49,6 +49,7 @@ import { LookAt } from '../animation/LookAt';
 import { SoftBody } from '../physics/SoftBody';
 import { Deformable } from '../physics/Deformable';
 import { Knockdown } from '../physics/Knockdown';
+import { VehicleDriver } from '../physics/VehicleDriver';
 import { cameraRigSystem } from '../rendering/CameraRig';
 import { RecastNavigationComponent } from '../physics/RecastNavigationComponent';
 import { AtmosphereRenderFeature } from '../rendering/sky/AtmosphereRenderFeature';
@@ -406,6 +407,7 @@ export class Game {
       this.registry.register(SoftBody);
       this.registry.register(Deformable);
       this.registry.register(Knockdown);
+      this.registry.register(VehicleDriver);
       this.registry.register(Train);
       this.registry.register(TrainDoor);
       this.animation = new AnimationSystem(this.native, this.entities);

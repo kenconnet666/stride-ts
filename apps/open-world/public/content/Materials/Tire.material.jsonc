@@ -1,0 +1,7 @@
+// 轮胎的橡胶：很暗、哑（Physically Based 数据库的轮胎反照率 0.023）
+{
+  "name": "Tire",
+  "baseColor": [0.023, 0.023, 0.023, 1],
+  "metalness": 0,
+  "roughness": 0.85
+}

@@ -220,6 +220,7 @@ export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type
 export { Vehicle } from './physics/Vehicle';
 export { Ragdoll } from './physics/Ragdoll';
 export { Knockdown } from './physics/Knockdown';
+export { VehicleDriver } from './physics/VehicleDriver';
 export { Rope, ropePoints } from './physics/Rope';
 export { Breakable, solidOf } from './physics/Breakable';
 export { AnimationGraphInstance, blend1d, blend2d, type AnimationGraph } from './animation/AnimationGraph';

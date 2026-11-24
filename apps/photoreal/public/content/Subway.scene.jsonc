@@ -35,8 +35,7 @@
     "localHighlights": 1.4
    }
   },
-  "transparent": true,
-  "rayTracedShadows": true
+  "transparent": true
  },
  "entities": [
   {

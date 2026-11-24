@@ -1,12 +1,10 @@
 /**
- * 光追打到的表面怎么受光（探针的射线 IrradianceVolume.ts、光追的反射 RayTracedReflections.ts、路径追踪共用）：这一帧的方向光、
+ * 光追打到的表面怎么受光（辐照度体的探针射线 IrradianceVolume.ts 用）：这一帧的方向光、
  * 点光聚光（面光源当中心的一个点，同体积雾）都带阴影射线（点光聚光多的时候按贡献抽一盏），加天空盒光的球谐和环境光。前向渲染器在用到光追的帧收集完光照以后 write 一次，
  * 着色器里 rayTracedLightingWgsl 声明的 rtDirectLight、rtSkyLight、rtSkyDirection。
  */
 import { LOCAL_LIGHT_WGSL } from '../lighting/LocalLights';
 import { MAX_DIRECTIONAL_LIGHTS, type Lighting } from '../RenderSystem';
-// 只在拼着色器的函数里用（光追场景也引用这个模块：不在模块初始化时读）
-import { RT_INSTANCE_EMITTER } from './RayTracingScene';
 
 /** 一份光照几个 float：个数 1、天空的强度 1、环境光 1、天空的球谐 9、天空盒的旋转 3、方向光的方向和颜色各 MAX_DIRECTIONAL_LIGHTS 个（vec4）。和 RenderSystem 互相引用，用到时才算。 */
 const lightingFloats = () => (1 + 1 + 1 + 9 + 3 + MAX_DIRECTIONAL_LIGHTS * 2) * 4;
@@ -25,7 +23,7 @@ const EXACT_LOCAL_LIGHTS = 4;
 export function rayTracedLightingWgsl(group: number, lighting: number, locals: number): string {
   return /* wgsl */ `
 struct RtLighting {
-  // 方向光几个、点光聚光几个、第几帧（抽灯的随机数每帧换）、发光体照亮的光另算（RayTracedEmissive）时 1
+  // 方向光几个、点光聚光几个、第几帧（抽灯的随机数每帧换）、0
   counts: vec4u,
   // 天空盒光的强度
   sky: vec4f,
@@ -41,15 +39,6 @@ struct RtLighting {
 ${LOCAL_LIGHT_WGSL}
 
 /** 世界方向转到天空盒的立方体贴图里（同网格着色器的 skyDirection）。 */
-/**
- * 打到的表面直接照亮这一点的自发光：同 rtEmissive，但发光体（RT_INSTANCE_EMITTER）照亮的光这一帧由 RayTracedEmissive 直接抽样
- * 时是 0（不算两遍）；只给"第一次弹到的表面"这样的漫反射间接光用，反射里照旧看得见发光体。
- */
-fn rtEmission(hit: RtHit) -> vec3f {
-  let emitter = (bitcast<vec4u>(rtInstances[hit.instance * 6u + 3u]).z & ${RT_INSTANCE_EMITTER}u) != 0u;
-  return select(rtEmissive(hit), vec3f(0.0), emitter && rtLighting.counts.w != 0u);
-}
-
 fn rtSkyDirection(direction: vec3f) -> vec3f {
   let r = direction * mat3x3f(rtLighting.skyRotation[0].xyz, rtLighting.skyRotation[1].xyz, rtLighting.skyRotation[2].xyz);
   return vec3f(r.xy, -r.z);
@@ -163,11 +152,11 @@ export class RayTracedLighting {
     return (this.#buffer ??= this.#device.createBuffer({ label: 'RayTracedLighting', size: this.#data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
   }
 
-  /** 这一帧的光照（前向渲染器收集完、用到光追时调一次）；emittersLit：发光体照亮的光这一帧另算（见 rtEmission）。 */
-  write(lighting: Lighting, emittersLit: boolean): void {
+  /** 这一帧的光照（前向渲染器收集完、用到光追时调一次）。 */
+  write(lighting: Lighting): void {
     const buffer = this.buffer;
     const data = this.#data!, words = new Uint32Array(data.buffer);
-    words.set([lighting.directionalCount, lighting.localCount, this.#frame++ % 65536, emittersLit ? 1 : 0], 0);
+    words.set([lighting.directionalCount, lighting.localCount, this.#frame++ % 65536, 0], 0);
     const skybox = lighting.skybox;
     data.set([skybox?.intensity ?? 0, 0, 0, 0], 4);
     data.set([lighting.ambient.r, lighting.ambient.g, lighting.ambient.b, 0], 8);

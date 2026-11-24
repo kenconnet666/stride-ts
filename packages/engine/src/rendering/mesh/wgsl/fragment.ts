@@ -880,13 +880,10 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
       coatArea = areaShading(coatSurfaceOf(surface));
     }
   }
-  // 局部光的阴影来自光追时（不透明阶段）：所有局部光的和乘这个像素的可见比例（RayTracedLocalLights）
-  let rayTracedLocal = view.decal.z > 0.5 && !TRANSPARENT_STAGE;
-  let localVisibility = select(1.0, screenLocalVisibility(in.position), rayTracedLocal);
   // 投阴影的局部光：这个像素上最亮的两盏真算阴影（面光源的软阴影要几十次采样，一个像素被十几盏灯照到时全算太贵），
   // 其余的乘这两盏的平均可见比例（带阴影的亮度和 ÷ 不带的）——弱的灯离得远、影子本来就淡而散，按比例近似看不出来；
   // 确定的，不随机挑、不用降噪（docs/realtime.md）
-  let shadows = view.shadowAtlas.y > 0.0 && !rayTracedLocal;
+  let shadows = view.shadowAtlas.y > 0.0;
   var first = Lit(vec3f(0.0), vec3f(0.0), vec3f(0.0));
   var second = first;
   var rest = first;
@@ -899,7 +896,7 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
     let lit = localLightLit(light, surface, area, coatArea, in.world, directOcclusion);
     let weight = litWeight(lit);
     if (!shadows || light.direction.w < 0.0 || weight <= 0.0) {
-      direct = addLit(direct, lit, localVisibility);
+      direct = addLit(direct, lit, 1.0);
       continue;
     }
     if (weight > firstWeight) {
@@ -962,7 +959,6 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   let volume = volumeIrradiance(in.world, n, v);
   scattered += diffuse * celEnvironment(volume.rgb) * ao * volume.a;
   // 发光体（屏幕、灯箱）照亮的光：光追里带影子算好的，辐照度体这时不再含它们
-  scattered += diffuse * emissiveLight(in.position);
   if (hasAmbient || hasSky) {
     scattered += diffuse * celEnvironment(view.ambientColor.rgb) * ao * (1.0 - volume.a);
     environment += environmentSpecular * view.ambientColor.rgb * ao * (1.0 - probe.a);

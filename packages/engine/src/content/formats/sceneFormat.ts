@@ -200,17 +200,6 @@ export interface SceneCompositor extends SceneForwardRenderer {
    */
   readonly particlesOverUI?: true;
   /**
-   * true：主画面投阴影的那盏方向光用光追的阴影（RayTracedShadows：软阴影的半影随遮挡物远近变，阴影图只画光追里没有的投影者），
-   * 点光、聚光、面光源也用光追的阴影（RayTracedLocalLights：每个像素按 ReSTIR 挑一盏打一条阴影射线，面光源也有软影子，开销不随
-   * 灯数涨）；画质要开全局光照。没写是阴影图（面光源没有阴影）。
-   */
-  readonly rayTracedShadows?: true;
-  /**
-   * true：材质开了 emissiveLighting 的面（屏幕、灯箱、霓虹）照亮主画面里附近的表面，带软影子（RayTracedEmissive：每个像素按
-   * ReSTIR 对发光的三角形抽样、打一条阴影射线）；画质要开全局光照。没写时它们只在辐照度体、路径追踪里当间接光。
-   */
-  readonly emissiveLighting?: true;
-  /**
    * 网格用的效果（Stride 合成器里 MeshRenderFeature 的 EffectName，不是默认的 StrideForwardShadingEffect 时），运行时按名字对上
    * 游戏导出的 meshEffect（SpaceEscape 的 SpaceEscapeEffectMain）。没写是默认效果。
    */

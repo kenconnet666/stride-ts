@@ -23,7 +23,7 @@ import { boxTouchesSphere, type ShadowCasters } from '../mesh/ShadowCasters';
 import { DirectionalShadowCascades } from './DirectionalShadowCascades';
 import { ShadowAtlasAllocator, type PackedRectangle } from './ShadowAtlasAllocator';
 import { ShadowAtlasBlit } from './ShadowAtlasBlit';
-import { LocalShadowViews, screenCoverage } from './LocalShadowViews';
+import { LocalShadowViews, screenCoverage, singleShadowView } from './LocalShadowViews';
 
 const REFERENCE_SHADOW_SIZE = 1024;
 const SIZE_INDEX: Readonly<Record<ShadowMapSize, number>> = { xsmall: 0, small: 1, medium: 2, large: 3, xlarge: 4 };
@@ -243,7 +243,6 @@ export class ShadowMapRenderer {
     view.shadow = receiver;
     for (const cascade of cascades.views.slice(0, receiver.cascadeCount)) {
       this.#stages.set(cascade, this.casterStage);
-      cascade.skipsRayTraced = view.rayTracedShadows;
       cascade.casterLayer = undefined;
       this.#finalViews.push(cascade);
     }
@@ -299,7 +298,7 @@ export class ShadowMapRenderer {
       if (!entry.staticDrawn && !redrawStatic) continue;
       const receiver = entry.receiver;
       receiver.filterSize = FILTER_SIZES[light.shadow.filter === 'pcss' ? 'pcf7x7' : light.shadow.filter];
-      const stage = light.spot ? this.casterStage : this.cubeMapCasterStage;
+      const stage = singleShadowView(light) ? this.casterStage : this.cubeMapCasterStage;
       if (redrawStatic) {
         staticBudget -= entry.faces;
         for (const view of this.#localViews.collect(light, entry.statics, this.#static.size, scratchReceiver)) {
@@ -333,7 +332,7 @@ export class ShadowMapRenderer {
 
   /** 这盏光的缓存：没有就建；档位、面数变了（或图集翻倍了）重分块（静态层跟着作废）。放不下时缩小，还放不下返回 undefined。 */
   #entryFor(light: LocalLight, wanted: number): LocalEntry | undefined {
-    const faces = light.spot ? 1 : 6;
+    const faces = singleShadowView(light) ? 1 : 6;
     let entry = this.#locals.get(light.slot);
     if (!entry) {
       entry = {
@@ -388,8 +387,8 @@ export class ShadowMapRenderer {
   #signatureChanged(light: LocalLight, entry: LocalEntry): boolean {
     const s = this.#signature;
     s.set([light.position.x, light.position.y, light.position.z, light.radius, light.spot ? light.angleOuter : -1, light.shadow.depthBias, light.shadow.normalOffsetScale, entry.size, entry.faces, 0]);
-    // 聚光的视图按光源的世界矩阵摆（点光的六个面只看位置）
-    if (light.spot) s.set(light.world, 10);
+    // 聚光、面光源的视图按光源的朝向摆（点光的六个面只看位置）
+    if (singleShadowView(light)) s.set(light.world, 10);
     else s.fill(0, 10);
     if (s.every((value, i) => value === entry.signature[i])) return false;
     entry.signature.set(s);
@@ -469,7 +468,7 @@ function shadowCoverage(view: RenderView, light: LocalLight): number {
  */
 export function fitShadowSizes(lights: readonly LocalLight[], coverage: ReadonlyMap<LocalLight, number>, room: number): Map<LocalLight, number> {
   const sizes = new Map(lights.map((light) => [light, shadowMapSize(light.shadow.size, coverage.get(light)!)]));
-  const faces = (light: LocalLight) => (light.spot ? 1 : 6);
+  const faces = (light: LocalLight) => (singleShadowView(light) ? 1 : 6);
   let area = lights.reduce((sum, light) => sum + sizes.get(light)! ** 2 * faces(light), 0);
   while (area > room) {
     let richest: LocalLight | undefined, ratio = 0;

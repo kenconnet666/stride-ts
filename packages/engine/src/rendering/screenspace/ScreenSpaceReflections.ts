@@ -24,7 +24,6 @@ import { FULLSCREEN_VERTEX } from '../wgsl';
 import type { GraphTexture } from '../RenderGraph';
 import { fullscreenPipeline, FullscreenShader, UniformArena, warmFullscreenPipeline, type EffectFrame } from '../postfx/ImageEffect';
 import type { RenderView } from '../RenderSystem';
-import { RayTracedReflections, type RayTracedInputs } from '../raytracing/RayTracedReflections';
 import { SSR_COMMON_WGSL, SSR_SAMPLING_WGSL } from './reflectionWgsl';
 
 const HIZ_FORMAT: GPUTextureFormat = 'r32float';
@@ -195,8 +194,6 @@ const SPATIAL_SHADER = /* wgsl */ `${COMMON}
 @group(0) @binding(5) var linearClamp: sampler;
 @group(0) @binding(6) var pyramid: texture_2d<f32>;
 @group(0) @binding(7) var trilinearClamp: sampler;
-// 光追的反射（半分辨率，RayTracedReflections；没开时是 1×1 的空图）：rgb 是反射，a 是它占的比例（屏幕上没找到的那部分）
-@group(0) @binding(8) var rayTraced: texture_2d<f32>;
 
 /** 单位圆里的 8 个点（泊松盘），每个像素每帧转一个随机角度。 */
 const DISK = array<vec2f, 8>(
@@ -244,12 +241,6 @@ fn sampleAt(pixel: vec2i, uv: vec2f, cone: f32) -> vec4f {
     let radius = cone * length((hit.xy - uv) * ssr.size.xy);
     let mip = clamp(log2(max(radius, 1e-4)), 0.0, f32(textureNumLevels(pyramid)));
     sum = vec4f(compress(colorAt(hit.xy, mip)) * hit.z, hit.z);
-  }
-  // 半分辨率的双线性：一次取到周围四条光线的平均（光追的样本噪声大，粗糙的金属尤其）
-  let traced = textureSampleLevel(rayTraced, linearClamp, (vec2f(pixel) + 0.5) / ssr.size.xy, 0.0);
-  if (traced.a > 0.0) {
-    // 光追的结果是预乘占比的（rgb = 反射 × 占比），除回去才是反射；压高光要在还原以后
-    sum += vec4f(compress(traced.rgb / traced.a) * traced.a, traced.a);
   }
   return sum;
 }
@@ -376,12 +367,7 @@ export class ScreenSpaceReflections {
   maxSteps = 64;
   /** 调试视图：画面换成命中的把握（红：这一帧的追踪，绿：累积后）或者反射本身。 */
   debug: 'off' | 'hits' | 'reflection' = 'off';
-  /** 屏幕上找不到的反射用光追补（有光追场景时，RayTracedReflections）。 */
-  rayTraced = true;
   /** 光追的反射；record 时给了光追的输入才用。 */
-  readonly #rayTraced: RayTracedReflections;
-  /** 不用光追时第 8 个绑定的空图。 */
-  readonly #noRayTraced: GPUTexture;
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
@@ -409,16 +395,14 @@ export class ScreenSpaceReflections {
     this.#spatial = new FullscreenShader(device, 'SSR spatial', SPATIAL_SHADER);
     this.#temporal = new FullscreenShader(device, 'SSR temporal', TEMPORAL_SHADER);
     this.#combine = new FullscreenShader(device, 'SSR combine', COMBINE_SHADER);
-    this.#rayTraced = new RayTracedReflections(device, linearClamp);
-    this.#noRayTraced = device.createTexture({ label: 'SSR no ray traced reflections', size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING });
   }
 
   /**
    * 往这一帧的渲染图里加反射的通道：color 是画好的 HDR 画面，depth 是它的深度，surfaces 是不透明阶段留下的表面
-   * （SURFACE_FORMATS 的顺序），velocity 是运动向量（TAA 开着时有），rayTraced 是光追的输入（有光追场景、rayTraced 开着时给，
-   * 屏幕上找不到的反射用光追补）。返回合成了反射的新画面。
+   * （SURFACE_FORMATS 的顺序），velocity 是运动向量（TAA 开着时有）。返回合成了反射的新画面（屏幕上找不到的由反射探针、
+   * 天空盒补，在网格着色时的环境镜面反射里）。
    */
-  record(frame: EffectFrame, color: GraphTexture, depth: GPUTexture, surfaces: readonly GraphTexture[], view: RenderView, velocity: GraphTexture | undefined, rayTraced?: RayTracedInputs): GraphTexture {
+  record(frame: EffectFrame, color: GraphTexture, depth: GPUTexture, surfaces: readonly GraphTexture[], view: RenderView, velocity: GraphTexture | undefined): GraphTexture {
     this.#arena.reset();
     const { width, height } = color;
     const hiz = this.#hizFor(width, height);
@@ -441,10 +425,9 @@ export class ScreenSpaceReflections {
     const [normalRoughness, specularWeight, environment] = surfaces as [GraphTexture, GraphTexture, GraphTexture];
     const trace = frame.acquire(width, height, TRACE_FORMAT, 'SSR trace');
     this.#trace.draw(frame, trace, [parameters, depth, hiz, normalRoughness]);
-    const traced = rayTraced && this.rayTraced ? this.#rayTraced.record(frame, parameters, trace, normalRoughness, depth, rayTraced) : undefined;
     const spatial = frame.acquire(width, height, REFLECTION_FORMAT, 'SSR spatial');
     const pyramid = this.#recordPyramid(frame, color);
-    this.#spatial.draw(frame, spatial, [parameters, trace, color, normalRoughness, depth, this.#sampler, pyramid, this.#trilinear, traced ?? this.#noRayTraced]);
+    this.#spatial.draw(frame, spatial, [parameters, trace, color, normalRoughness, depth, this.#sampler, pyramid, this.#trilinear]);
     // 时间上的解析写进自己留到下一帧的贴图（图外面的）：算副作用
     const resolved = frame.graph.import({ label: 'SSR history', width, height, format: REFLECTION_FORMAT }, next.createView(), { texture: next });
     this.#temporal.draw(frame, resolved, [parameters, spatial, previous, velocity ?? previous, depth, this.#sampler]);
@@ -475,8 +458,6 @@ export class ScreenSpaceReflections {
   }
 
   destroy(): void {
-    this.#rayTraced.destroy();
-    this.#noRayTraced.destroy();
     this.#hiz?.destroy();
     for (const texture of this.#history ?? []) texture.destroy();
     this.#arena.destroy();

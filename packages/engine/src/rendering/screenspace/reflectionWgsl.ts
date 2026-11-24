@@ -1,7 +1,6 @@
 /**
- * 屏幕空间反射（ScreenSpaceReflections.ts）和光追的反射（raytracing/RayTracedReflections.ts）共用的着色器代码：反射的参数、
- * 深度还原世界位置、投影、八面体解码，每像素每帧的随机数和 GGX 可见法线的取样（两边按同一个随机数取同一个反射方向：屏幕上
- * 没找到的，光追接着找同一条光线）。
+ * 屏幕空间反射（ScreenSpaceReflections.ts）的着色器代码：反射的参数、深度还原世界位置、投影、八面体解码，每像素每帧的随机数
+ * 和 GGX 可见法线的取样。
  */
 export const SSR_COMMON_WGSL = /* wgsl */ `
 struct Ssr {

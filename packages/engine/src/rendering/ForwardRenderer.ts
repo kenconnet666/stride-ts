@@ -33,13 +33,9 @@ import { ScreenSpaceGlobalIllumination } from './screenspace/ScreenSpaceGlobalIl
 import { SubsurfaceScattering } from './screenspace/SubsurfaceScattering';
 import { ScreenSpaceReflections } from './screenspace/ScreenSpaceReflections';
 import { ContactShadows } from './screenspace/ContactShadows';
-import { RayTracedShadows } from './raytracing/RayTracedShadows';
-import { RayTracedLocalLights } from './raytracing/RayTracedLocalLights';
-import { RayTracedEmissive } from './raytracing/RayTracedEmissive';
 import { DepthOfField } from './screenspace/DepthOfField';
 import { MotionBlur } from './screenspace/MotionBlur';
 import { Skybox } from './lighting/Skybox';
-import type { RayTracedInputs } from './raytracing/RayTracedReflections';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
 import { PostProcessingEffects } from './postfx/PostProcessingEffects';
@@ -145,16 +141,6 @@ export class ForwardRenderer {
   readonly #lastViewProjection = Matrix.identity();
   /** 接触阴影（投阴影的方向光，屏幕空间；默认关，见 ContactShadows.ts）。 */
   readonly contactShadows: ContactShadows;
-  /** 光追的阴影（合成器的 rayTracedShadows；开着时主画面不另算接触阴影）。 */
-  readonly rayTracedShadows: RayTracedShadows;
-  /** 这一帧主画面用光追的阴影（光追场景、管线都好了）。 */
-  #rayTracedShadows = false;
-  /** 局部光的光追阴影（ReSTIR，开关同 rayTracedShadows）。 */
-  readonly rayTracedLocalLights: RayTracedLocalLights;
-  #rayTracedLocalLights = false;
-  /** 自发光的面照亮周围（合成器的 emissiveLighting）。 */
-  readonly rayTracedEmissive: RayTracedEmissive;
-  #rayTracedEmissive = false;
   /** 屏幕空间反射（开不开照合成器的 LocalReflections，见 ScreenSpaceReflections.ts）。 */
   readonly screenSpaceReflections: ScreenSpaceReflections;
   /** 屏幕空间反射开着时的不透明阶段：颜色之外写表面（法线、粗糙度、环境镜面反射）。 */
@@ -322,9 +308,6 @@ export class ForwardRenderer {
     this.subsurfaceScattering = new SubsurfaceScattering(renderSystem.device);
     this.screenSpaceReflections = new ScreenSpaceReflections(renderSystem.device, renderSystem.resources.linearClamp);
     this.contactShadows = new ContactShadows(renderSystem.device);
-    this.rayTracedShadows = new RayTracedShadows(renderSystem.device);
-    this.rayTracedLocalLights = new RayTracedLocalLights(renderSystem.device);
-    this.rayTracedEmissive = new RayTracedEmissive(renderSystem.device);
     this.motionBlur = new MotionBlur(renderSystem.device);
     this.depthOfField = new DepthOfField(renderSystem.device);
     this.#pool = new GraphTexturePool(renderSystem.device);
@@ -351,13 +334,8 @@ export class ForwardRenderer {
   }
 
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering, rayTracedShadows, emissiveLighting }: CompositorSettings): void {
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering }: CompositorSettings): void {
     this.subsurfaceScattering.enabled = subsurfaceScattering === true;
-    this.rayTracedShadows.enabled = rayTracedShadows === true;
-    this.rayTracedShadows.reset();
-    this.rayTracedLocalLights.reset();
-    this.rayTracedEmissive.enabled = emissiveLighting === true;
-    this.rayTracedEmissive.reset();
     this.particlesOverUI = particlesOverUI === true;
     this.#mainView.cullingMask = ((renderMask ?? RENDER_GROUP_ALL) & RENDER_GROUP_VISIBLE) >>> 0;
     this.clearColor.set(r, g, b, a);
@@ -426,7 +404,6 @@ export class ForwardRenderer {
     }
     this.#mainView.screenOcclusion = undefined;
     this.#mainView.screenShadow = undefined;
-    this.#mainView.screenEmissive = undefined;
     // 屏幕空间全局光照要上一帧的 HDR 画面：只在画进 HDR 缓冲时做；没做的帧以后重新开始累积。screenIndirect 要在 prepare 写视图的
     // uniform 之前定下来（着色器按它解读 screenOcclusion），贴图本身在深度预通道之后才算出来
     this.#indirect = this.hasCamera && post && this.globalIllumination.enabled && this.quality.globalIllumination;
@@ -468,30 +445,8 @@ export class ForwardRenderer {
     // 辐照度体：要在 prepare 写视图的常量之前找到（着色器按它取探针）；放不下第 27 个贴图的设备不做
     const volumes = renderSystem.irradianceVolumes;
     volumes.begin(context, renderSystem.rayTracing, this.hasCamera && renderSystem.planarReflections.supported && this.quality.globalIllumination, this.#mainView.eye);
-    // 光追的反射（屏幕空间反射找不到的用光追补）：开着屏幕空间反射、画质开着全局光照时
-    const rayTracedReflections = this.hasCamera && post && this.screenSpaceReflections.enabled && this.screenSpaceReflections.rayTraced && this.quality.screenSpaceReflections && this.quality.globalIllumination;
-    // 路径追踪的间接光（成片导出）：开着、设备放得下第 27 个贴图时；光追场景和管线都好了才用（不然这一帧网格着色读不到它）
-    const pathTracing = renderSystem.pathTracing;
-    const pathTracingWanted = this.hasCamera && pathTracing.enabled && renderSystem.planarReflections.supported;
-    // 光追的阴影：投阴影的方向光、画质开着全局光照时；场景和管线都好了才用（阴影图收集前定：用的话级联只画光追里没有的投影者）
-    const rayTracedWanted = this.hasCamera && this.rayTracedShadows.enabled && this.drawShadows && this.quality.shadows && this.quality.globalIllumination;
-    const rayTracedShadowsWanted = rayTracedWanted && renderSystem.lighting.shadowLight >= 0;
-    // 局部光（点光、聚光、面光源）的光追阴影：有局部光时
-    const rayTracedLocalWanted = rayTracedWanted && this.rayTracedLocalLights.enabled && renderSystem.lighting.localCount > 0;
-    const rayTracedEmissiveWanted = this.hasCamera && this.rayTracedEmissive.enabled && this.quality.globalIllumination;
-    if (rayTracedReflections || pathTracingWanted || rayTracedShadowsWanted || rayTracedLocalWanted || rayTracedEmissiveWanted) renderSystem.rayTracing.update(context.game);
-    this.#rayTracedShadows = rayTracedShadowsWanted && this.rayTracedShadows.ready(renderSystem.rayTracing);
-    if (!this.#rayTracedShadows) this.rayTracedShadows.reset();
-    this.#mainView.rayTracedShadows = this.#rayTracedShadows;
-    this.#rayTracedLocalLights = rayTracedLocalWanted && this.rayTracedLocalLights.ready(renderSystem.rayTracing);
-    if (!this.#rayTracedLocalLights) this.rayTracedLocalLights.reset();
-    this.#mainView.rayTracedLocalLights = this.#rayTracedLocalLights;
-    this.#rayTracedEmissive = rayTracedEmissiveWanted && this.rayTracedEmissive.ready(renderSystem.rayTracing);
-    if (!this.#rayTracedEmissive) this.rayTracedEmissive.reset();
-    this.#mainView.rayTracedEmissive = this.#rayTracedEmissive;
-    pathTracing.active = pathTracingWanted && pathTracing.ready(renderSystem.rayTracing);
-    this.#mainView.screenIndirect = this.#indirect || pathTracing.active;
-    if (volumes.active || rayTracedReflections || pathTracing.active) renderSystem.rayTracing.lighting.write(renderSystem.lighting, this.#rayTracedEmissive);
+    // 探针的射线（光追只留给辐照度体：每帧几十万条、在探针上平均，不在像素上出噪点，docs/realtime.md）打到的表面怎么受光
+    if (volumes.active) renderSystem.rayTracing.lighting.write(renderSystem.lighting);
     this.#assignClusters(views.filter((view) => view !== skyView && !impostorViews.includes(view)));
     // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
     probes.watchLighting(renderSystem.lighting);
@@ -529,7 +484,7 @@ export class ForwardRenderer {
     if (renderSystem.water.oceans) frame.pass('Ocean FFT', (pass) => pass.sideEffect(), () => renderSystem.water.simulate(encoder, context, renderSystem.graphicsDevice.profiler.passTimestamps('Ocean FFT')));
     // 光追打到的表面的颜色：批或材质变了的帧按纹理坐标烘一遍、求平均（在图外面，算副作用）
     const surfaces = renderSystem.rayTracing.surfaces;
-    if ((volumes.active || rayTracedReflections || pathTracingWanted) && surfaces.pending) frame.pass('SurfaceBake', (pass) => pass.sideEffect(), () => surfaces.draw(encoder, this.#mainView, context.game.meshes));
+    if (volumes.active && surfaces.pending) frame.pass('SurfaceBake', (pass) => pass.sideEffect(), () => surfaces.draw(encoder, this.#mainView, context.game.meshes));
     // 辐照度体的探针：追射线、更新图集（图集在图外面，网格着色时取，算副作用）
     if (volumes.active) frame.pass('IrradianceVolume', (pass) => pass.sideEffect(), () => volumes.draw(encoder, renderSystem.localLights.buffer, renderSystem.rayTracing, renderSystem.graphicsDevice.profiler.passTimestamps('IrradianceVolume')));
     const probeTarget = probeView && probes.captureTarget();
@@ -600,7 +555,7 @@ export class ForwardRenderer {
       if (this.#indirect) this.globalIllumination.capture(frame, color);
       const velocity = temporal || blur ? this.#velocityPass(context, frame, depth) : undefined;
       // 反射在后处理之前合成进画面（同 Stride 的 LocalReflections 排在后处理的最前面）
-      const reflected = reflect && surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity, rayTracedReflections ? this.#rayTracedInputs(renderSystem) : undefined) : color;
+      const reflected = reflect && surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity) : color;
       // TAA 做了抗锯齿，后处理里就不再做 FXAA
       const antialiased = temporal ? this.temporalAntialiasing.record(frame, reflected, depth, this.#mainView, velocity!) : reflected;
       // 景深、运动模糊在抗锯齿之后、泛光这些之前（亮的东西糊开以后再泛光）；景深在前（同虚幻）
@@ -635,21 +590,6 @@ export class ForwardRenderer {
     }
   }
 
-  /** 光追的反射要的东西：光追场景、点光聚光、天空盒的镜面贴图（同网格着色器的取法）、辐照度体。 */
-  #rayTracedInputs(renderSystem: RenderSystem): RayTracedInputs {
-    const skybox = renderSystem.lighting.skybox;
-    const resources = renderSystem.resources;
-    const skySpecular = !skybox ? resources.blackCube : skybox.skybox instanceof Skybox ? resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    return {
-      scene: renderSystem.rayTracing,
-      localLights: renderSystem.localLights.buffer,
-      skySpecular,
-      specularLevels: skybox?.skybox.specularLevels ?? 0,
-      giAtlas: renderSystem.irradianceVolumes.atlas,
-      giVolume: renderSystem.irradianceVolumes.shading(),
-    };
-  }
-
   destroy(): void {
     this.#depth?.destroy();
     this.#depth = undefined;
@@ -665,9 +605,6 @@ export class ForwardRenderer {
     this.subsurfaceScattering.destroy();
     this.screenSpaceReflections.destroy();
     this.contactShadows.destroy();
-    this.rayTracedShadows.destroy();
-    this.rayTracedLocalLights.destroy();
-    this.rayTracedEmissive.destroy();
     this.motionBlur.destroy();
     this.depthOfField.destroy();
     this.picker.destroy();
@@ -725,28 +662,17 @@ export class ForwardRenderer {
         prepass.end();
       });
       // 主画面：深度有了，算屏幕空间的全局光照（连遮蔽一起）或者只算环境光遮蔽，着色时用
-      if (view === this.#mainView && !isGraphTexture(depth) && renderSystem.pathTracing.active) {
-        view.screenOcclusion = renderSystem.pathTracing.record(frame, depth, view, this.#rayTracedInputs(renderSystem));
-      } else if (view === this.#mainView && !isGraphTexture(depth) && this.#indirect) {
+      if (view === this.#mainView && !isGraphTexture(depth) && this.#indirect) {
         view.screenOcclusion = this.globalIllumination.record(frame, depth, view);
       } else if (view === this.#mainView && !isGraphTexture(depth) && this.ambientOcclusion.enabled && this.quality.ambientOcclusion) {
         view.screenOcclusion = this.ambientOcclusion.record(frame, depth, view, this.#temporal);
       }
-      // 光追的阴影，或者接触阴影：投阴影的那盏方向光（没有就不算）
+      // 接触阴影：投阴影的那盏方向光（没有就不算）
       const { lighting } = renderSystem;
-      if (view === this.#mainView && !isGraphTexture(depth) && this.#rayTracedShadows) {
-        const { direction } = lighting.directionals[lighting.shadowLight]!;
-        const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
-        const angle = lighting.directionalShadow?.lightAngle ?? 0.53;
-        view.screenShadow = this.rayTracedShadows.record(frame, depth, view, renderSystem.rayTracing, [-direction.x / length, -direction.y / length, -direction.z / length], angle);
-      } else if (view === this.#mainView && !isGraphTexture(depth) && this.contactShadows.enabled && this.quality.contactShadows && lighting.shadowLight >= 0) {
+      if (view === this.#mainView && !isGraphTexture(depth) && this.contactShadows.enabled && this.quality.contactShadows && lighting.shadowLight >= 0) {
         const { direction } = lighting.directionals[lighting.shadowLight]!;
         const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
         view.screenShadow = this.contactShadows.record(frame, depth, view, [-direction.x / length, -direction.y / length, -direction.z / length]);
-      }
-      // 发光体照亮的光（屏幕、灯箱）
-      if (view === this.#mainView && !isGraphTexture(depth) && this.#rayTracedEmissive) {
-        view.screenEmissive = this.rayTracedEmissive.record(frame, depth, view, renderSystem.rayTracing);
       }
     }
     const surfaces = output.surfaces ?? [];
@@ -770,10 +696,6 @@ export class ForwardRenderer {
     // 分簇：着色时像素只看所在那一簇的点光、贴花
     if (view?.clustered) {
       frame.pass(`${label} clusters`, (pass) => pass.sideEffect(), () => renderSystem.clusters.record(encoder, view, profiler.passTimestamps(`${label} clusters`)));
-    }
-    // 局部光的光追阴影：要簇的列表（候选按簇取），和太阳的可见度拼成 rg 当 screenShadow
-    if (view === this.#mainView && !isGraphTexture(depth) && this.#rayTracedLocalLights) {
-      view.screenShadow = this.rayTracedLocalLights.record(frame, depth, view, renderSystem.rayTracing, renderSystem.localLights.buffer, renderSystem.clusters.buffer, renderSystem.lighting.localCount, view.screenShadow);
     }
     frame.pass(`${label} opaque`, (pass) => {
       if (isGraphTexture(target)) pass.write(target);

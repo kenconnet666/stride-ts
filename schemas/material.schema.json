@@ -222,11 +222,6 @@
       ],
       "additionalProperties": false
     },
-    "emissiveLighting": {
-      "type": "boolean",
-      "description": "lights nearby surfaces through ray tracing (screens, light boxes, neon; uses the average emission of the whole mesh)",
-      "default": false
-    },
     "emissiveTree": {},
     "coat": {
       "type": "object",

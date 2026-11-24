@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
-import { RayTracingScene, RT_EMITTER_WORDS, emitterTable, type Emitter } from '../../src/rendering/raytracing/RayTracingScene';
+import { RayTracingScene } from '../../src/rendering/raytracing/RayTracingScene';
 import { fakeGpu, stubGpuGlobals } from '../fakeGpu';
 
 /** Möller–Trumbore（两面都算），没打到是 Infinity。 */
@@ -105,29 +105,6 @@ describe('光追的 BVH（原生建，GPU 的布局）', () => {
     const { nodes, order, nodeCount } = await native.buildBoxBvh(boxes);
     expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_, i) => i));
     for (let n = 0; n < nodeCount; n++) for (let c = 0; c < 4; c++) expect(nodes[n * 32 + 28 + c]!).toBeLessThanOrEqual(2);
-  });
-});
-
-describe('发光体表（RayTracedEmissive 抽样用）', () => {
-  test('每项是世界矩阵的三行、三角形的范围、实例，累积分布按功率、最后一项是 1', () => {
-    // 两个实例：第 0 个在原点不动，第 1 个平移 (1, 2, 3)、x 放大 2 倍（列主序的 4×4）
-    const world = new Float32Array(32);
-    world.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], 0);
-    world.set([2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1], 16);
-    const emitters = [
-      { instance: 4, slot: 0, blas: { triangleOffset: 10, triangles: 2 }, power: 1 },
-      { instance: 7, slot: 1, blas: { triangleOffset: 30, triangles: 5 }, power: 3 },
-    ] as unknown as Emitter[];
-    const table = emitterTable(world, emitters);
-    const words = new Uint32Array(table.buffer);
-    expect(table.length).toBe(2 * RT_EMITTER_WORDS);
-    const second = RT_EMITTER_WORDS;
-    // 网格坐标到世界：x' = 2x + 1，y' = y + 2，z' = z + 3
-    expect([...table.subarray(second, second + 12)]).toEqual([2, 0, 0, 1, 0, 1, 0, 2, 0, 0, 1, 3]);
-    expect([words[12], words[13], words[14]]).toEqual([10, 2, 4]);
-    expect([words[second + 12], words[second + 13], words[second + 14]]).toEqual([30, 5, 7]);
-    expect(table[15]).toBeCloseTo(0.25);
-    expect(table[second + 15]).toBe(1);
   });
 });
 

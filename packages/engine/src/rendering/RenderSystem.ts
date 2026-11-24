@@ -30,7 +30,6 @@ import { ImpostorBaker } from './mesh/Impostors';
 import { WaterRenderer } from '../world/WaterRenderer';
 import { RayTracingScene } from './raytracing/RayTracingScene';
 import { IrradianceVolumes } from './raytracing/IrradianceVolume';
-import { PathTracedLighting } from './raytracing/PathTracedLighting';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -183,12 +182,6 @@ export class RenderView {
   screenIndirect = false;
   /** 投阴影的方向光的接触阴影（ContactShadows.record 的结果），着色时乘那盏光；只有主画面有。 */
   screenShadow: GPUTexture | undefined;
-  /**
-   * 发光体照亮的漫反射光（RayTracedEmissive.record 的结果：rgb 是余弦加权的平均辐亮度，着色时乘漫反射颜色加上）；只有主画面
-   * 不透明的像素有。rayTracedEmissive 在写视图的 uniform（prepare）之前定下来（视图常量的 decal.w），贴图在分簇之后才有。
-   */
-  screenEmissive: GPUTexture | undefined;
-  rayTracedEmissive = false;
   /** 运动向量用（TemporalAntialiasing.jitter 设）：这一帧没挪过亚像素的视图投影、上一帧的。 */
   readonly unjitteredViewProjection = Matrix.identity();
   readonly previousViewProjection = Matrix.identity();
@@ -225,22 +218,10 @@ export class RenderView {
    */
   skipsTransparent = false;
   /**
-   * 阴影投射的阶段里不画进了光追场景、不随风动的批（rayTraceable；随风动的光追里是静止的，阴影射线跳过它们）：主画面用光追的阴影时那盏方向光的级联用，阴影图
-   * 只补光追里没有的投影者（蒙皮的角色、透明的、关了 visibleInRayTracing 的）。
-   */
-  skipsRayTraced = false;
-  /**
    * 阴影投射的阶段只画一层投影者（缓存的阴影图，lighting/ShadowMapRenderer.ts）：static 只画静止的（画一次缓存着），dynamic
    * 只画动的（每帧画在拷过来的静态层上）；undefined 都画。
    */
   casterLayer: 'static' | 'dynamic' | undefined = undefined;
-  /** 这一帧投阴影的方向光用光追的阴影（RayTracedShadows）：阴影图收集时给它的级联标 skipsRayTraced。 */
-  rayTracedShadows = false;
-  /**
-   * 这一帧局部光（点光、聚光、面光源）的阴影来自光追（RayTracedLocalLights，screenShadow 的 g）：着色时不透明阶段的局部光不查
-   * 阴影图集，和乘 g（视图常量的 decal.z）。
-   */
-  rayTracedLocalLights = false;
   /**
    * 画哪些渲染组（Stride 的 RenderView.CullingMask，合成器里相机渲染器的 RenderMask）：第 g 位是 1 时画第 g 组。
    * 默认除了烘焙组（RENDER_GROUP_BAKE）全画。
@@ -588,8 +569,6 @@ export class RenderSystem {
   readonly rayTracing: RayTracingScene;
   /** 辐照度体（R2 的 DDGI：光追的探针算漫反射的间接光）：前向渲染器每帧更新，网格着色时取。 */
   readonly irradianceVolumes: IrradianceVolumes;
-  /** 路径追踪的间接光（成片导出用，离线渲染的 pathTracing、调试命令 pathtrace 开）。 */
-  readonly pathTracing: PathTracedLighting;
   /** 远处卡片的烘焙（有要烘的模型时合成器多画几个正交视图）。 */
   readonly impostors: ImpostorBaker;
   /**
@@ -623,7 +602,6 @@ export class RenderSystem {
     this.water = new WaterRenderer(graphicsDevice.device, this.resources);
     this.rayTracing = new RayTracingScene(graphicsDevice.device);
     this.irradianceVolumes = new IrradianceVolumes(graphicsDevice.device, this.resources.linearClamp);
-    this.pathTracing = new PathTracedLighting(graphicsDevice.device, this.resources.linearClamp);
   }
 
   get device(): GPUDevice {
@@ -695,7 +673,6 @@ export class RenderSystem {
     this.water.destroy();
     this.rayTracing.destroy();
     this.irradianceVolumes.destroy();
-    this.pathTracing.destroy();
     this.resources.destroy();
   }
 }

@@ -337,12 +337,6 @@ export interface MaterialFile {
   /** 自发光：线性颜色乘强度；有 emissiveTexture 时再乘贴图（Stride 的 ComputeBinaryColor 乘法）。 */
   readonly emissive?: Vec3Tuple;
   readonly emissiveTexture?: TextureSlot;
-  /**
-   * 自发光照亮周围（光追，合成器开着 emissiveLighting 时）：屏幕、灯箱、霓虹这类大致均匀发光的面当光源，照到附近的表面上、带
-   * 软影子（RayTracedEmissive）。按整个网格的平均自发光算（贴图里只有一小块发光的、旁边已经放了灯的灯具别开：光会从整个面出来、
-   * 或者算两遍）。默认关。
-   */
-  readonly emissiveLighting?: boolean;
   /** 每个物体按种子的变化（色相的度数、饱和度、明暗、粗糙度的正负范围），见 Material 的 variation。 */
   readonly variation?: { readonly hue?: number; readonly saturation?: number; readonly value?: number; readonly roughness?: number };
   /** 清漆层（叠在上面的透明漆：车漆、上漆的木头、釉面），见 Material 的 coat。 */

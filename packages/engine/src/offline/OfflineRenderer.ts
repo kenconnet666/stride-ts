@@ -23,11 +23,6 @@ export interface OfflineRenderOptions {
   readonly samples?: number | undefined;
   /** 快门开着的那部分帧间隔（0 到 1，180° 快门是 0.5）；0 只抗锯齿、不做运动模糊。 */
   readonly shutter?: number | undefined;
-  /**
-   * 漫反射的间接光用路径追踪（RenderSystem.pathTracing，代替辐照度体、天空盒光、环境光）：每个输出帧的子帧一起累积，子帧越多越
-   * 干净。
-   */
-  readonly pathTracing?: boolean | undefined;
 }
 
 /** 读回的一帧：sRGB 的 RGBA，一行紧挨一行。 */
@@ -64,7 +59,6 @@ interface SavedState {
   readonly motionBlur: boolean;
   readonly fxaa: boolean;
   readonly masterVolume: number;
-  readonly pathTracing: boolean;
 }
 
 export class OfflineRenderer {
@@ -74,8 +68,6 @@ export class OfflineRenderer {
   readonly fps: number;
   readonly samples: number;
   readonly shutter: number;
-  /** 漫反射的间接光用路径追踪。 */
-  readonly pathTracing: boolean;
   /** 放了的声音（相对开始渲染的时刻），导出时混音用。 */
   readonly audio = new AudioRecorder();
   #frame = 0;
@@ -84,7 +76,7 @@ export class OfflineRenderer {
   #saved: SavedState | undefined;
   #gpu: Gpu | undefined;
 
-  constructor(game: Game, { width, height, fps, samples = 1, shutter = 0.5, pathTracing = false }: OfflineRenderOptions) {
+  constructor(game: Game, { width, height, fps, samples = 1, shutter = 0.5 }: OfflineRenderOptions) {
     if (!(width >= 1 && height >= 1 && fps > 0)) throw new Error(`OfflineRenderer: invalid size ${width}x${height} or fps ${fps}`);
     this.game = game;
     this.width = Math.round(width);
@@ -92,7 +84,6 @@ export class OfflineRenderer {
     this.fps = fps;
     this.samples = Math.max(1, Math.round(samples));
     this.shutter = Math.min(Math.max(shutter, 0), 1);
-    this.pathTracing = pathTracing;
   }
 
   /** 下一帧的序号（已经渲染了几帧）。 */
@@ -109,9 +100,8 @@ export class OfflineRenderer {
     this.#saved = {
       releaseFrames, fixedSize: game.graphicsDevice.fixedSize,
       temporal: compositor.temporalAntialiasing.enabled, motionBlur: compositor.motionBlur.enabled, fxaa: compositor.postEffects.antialiasing.enabled,
-      masterVolume: game.audio.masterVolume, pathTracing: game.renderSystem.pathTracing.enabled,
+      masterVolume: game.audio.masterVolume,
     };
-    game.renderSystem.pathTracing.enabled = this.pathTracing;
     game.graphicsDevice.fixedSize = [this.width, this.height];
     game.graphicsDevice.backBufferCopySource = true;
     compositor.temporalAntialiasing.enabled = false;
@@ -143,7 +133,6 @@ export class OfflineRenderer {
       // 画完马上（同一个任务里）拷后备缓冲：浏览器呈现画布以后它就失效了
       const copied = game.debug.afterNextDraw(() => gpu.accumulate(game.graphicsDevice.currentBackBuffer(), k === 0, 1 / samples));
       // 路径追踪：每个输出帧从头累积
-      if (k === 0) game.renderSystem.pathTracing.reset();
       const advance = step > 1e-9 ? step : 0;
       if (advance > 0) this.#time = this.audio.time = time;
       await game.runFrame(advance);
@@ -168,7 +157,6 @@ export class OfflineRenderer {
     compositor.temporalAntialiasing.enabled = saved.temporal;
     compositor.motionBlur.enabled = saved.motionBlur;
     compositor.postEffects.antialiasing.enabled = saved.fxaa;
-    game.renderSystem.pathTracing.enabled = saved.pathTracing;
     game.audio.masterVolume = saved.masterVolume;
     if (game.audio.recorder === this.audio) game.audio.recorder = undefined;
     this.#gpu?.destroy();

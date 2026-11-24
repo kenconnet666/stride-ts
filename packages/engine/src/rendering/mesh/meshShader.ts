@@ -254,21 +254,12 @@ export function screenTextureCode(supported: boolean): string {
     ? /* wgsl */ `
 @group(0) @binding(26) var screenTexture: texture_2d<f32>;
 @group(0) @binding(27) var irradianceAtlas: texture_2d<f32>;
-@group(0) @binding(28) var screenEmissive: texture_2d<f32>;
-/** 发光体照亮这个像素的漫反射光（RayTracedEmissive：余弦加权的平均辐亮度，乘漫反射颜色）；没有时 0。 */
-fn emissiveLight(position: vec4f) -> vec3f {
-  if (view.decal.w < 0.5 || TRANSPARENT_STAGE) { return vec3f(0.0); }
-  let size = textureDimensions(screenEmissive);
-  return textureLoad(screenEmissive, min(vec2u(position.xy), size - 1u), 0).rgb;
-}
 fn planarColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
 fn sceneColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
 ${IRRADIANCE_VOLUME_WGSL}
 /** 辐照度体在这一点的漫反射环境光（rgb，乘过强度）和盖住的程度（a）；没有体时是 0。 */
 fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f {
   if (view.giMin.w == 0.0) { return vec4f(0.0); }
-  // 路径追踪的间接光代替（它从屏幕空间的间接光那里加进来）：盖满、自己不加
-  if (view.giMin.w > 1.5) { return vec4f(0.0, 0.0, 0.0, 1.0); }
   let s = giSample(irradianceAtlas, linearClamp, GiVolume(view.giMin, view.giSpacing, view.giCounts, view.giScroll), p, n, v);
   return vec4f(s.rgb * view.giSpacing.w, s.a);
 }
@@ -277,6 +268,5 @@ fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f {
 fn planarColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
 fn sceneColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
 fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f { return vec4f(0.0); }
-fn emissiveLight(position: vec4f) -> vec3f { return vec3f(0.0); }
 `;
 }

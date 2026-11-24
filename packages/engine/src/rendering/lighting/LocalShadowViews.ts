@@ -9,6 +9,17 @@ import { Matrix, type Matrix4 } from '../../data/Matrix';
 import { RenderView, type LocalLight, type LocalShadowReceiver } from '../RenderSystem';
 import type { PackedRectangle } from './ShadowAtlasAllocator';
 
+/**
+ * 矩形光、圆盘光的阴影图：一张朝发光方向的透视图，视场角这么大（度）。它们只往一侧照，立方体的面之间的接缝会切开大核的软影子；
+ * 图外只剩贴着发光面、几乎平行的那一圈（那里本来就暗），按照得到算。
+ */
+export const AREA_SHADOW_FOV = 140;
+
+/** 这盏光的阴影是一张图（聚光、矩形光、圆盘光），不是立方体的六个面（点光、管状光）。 */
+export function singleShadowView(light: Readonly<LocalLight>): boolean {
+  return light.spot || light.area === 'rect' || light.area === 'disc';
+}
+
 /** 立方体每个面四周留的边（Stride 的 LightPointShadowMapRendererCubeMap.BorderPixels）。 */
 const BORDER_PIXELS = 8;
 const POINT_NEAR = 0.1, SPOT_NEAR = 0.01;
@@ -51,10 +62,11 @@ export class LocalShadowViews {
    * 返回的视图只在这一帧有效（下一帧重用）。
    */
   collect(light: Readonly<LocalLight>, rectangles: readonly PackedRectangle[], atlasSize: number, receiver: LocalShadowReceiver): RenderView[] {
-    receiver.point = !light.spot;
+    const single = singleShadowView(light);
+    receiver.point = !single;
     receiver.depthBias = light.shadow.depthBias;
     receiver.normalOffsetScale = light.shadow.normalOffsetScale;
-    const near = light.spot ? SPOT_NEAR : POINT_NEAR, far = light.radius * 2;
+    const near = single ? SPOT_NEAR : POINT_NEAR, far = light.radius * 2;
     // 深度 = A + B / z：z 在近平面是 0、远平面是 1
     receiver.depthA = far / (far - near);
     receiver.depthB = (near * far) / (near - far);
@@ -66,6 +78,12 @@ export class LocalShadowViews {
       if (light.spot) {
         Matrix.invert(view.view, light.world);
         Matrix.perspectiveFovRH(view.projection, (light.angleOuter * Math.PI) / 180, 1, near, far);
+      } else if (single) {
+        // 面光源：按位置和照向摆（实体的缩放是发光面的大小，不进视图）
+        const { position: p, direction: d } = light;
+        const up = Math.abs(d.y) < 0.99 ? [0, 1, 0] : [1, 0, 0];
+        Matrix.lookAtRH(view.view, [p.x, p.y, p.z], [p.x + d.x, p.y + d.y, p.z + d.z], up);
+        Matrix.perspectiveFovRH(view.projection, (AREA_SHADOW_FOV * Math.PI) / 180, 1, near, far);
       } else {
         const { x, y, z } = light.position;
         Matrix.scaleTranslation(this.#translation, 1, 1, 1, -x, -y, -z);

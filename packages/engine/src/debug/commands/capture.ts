@@ -13,7 +13,7 @@ const MATERIAL_EXPORT_HELP = 'Export the outputs of a material\'s node graph (ba
 const RENDER_HELP = 'Offline render (fixed time step, sub-frame antialiasing and motion blur) to an MP4 (H.264 + AAC) or a PNG sequence, saved in the project\'s exports folder. '
   + 'args: name (default "render"), preset (landscape1080 | vertical1080 | square1080 | landscape4k), width, height, fps, '
   + 'timeline (entity with a TimelinePlayer, or a timeline name: restarted from 0, seconds defaults to its length), seconds, samples (sub-frames per frame, default 8), '
-  + 'shutter (0..1 of the frame interval, default 0.5), format (mp4 | png), bitrate, audio (default true), pathTracing (diffuse indirect light path traced per pixel, accumulated over the sub-frames; default false). In the editor it renders in a hidden play-mode page.';
+  + 'shutter (0..1 of the frame interval, default 0.5), format (mp4 | png), bitrate, audio (default true). In the editor it renders in a hidden play-mode page.';
 const BAKE_HELP = 'Bake a particle system into a flipbook atlas (columns x rows frames over some seconds, orthographic camera, alpha from a black and a white pass), '
   + 'saved as a png in the content folder through the editor backend. args: entity, columns (default 4), rows (default 4), size (pixels per frame, default 256), '
   + 'seconds (default 2), start (seconds simulated before the first frame), view (front | side | top), path (content path, default Textures/<entity>Flipbook), '

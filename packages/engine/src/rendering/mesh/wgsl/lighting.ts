@@ -269,6 +269,8 @@ const AREA_BLOCKER_TAPS = 8u;
 const AREA_FILTER_TAPS = 24u;
 /** 搜遮挡物时假定它们离灯不近于接收点距离的这个比例（搜的范围是发光面的 1 / 比例 − 1 倍）。 */
 const AREA_SEARCH_NEAR = 0.4;
+/** 面光源的软阴影比深度时距离缩的比例（接收面自己不挡自己）。 */
+const AREA_RELATIVE_BIAS = 0.01;
 const CUBE_AXES = array<vec3f, 6>(vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, -1.0), vec3f(1.0, 0.0, 0.0), vec3f(-1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, -1.0, 0.0));
 
 /** 接收点 q（投影过、没除 w）沿发光面的两条半轴各挪 o.x、o.y 倍（d1、d2 是两条半轴投影过的）在图集上的位置。 */
@@ -278,7 +280,8 @@ fn areaShadowUv(q: vec4f, d1: vec4f, d2: vec4f, o: vec2f) -> vec2f {
 }
 
 /**
- * 面光源（矩形、圆盘、管子）的软阴影：阴影图是光源中心的立方体（同点光，缓存着），半影按发光面的大小算（PCSS，Fernando 2005）。
+ * 面光源（矩形、圆盘、管子）的软阴影：阴影图在光源中心（矩形、圆盘是朝照向的一张宽视角的图，管子是立方体，见
+ * LocalShadowViews 的 AREA_SHADOW_FOV），半影按发光面的大小算（PCSS，Fernando 2005）。
  * 发光面上的点 a（两条半轴的组合）被离灯 zb 远的遮挡物挡住时，遮挡物在图上的位置相当于接收点沿 a 挪 (zr − zb) / zb 倍——
  * 采样点铺在发光面的形状上（长条灯管的半影沿管子长），经这一面的矩阵准确投到图上（各面、透视都对）。
  * 1. 搜遮挡物：遮挡物不近于接收距离的 AREA_SEARCH_NEAR 倍，范围是发光面的 1 / 比例 − 1 倍；比这里离灯近的取平均距离；
@@ -291,12 +294,20 @@ fn computeAreaShadow(index: u32, position: vec3f, normal: vec3f, light: LocalLig
   let lightPosition = light.position.xyz;
   let nDotL = max(dot(normal, normalize(lightPosition - position)), 0.0001);
   let p = position + 2.0 * SHADOW_OFFSET_TEXEL * params.y * saturate(1.0 - nDotL) * normal;
-  let face = localShadowFace(position - lightPosition);
-  let receiverDepth = params.z + params.w / (face.y - params.x);
-  if (receiverDepth < 0.0 || receiverDepth > 1.0) {
+  // 一张图时轴是照向；立方体按方向选面
+  var m = localShadowMatrix(start, 0u);
+  var axis = light.direction.xyz;
+  if (localShadowOptions(start).y > 0.5) {
+    let face = localShadowFace(position - lightPosition);
+    m = localShadowMatrix(start, face.x);
+    axis = CUBE_AXES[face.x];
+  }
+  let distance = dot(position - lightPosition, axis);
+  let receiverInverse = 1.0 / distance;
+  let receiverDepth = areaCompareDepth(receiverInverse, params);
+  if (distance <= params.x || receiverDepth < 0.0 || receiverDepth > 1.0) {
     return 1.0;
   }
-  let m = localShadowMatrix(start, face.x);
   // 发光面的两条半轴：矩形的半宽、半高，圆盘两条都是半径，管子只有半长
   let a1 = light.angle.xyz;
   let a2 = select(normalize(cross(light.direction.xyz, a1)) * light.angle.w, vec3f(0.0), kind == 4u);
@@ -304,34 +315,69 @@ fn computeAreaShadow(index: u32, position: vec3f, normal: vec3f, light: LocalLig
   let d1 = m * vec4f(a1, 0.0);
   let d2 = m * vec4f(a2, 0.0);
   let texel = view.shadowAtlas.x;
-  // 这一面的块：中心是光源沿这一面的轴的投影，半边长在选项里
-  let c = m * vec4f(lightPosition + CUBE_AXES[face.x], 1.0);
+  // 这一块：中心是光源沿轴的投影，半边长在选项里
+  let c = m * vec4f(lightPosition + axis, 1.0);
   let half = vec2f(localShadowOptions(start).z - texel);
   let lo = c.xy / c.w - half;
   let hi = c.xy / c.w + half;
   let last = vec2i(i32(view.shadowAtlas.y) - 1);
+  // 接收平面的深度偏移（Isidoro 2006）：采样范围大（发光面投到图上的一片），拿一个固定的深度比时表面自己离灯近的那部分会被当成
+  // 遮挡物（地上一块块按立方体的面分开的暗楔）；按表面在图上的变化把每个采样点要比的深度沿表面外推。外推在 1 / 距离 里做：
+  // 平面上 1 / 距离 在透视的图上是线性的（透视插值的性质），外推是准的；深度 A + B / 距离 挤在 1 附近，直接拿它求梯度单精度不够
+  let base = q.xy / q.w;
+  let gradient = areaReceiverGradient(m, p, normal, lightPosition, axis, base);
   var blockers = 0.0;
   var blockerDistance = 0.0;
   for (var i = 0u; i < AREA_BLOCKER_TAPS; i++) {
     let uv = clamp(areaShadowUv(q, d1, d2, vogelDisk(i, AREA_BLOCKER_TAPS, 0.0) * (1.0 / AREA_SEARCH_NEAR - 1.0)), lo, hi);
     let d = textureLoad(shadowAtlas, clamp(vec2i(uv * view.shadowAtlas.y), vec2i(0), last), 0);
-    if (d < receiverDepth) {
+    if (d < areaCompareDepth(receiverInverse + dot(gradient, uv - base), params)) {
       blockers += 1.0;
-      blockerDistance += params.w / max(d - params.z, 1e-6);
+      // 深度 = A + B / 距离，A、B 都使得 d − A、B 是负的
+      blockerDistance += params.w / min(d - params.z, -1e-6);
     }
   }
   if (blockers == 0.0) {
     return 1.0;
   }
   let zb = blockerDistance / blockers;
-  let k = max(face.y - zb, 0.0) / max(zb, 1e-3);
+  let k = max(distance - zb, 0.0) / max(zb, 1e-3);
   var lit = 0.0;
   for (var i = 0u; i < AREA_FILTER_TAPS; i++) {
     let o = vogelDisk(i, AREA_FILTER_TAPS, 0.0);
     let uv = clamp(areaShadowUv(q, d1, d2, o * k) + o * (1.5 * texel), lo, hi);
-    lit += textureSampleCompareLevel(shadowAtlas, shadowComparison, uv, receiverDepth);
+    lit += textureSampleCompareLevel(shadowAtlas, shadowComparison, uv, areaCompareDepth(receiverInverse + dot(gradient, uv - base), params));
   }
   return lit / f32(AREA_FILTER_TAPS);
+}
+
+/**
+ * 拿来和阴影图比的深度：接收面上那一点 1 / 距离是 inverse，比的时候距离缩 AREA_RELATIVE_BIAS 再减深度偏移（外推出来的深度和
+ * 表面自己存的几乎相等，单精度的误差会让表面挡住自己），换成图里的深度 A + B / 距离。
+ */
+fn areaCompareDepth(inverse: f32, params: vec4f) -> f32 {
+  return params.z + params.w / max(1.0 / max(inverse, 1e-6) * (1.0 - AREA_RELATIVE_BIAS) - params.x, 1e-3);
+}
+
+/**
+ * 接收平面上 1 / 到光源沿 axis 的距离在阴影图上的梯度（每 1 个图集 UV 变多少）：表面上沿两条切线各挪 10 厘米，投到图上，
+ * 解出 UV 到 1 / 距离的线性关系（平面上它是准的线性）。
+ */
+fn areaReceiverGradient(m: mat4x4f, p: vec3f, n: vec3f, lightPosition: vec3f, axis: vec3f, base: vec2f) -> vec2f {
+  let t1 = normalize(select(cross(n, vec3f(0.0, 1.0, 0.0)), cross(n, vec3f(1.0, 0.0, 0.0)), abs(n.y) > 0.9)) * 0.1;
+  let t2 = cross(n, t1);
+  let p1 = m * vec4f(p + t1, 1.0);
+  let p2 = m * vec4f(p + t2, 1.0);
+  let duv1 = p1.xy / p1.w - base;
+  let duv2 = p2.xy / p2.w - base;
+  let w0 = 1.0 / dot(p - lightPosition, axis);
+  let dw1 = 1.0 / dot(p + t1 - lightPosition, axis) - w0;
+  let dw2 = 1.0 / dot(p + t2 - lightPosition, axis) - w0;
+  let det = duv1.x * duv2.y - duv1.y * duv2.x;
+  if (abs(det) < 1e-12) {
+    return vec2f(0.0);
+  }
+  return vec2f(dw1 * duv2.y - dw2 * duv1.y, dw2 * duv1.x - dw1 * duv2.x) / det;
 }
 
 const CASCADE_INDICES = vec4u(0u, 1u, 2u, 3u);

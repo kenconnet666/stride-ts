@@ -16,7 +16,6 @@
  *   （GPU 蒙皮，Stride 的 TransformationSkinning），再乘世界矩阵。阴影投射阶段只画投射阴影的批次，管线只写深度。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
-import { rayTraceable } from './rayTraceable';
 import { shaderTime } from '../../engine/GameTime';
 import type { EntityId } from '../../data/prop';
 import type { ColumnsOf } from '../../engine/component';
@@ -647,14 +646,14 @@ export class MeshRenderFeature extends RootRenderFeature {
     const screen = stage.transparent
       ? (view === refraction.receiver ? refraction.texture : undefined)
       : (screenSpace && planar.active && view === planar.receiver ? planar.texture : undefined);
-    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, screen, screenSpace ? view.screenEmissive : undefined), [view.index * VIEW_STRIDE]);
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, screen), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
       const b = runs ? runs[i * 3]! : i;
       const batch = this.batches[b]!;
       const first = runs ? runs[i * 3 + 1]! : 0;
       const count = runs ? runs[i * 3 + 2]! : this.#cpuCount(cullPass, index, b);
-      if (!batch.ready || !visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent) || (view.skipsRayTraced && rayTraceable(batch) && !batch.material.wind)) continue;
+      if (!batch.ready || !visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent)) continue;
       if (stage.velocity && !this.#moves(batch, context.game.updateTime.frameCount)) continue;
       // 阴影缓存的两层（lighting/ShadowMapRenderer.ts）：静态层只画静止的投影者，动态层只画动的
       if (stage.shadowCasters && view.casterLayer !== undefined && (view.casterLayer === 'dynamic') !== this.isDynamicCaster(batch)) continue;

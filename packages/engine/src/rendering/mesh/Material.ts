@@ -163,12 +163,6 @@ export interface MaterialDesc {
   readonly emissive?: readonly [number, number, number];
   readonly emissiveTexture?: MaterialTexture;
   /**
-   * 自发光照亮周围（光追，合成器开着 emissiveLighting 时）：屏幕、灯箱、霓虹这类大致均匀发光的面当光源，照到附近的表面上、带
-   * 软影子（RayTracedEmissive）。按整个网格的平均自发光算（贴图里只有一小块发光的、旁边已经放了灯的灯具别开：光会从整个面出来、
-   * 或者算两遍）。默认关。
-   */
-  readonly emissiveLighting?: boolean;
-  /**
    * 每个物体按种子的变化（同虚幻的 PerInstanceRandom 接色相、明暗）：漫反射色的色相转多少（度）、饱和度、明暗变多少（比例），
    * 粗糙度加减多少，都是正负的范围；种子是 MaterialParams 的 seed，没有时按变换槽位。一片果蔬、一排车、一街的楼不再一模一样。
    */
@@ -347,8 +341,6 @@ export class Material {
   readonly glossinessMap: Required<MaterialTexture> & GlossinessChannels | undefined;
   readonly emissive: readonly [number, number, number];
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
-  /** 自发光照亮周围（见 MaterialDesc.emissiveLighting）。 */
-  readonly emissiveLighting: boolean;
   /** 每个物体按种子的变化（见 MaterialDesc.variation）。 */
   readonly variation: MaterialVariation | undefined;
   /** 清漆层（见 MaterialDesc.coat）。 */
@@ -403,7 +395,6 @@ export class Material {
     this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert, ...(gloss.metalnessChannel ? { metalnessChannel: gloss.metalnessChannel } : {}), ...(gloss.transmissionChannel ? { transmissionChannel: gloss.transmissionChannel } : {}) };
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
-    this.emissiveLighting = desc.emissiveLighting ?? false;
     this.variation = desc.variation;
     this.coat = desc.coat;
     this.shaderTrees = desc.shaderTrees;

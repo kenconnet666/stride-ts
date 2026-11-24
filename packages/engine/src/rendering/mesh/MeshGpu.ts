@@ -175,7 +175,7 @@ export class MeshGpu {
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
   /** 地面的湿和雪、判断淋不淋得到的天空遮挡（RenderSystem 的）。 */
-  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes' | 'pathTracing'>;
+  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes'>;
   /** 视图绑定组里绑的是真的天空遮挡（有湿或雪时），还是空的；换了要重建绑定组。 */
   #occlusionBound = false;
   /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）和深度缓冲。 */
@@ -258,7 +258,7 @@ export class MeshGpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes' | 'pathTracing'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
     this.device = device;
     this.#planar = planar;
     this.#refraction = refraction;
@@ -302,7 +302,7 @@ export class MeshGpu {
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        ...(planar.supported ? [26, 27, 28].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: {} })) : []),
+        ...(planar.supported ? [26, 27].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: {} })) : []),
         { binding: 29, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 30, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
@@ -722,7 +722,7 @@ export class MeshGpu {
     const { wetness, puddles, snowCover, rain } = this.#weather.surfaceWeather;
     const volumes = this.#weather.irradianceVolumes;
     // 路径追踪的间接光开着时：用不用的那一位是 2，漫反射的环境光整个由它（屏幕空间的间接光）代替
-    const irradiance = this.#weather.pathTracing.active ? [0, 0, 0, 2, 1, 1, 1, 0, 2, 2, 2, 0, 0, 0, 0, 0] : volumes.shading();
+    const irradiance = volumes.shading();
     const occlusion = wetness > 0 || snowCover > 0;
     for (const view of views) {
       const o = view.index * stride;
@@ -760,7 +760,7 @@ export class MeshGpu {
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
       data.set([wetness, snowCover, puddles, rain], o + 240);
       const refraction = this.#refraction;
-      data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, view.rayTracedLocalLights ? 1 : 0, view.rayTracedEmissive ? 1 : 0], o + 244);
+      data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
       data.set(planar.active && view === planar.receiver ? planar.params : PLANAR_OFF, o + 256);
       // 原点是 1024 米的整数倍，按 65536 米取模（图案 65 公里重复一次，单精度在这个范围里是毫米级）
@@ -802,14 +802,12 @@ export class MeshGpu {
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
    * contact 是接触阴影，没有时都用白图；screen 是第 26 个绑定（平面反射图或者折射拷的画面），没有时用 1x1 的空图。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture, emissive?: GPUTexture): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.openOcclusion;
     const shadow = contact ?? this.#resources.white;
     const reflection = screen ?? this.#planar.empty;
-    // 没有时绑白图：视图常量的 decal.w 关着，着色器不读
-    const emissiveLight = emissive ?? this.#resources.white;
-    const key = [atlas, ao, shadow, reflection, emissiveLight].map((texture) => this.#textureId(texture)).join(',');
+    const key = [atlas, ao, shadow, reflection].map((texture) => this.#textureId(texture)).join(',');
     let group = this.#viewBindGroups.get(key);
     if (!group) {
       group = this.device.createBindGroup({
@@ -845,7 +843,6 @@ export class MeshGpu {
           ...(this.#planar.supported ? [
             { binding: 26, resource: reflection.createView() },
             { binding: 27, resource: this.#weather.irradianceVolumes.atlas.createView() },
-            { binding: 28, resource: emissiveLight.createView() },
           ] : []),
           { binding: 29, resource: { buffer: this.#instanceParams ??= this.#createStorage('MeshRenderFeature instance params', 16) } },
         ],

@@ -16,6 +16,7 @@ Stride 的 TypeScript 孪生版起步的**一站式创作工作台**（用户 20
 - [docs/creation-tools.md](docs/creation-tools.md)：资源创作工具的调研（2026-11-21）：材质、模型、地形、植被、角色、动画、特效、分镜剪辑、声音、AI 生成各类业界工具的要点功能、我们拿什么、不做什么；做创作线（S1–S5）的每个工具前先读对应的一节。
 - [docs/extending.md](docs/extending.md)：游戏和工程不改引擎、编辑器就能加的东西（脚本、数据组件和系统、`game.addSystem`、资源种类和工程的编辑器扩展、调试命令、网格效果、渲染特性、原生插件），各包的目录地图在它们的 README。
 - [docs/prefabs.md](docs/prefabs.md)：预制体在场景文件里怎么表示（2026-11-20 用户定了：场景里只存引用和差异）。
+- [docs/realtime.md](docs/realtime.md)：**全实时的技术路线**（用户 2026-11-24 定：编辑器和游戏全程实时、改了马上看到；全光栅加缓存，不用实时光追和烘焙；目标 4K 120 Hz）：原则、预算、各系统留删改、顺序和验收。
 - [docs/handover.md](docs/handover.md)：**换机器的交接**：新机器上的准备、各样例的端口、约定、调试命令、踩过的坑、定时任务的提示词（做到哪了看路线图的总表）。
 - [docs/roadmap.md](docs/roadmap.md)：路线图——一张总表列出做完的和要做的（大阶段、小阶段，做完的打钩，"过程"一列记每个小阶段的步骤，"备注"一列记临时笔记、数字、依赖和谁定的），加"正在做和下一步"、等用户定和帮忙的事；原则在 [docs/principles.md](docs/principles.md)，Stride 的全部内容和超出 Stride 的功能分析在 [docs/scope.md](docs/scope.md)，阶段的定义、验收、取舍（D1–D18）和各项做完时的结论在 [docs/stages.md](docs/stages.md)；执行中自己做的决定记在 [docs/decisions.md](docs/decisions.md)，已完成各项的过程在 [docs/progress-log.md](docs/progress-log.md)。
 

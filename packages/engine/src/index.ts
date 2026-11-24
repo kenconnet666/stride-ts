@@ -219,6 +219,7 @@ export {
 export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type ConstraintSettingsOf, type OverlapShape, type SimulationHit, type SimulationSettings, type RagdollHandle, type VehicleHandle, type SoftBodyHandle } from './physics/Simulation';
 export { Vehicle } from './physics/Vehicle';
 export { Ragdoll } from './physics/Ragdoll';
+export { Knockdown } from './physics/Knockdown';
 export { Rope, ropePoints } from './physics/Rope';
 export { Breakable, solidOf } from './physics/Breakable';
 export { AnimationGraphInstance, blend1d, blend2d, type AnimationGraph } from './animation/AnimationGraph';

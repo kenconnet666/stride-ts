@@ -71,4 +71,15 @@ export class CrowdAgent extends SyncScript.props('CrowdAgent', {
   override cancel(): void {
     this.game.navigation?.removeAgent(this);
   }
+
+  /** 停用时离开人群（站住、不再推挤别人，位置交给别的东西，比如布娃娃），启用时从现在的位置重新加入、接着去原来的目标。 */
+  protected override onEnabledChanged(): void {
+    const navigation = this.game?.navigation;
+    if (!navigation) return;
+    if (this.enabled) navigation.addAgent(this);
+    else {
+      navigation.removeAgent(this);
+      this.velocity.set(0, 0, 0);
+    }
+  }
 }

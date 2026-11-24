@@ -2,7 +2,7 @@
 // 画面里开 3840×2160 的无头 Chrome（画质用默认的极高），等画面稳下来，stride perf 量几秒，看
 //   CPU：每帧的更新加绘制（updateMs + drawMs）的 p99；
 //   GPU：每帧各通道加起来（gpu.frameTotalMs）的 p99 和最长；
-// 都要在一帧 33.3 毫秒以内，--check 时还和 tools/frame-budgets.json 里记的基线比（基线是上次 --update 量到的乘 1.15）。
+// 都要在一帧 33.3 毫秒以内，--check 时还和 tools/frame-budgets.json 里记的基线比（基线是上次 --update 量到的乘 1.15，CPU 再加 1 毫秒）。
 //   node tools/dev/frame-bench.ts [--check] [--update] [--only <名字的一部分>] [--seconds 4]
 // 要独占显卡（量帧时间），别和回归、别的测量同时跑；借各样例的开发服务器（没开就开一个，用完 pwsh tools/stop-dev.ps1 停）。
 import { spawn, spawnSync } from 'node:child_process';
@@ -13,8 +13,9 @@ const root = path.resolve(import.meta.dirname, '..', '..');
 const budgetsFile = path.join(root, 'tools', 'frame-budgets.json');
 /** 一帧的上限（毫秒）：30 Hz。 */
 const FRAME_LIMIT_MS = 1000 / 30;
-/** --update 时基线比量到的宽多少。 */
+/** --update 时基线比量到的宽多少：GPU 每帧很稳，乘 1.15；CPU 的 p99（4 秒里最慢的几帧）同一个画面前后差半毫秒到一毫秒，再加 1 毫秒。 */
 const MARGIN = 1.15;
+const CPU_SLACK_MS = 1;
 
 interface Case {
   readonly name: string;
@@ -99,7 +100,7 @@ for (const entry of CASES.filter((c) => c.name.includes(only))) {
   console.log(`${problems.length ? 'FAIL' : 'ok  '} ${entry.name}: CPU p99 ${round(measured.cpuP99)} ms, GPU p99 ${round(measured.gpuP99)} ms (max ${round(measured.gpuMax)})${budget ? ` budget CPU ${budget.cpuP99} GPU ${budget.gpuP99}` : ''}`);
   for (const problem of problems) console.log(`     ${problem}`);
   failed ||= problems.length > 0;
-  if (update) budgets[entry.name] = { cpuP99: round(Math.min(FRAME_LIMIT_MS, measured.cpuP99 * MARGIN)), gpuP99: round(Math.min(FRAME_LIMIT_MS, measured.gpuP99 * MARGIN)) };
+  if (update) budgets[entry.name] = { cpuP99: round(Math.min(FRAME_LIMIT_MS, measured.cpuP99 * MARGIN + CPU_SLACK_MS)), gpuP99: round(Math.min(FRAME_LIMIT_MS, measured.gpuP99 * MARGIN)) };
 }
 if (update) await writeFile(budgetsFile, `${JSON.stringify(budgets, null, 2)}\n`);
 process.exit(failed ? 1 : 0);

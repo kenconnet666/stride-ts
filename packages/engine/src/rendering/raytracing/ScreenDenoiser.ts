@@ -81,7 +81,12 @@ fn random() -> f32 {
 }
 `;
 
-const TEMPORAL_SHADER = /* wgsl */ `
+/**
+ * 时间累积：上一帧的结果按重投影取回来，和这一帧按 1/n 平均（n 最多 MAX_HISTORY）。clampHistory 时历史先按邻域的均值 ± 3σ 夹
+ * （物体挪开、新露出来的地方不拖影）；比值估计（带遮挡、不带遮挡两路一起降噪再相除）不能夹：两路各自被夹得不一样，比值就偏，
+ * 每像素一条射线时偏成一块块的黑斑（11-24 超市里看到的），这种的靠历史封顶跟上变化。
+ */
+const temporalShader = (clampHistory: boolean) => /* wgsl */ `
 ${DENOISE_VIEW_WGSL}
 @group(0) @binding(0) var<uniform> denoise: DenoiseView;
 @group(0) @binding(1) var depth: texture_depth_2d;
@@ -96,15 +101,21 @@ ${DENOISE_VIEW_WGSL}
   let now = textureLoad(current, block, 0).rgb;
   let z = textureLoad(depth, pixel, 0);
   if (z <= 0.0) { return vec4f(0.0, 0.0, 0.0, 1.0); }
-  var low = now;
-  var high = now;
+  // 邻域的均值 ± 3 个标准差（不用最小最大值：每个样本只是一条阴影射线、非 0 即 1，半遮挡的地方 9 个邻居常常同时是 0，按最小
+  // 最大值夹会把攒好的平均一下子压成 0；噪声大时夹得松，真的变了时照样跟得上）
+  var sum = vec3f(0.0);
+  var squares = vec3f(0.0);
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       let v = textureLoad(current, clamp(block + vec2i(x, y), vec2i(0), blocks - 1), 0).rgb;
-      low = min(low, v);
-      high = max(high, v);
+      sum += v;
+      squares += v * v;
     }
   }
+  let mean = sum / 9.0;
+  let deviation = sqrt(max(squares / 9.0 - mean * mean, vec3f(0.0)));
+  let low = mean - deviation * 3.0;
+  let high = mean + deviation * 3.0;
   let world = worldAt(denoise.inverseViewProjection, (vec2f(pixel) + 0.5) / denoise.params.xy, z);
   let previous = denoise.previousViewProjection * vec4f(world, 1.0);
   let uv = vec2f(previous.x / previous.w * 0.5 + 0.5, 0.5 - previous.y / previous.w * 0.5);
@@ -113,7 +124,8 @@ ${DENOISE_VIEW_WGSL}
   }
   let past = textureSampleLevel(history, linearClamp, uv, 0.0);
   let frames = min(past.a + 1.0, ${MAX_HISTORY}.0);
-  return vec4f(mix(clamp(past.rgb, low, high), now, 1.0 / frames), frames);
+  let kept = ${clampHistory ? 'clamp(past.rgb, low, high)' : 'past.rgb'};
+  return vec4f(mix(kept, now, 1.0 / frames), frames);
 }
 `;
 
@@ -178,12 +190,13 @@ export class ScreenDenoiser {
    * finish 是 WGSL 的 `fn denoiseFinish(filtered: vec3f, pixel: vec2i) -> vec4f`（最后一遍的输出，可以读 extra：record 给的
    * 贴图，没给时是 1×1 的白图），outputFormat 是结果的格式。
    */
-  constructor(device: GPUDevice, label: string, finish: string, outputFormat: GPUTextureFormat) {
+  /** clampHistory：时间累积时历史按邻域夹（比值估计的两路传 false，见 temporalShader）。 */
+  constructor(device: GPUDevice, label: string, finish: string, outputFormat: GPUTextureFormat, { clampHistory = true }: { readonly clampHistory?: boolean } = {}) {
     this.#device = device;
     this.#label = label;
     this.#outputFormat = outputFormat;
     this.#sampler = device.createSampler({ label, magFilter: 'linear', minFilter: 'linear' });
-    this.#temporal = new FullscreenShader(device, `${label} temporal`, TEMPORAL_SHADER);
+    this.#temporal = new FullscreenShader(device, `${label} temporal`, temporalShader(clampHistory));
     this.#blur = new FullscreenShader(device, `${label} blur`, blurShader(finish));
   }
 

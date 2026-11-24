@@ -5,7 +5,9 @@
  * - 拍：每帧最多拍一个面（不卡顿），用前向渲染器画进 capture（6 层的 2D 数组）的那一层；视图不用方向光的阴影（级联是按主画面
  *   算的）。右手系的相机拍出来的画面和 WebGPU 立方体贴图的面左右相反，六个面齐了以后翻正画进 radiance、逐级缩小出 mip，再用
  *   CubemapPrefilter 预滤波进 cubes（立方体数组，每个探针占一个立方体）。拍的画面里照样有别的探针的反射，几次以后就是多次反射。
- * - 什么时候拍：refresh 是 once 的在加进来、挪了、改了设置、光照变了（watchLighting：太阳转了、落山了）或者调 refresh() 以后
+ * - 什么时候拍：refresh 是 once 的在加进来、挪了、改了设置、光照变了（watchLighting：太阳转了、落山了、局部光挪了或改了）、
+ *   盒子附近的静止的东西加了、删了、挪了（watchCasters，同阴影缓存的变化区域；改了下一帧就开始重拍，编辑器里不停帧直到拍完），
+ *   或者调 refresh() 以后
  *   拍一次；everyFrame 的拍完一轮接着拍。第一次没拍完的探针着色时不用，重拍的时候接着用旧的。
  * - 着色用的表（buffer）：拍好的探针按盒子的体积从小到大排（小的盖住大的），每个四个 vec4（见 PROBE_FLOATS）；同样顺序的
  *   盒子的外接球（bounds）给分簇用，像素只看所在那一簇的探针。
@@ -21,7 +23,7 @@ import type { GpuResources } from '../../graphics/GpuResources';
 import { RenderView, type Lighting, type RenderContext } from '../RenderSystem';
 
 /** 同时在用的探针最多几个（再多的按体积小的优先，其余的不用）。 */
-export const MAX_REFLECTION_PROBES = 16;
+export const MAX_REFLECTION_PROBES = 32;
 /** 着色用的表里每个探针几个 float：中心（拍的位置）和立方体的序号、盒子的最小角和过渡距离、最大角和强度、视差校正。 */
 export const PROBE_FLOATS = 16;
 const FORMAT: GPUTextureFormat = 'rgba16float';
@@ -53,6 +55,8 @@ struct Params { layer: u32, flip: u32 };
   let uv = select(in.uv, vec2f(1.0 - in.uv.x, in.uv.y), params.flip == 1u);
   return vec4f(textureSampleLevel(source, linearClamp, uv, params.layer, 0.0).rgb, 1.0);
 }`;
+/** 静止的东西变了的地方离探针的盒子这么近（米）以内就重拍（盒子外面的东西也照得进反射里）。 */
+const WATCH_MARGIN = 2;
 /** 每次绘制的参数占一块 uniform（动态偏移按 256 字节对齐）：先六个翻的面，再六个不翻的。 */
 const PARAMS_STRIDE = 256;
 
@@ -91,6 +95,8 @@ export class ReflectionProbes {
   readonly bounds = new Float32Array(MAX_REFLECTION_PROBES * 4);
   /** 绑定的贴图或缓冲换了就加一（MeshRenderFeature 据此重建绑定组）。 */
   generation = 0;
+  /** 一共拍了多少个面（调试命令 probe 报：改了东西以后看重拍没有）。 */
+  faces = 0;
   /** 上一次看到的光照的签名（取整过的），见 watchLighting。 */
   #lightingKey = '';
 
@@ -168,7 +174,7 @@ export class ReflectionProbes {
   /**
    * 光照变了就重拍（前向渲染器每帧收集完光照以后调）：方向光转了约 3°、亮度变了约一成，环境光变了，天空盒光换了。比较的是
    * 取整以后的签名，所以日夜循环时太阳一直在动，探针是隔一会儿重拍一轮（一帧一个面），不是每帧；光照不动就什么都不做。
-   * 点光、聚光的变化不看（数量多、常常在动），要的话调 refresh() 或者把探针设成 everyFrame。
+   * 点光、聚光、面光源按位置（10 厘米）、亮度（约一成）、射程看：挪了、开关了、改了才重拍。
    */
   watchLighting(lighting: Lighting): void {
     if (!this.enabled || this.#states.size === 0) {
@@ -183,6 +189,7 @@ export class ReflectionProbes {
       }),
       [level(lighting.ambient.r), level(lighting.ambient.g), level(lighting.ambient.b)],
       lighting.skybox ? [lighting.skybox.skybox.name, level(lighting.skybox.intensity)] : null,
+      lighting.locals.slice(0, lighting.localCount).map(({ position: p, color: c, radius }) => [Math.round(p.x * 10), Math.round(p.y * 10), Math.round(p.z * 10), level(c.r), level(c.g), level(c.b), Math.round(radius * 10)]),
     ]);
     if (key === this.#lightingKey) return;
     // 第一次（刚有探针）只记下：探针本来就要拍
@@ -191,7 +198,25 @@ export class ReflectionProbes {
   }
 
   /**
-   * 每帧开头（剔除之前）：收集探针，排着色用的表，挑这一帧要拍的面。返回要拍的面的视图，不拍时 undefined。
+   * 静止的投影者变了的地方（mesh/ShadowCasters.ts 的 regions，渲染空间的盒子）碰到哪个探针的盒子（外扩 WATCH_MARGIN）就重拍它；
+   * 重拍完之前着色接着用旧的。动的东西不看（屏幕空间反射照得到它们，探针拍的是静止的环境）。
+   */
+  watchCasters(regions: readonly number[]): void {
+    if (!this.enabled || regions.length === 0) return;
+    for (const state of this.#states.values()) {
+      if (state.nextFace === 0 && !state.captured) continue;
+      for (let r = 0; r < regions.length; r += 6) {
+        const touches = [0, 1, 2].every((axis) => regions[r + axis]! <= state.max[axis]! + WATCH_MARGIN && regions[r + 3 + axis]! >= state.min[axis]! - WATCH_MARGIN);
+        if (!touches) continue;
+        state.nextFace = 0;
+        break;
+      }
+    }
+  }
+
+  /**
+   * 每帧开头（剔除之前）：收集探针，排着色用的表，挑这一帧要拍的面。返回要拍的面的视图，不拍时 undefined。编辑状态下还有面
+   * 要拍时请求接着出帧（按需出帧的视口里改了东西，探针一帧一个面拍完，不停在拍了一半）。
    */
   begin(context: RenderContext): RenderView | undefined {
     this.#capturing = undefined;
@@ -205,6 +230,7 @@ export class ReflectionProbes {
     const states = [...this.#states.values()].filter((state) => state.cube >= 0);
     const next = states.find((state) => state.nextFace < 6) ?? states.find((state) => state.everyFrame);
     if (!next) return undefined;
+    if (context.game.editing && next.nextFace < 6) context.game.requestFrames();
     if (next.nextFace >= 6) next.nextFace = 0;
     const face = next.nextFace;
     this.#capturing = { state: next, face };
@@ -233,6 +259,7 @@ export class ReflectionProbes {
     if (!capturing) return;
     const { state, face } = capturing;
     state.nextFace = face + 1;
+    this.faces++;
     if (state.nextFace < 6) return;
     const levels = Math.log2(this.size) + 1;
     this.#radiance ??= this.#device.createTexture({ label: 'ReflectionProbes radiance', size: [this.size, this.size, 6], format: FORMAT, mipLevelCount: levels, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });

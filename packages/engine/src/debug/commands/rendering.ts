@@ -171,7 +171,7 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
     }
     return { enabled: sss.enabled, materials: [...materials], scatteringMaterials: game.renderSystem.subsurfaceMaterials.count };
   });
-  debug.command('probe', 'Reflection probes. args: at "x,y,z" adds a probe there (size: edge length, default 10; blend; box: false turns off box projection; everyFrame: true), clear removes all probes, refresh re-captures them, on (true/false) switches them. Returns the probes in use.', (args) => {
+  debug.command('probe', 'Reflection probes. args: at "x,y,z" adds a probe there (size: edge length, default 10; blend; box: false turns off box projection; everyFrame: true), clear removes all probes, refresh re-captures them, on (true/false) switches them. Returns the probes in use and how many faces were captured so far (probes re-capture by themselves when static objects near them or the lights change).', (args) => {
     const probes = game.renderSystem.reflectionProbes;
     if (typeof args['on'] === 'boolean') game.graphicsCompositor.quality = { ...game.graphicsCompositor.quality, reflectionProbes: args['on'] };
     if (args['clear'] === true) for (const id of game.entities.ids()) if (game.entities.entity(id).get(ReflectionProbe)) game.entities.destroy(id);
@@ -194,7 +194,7 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
       });
     }
     const entities = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(ReflectionProbe));
-    return { enabled: probes.enabled, inUse: probes.count, probes: entities.map(describe) };
+    return { enabled: probes.enabled, inUse: probes.count, facesCaptured: probes.faces, probes: entities.map(describe) };
   });
   debug.command('sky', 'Physical sky (SkyAtmosphere). args: on (true/false) adds or removes an atmosphere entity; elevation and azimuth (degrees) turn the sun (SkyAtmosphere.sun, else the shadow-casting directional light, else the first one); intensity scales the sky; aerial scales the distances of aerial perspective (0 turns it off); stars sets the brightness of the stars; moon (true/false) adds or removes a moon light. Day-night cycle (adds a DayNightCycle next to the atmosphere): time (hours), dayLength (game seconds per day, 0 stops), day (of the year), latitude, north (degrees), moonPhase (0 new, 0.5 full). Returns the sun and the moon as the atmosphere sees them.', (args) => {
     const all = () => game.entities.ids().map((id) => game.entities.entity(id));

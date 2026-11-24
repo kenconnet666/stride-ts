@@ -3812,6 +3812,102 @@
      }
     }
    }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-0000000000a0",
+   "name": "Reflections 0",
+   "parent": null,
+   "position": [
+    0,
+    2.4,
+    -10.67
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "reflectionProbe": {
+     "size": [
+      12,
+      4.8,
+      6.67
+     ],
+     "boxProjection": true,
+     "blendDistance": 0.5
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-0000000000a1",
+   "name": "Reflections 1",
+   "parent": null,
+   "position": [
+    0,
+    2.4,
+    -4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "reflectionProbe": {
+     "size": [
+      12,
+      4.8,
+      6.67
+     ],
+     "boxProjection": true,
+     "blendDistance": 0.5
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-0000000000a2",
+   "name": "Reflections 2",
+   "parent": null,
+   "position": [
+    0,
+    2.4,
+    2.67
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "reflectionProbe": {
+     "size": [
+      12,
+      4.8,
+      6.67
+     ],
+     "boxProjection": true,
+     "blendDistance": 0.5
+    }
+   }
   }
  ]
 }

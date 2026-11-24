@@ -459,10 +459,12 @@ export class ForwardRenderer {
       sky.watch(context.game.meshes.batches, context.game.transforms, context.game.frames);
       renderSystem.cull(context, views);
       // 画进渲染目标贴图的相机也接收阴影：各自一套方向光的级联（同 Stride：每个相机的前向渲染器各算各的）
-      // 投影者的变化只在有投阴影的局部光时跟（没有时缓存里也没有东西要失效；后来有了光，它们本来就从头画）
+      // 投影者的变化只在有投阴影的局部光、有反射探针时跟（没有时缓存里也没有东西要失效；后来有了，它们本来就从头画、从头拍）
       const lighting = renderSystem.lighting;
       const localShadows = lighting.locals.some((light, i) => i < lighting.localCount && light.castsShadow);
-      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows), localShadows ? context.game.meshes.shadowCasterChanges(context) : undefined);
+      const casters = localShadows || probes.count > 0 ? context.game.meshes.shadowCasterChanges(context) : undefined;
+      if (casters && probes.count > 0) probes.watchCasters(casters.regions);
+      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows), localShadows ? casters : undefined);
       renderSystem.addViews(shadowViews);
       renderSystem.cull(context, shadowViews);
       // 点光、聚光的阴影下标在阴影收集时才定，之后上传（网格、雾都读）

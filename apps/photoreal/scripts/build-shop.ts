@@ -423,6 +423,9 @@ await write('scene', 'Supermarket', {
     ceilingEntity(sid(4)),
     ...shelfEntities,
     ...lights,
+    // 反射探针（屏幕空间反射找不到的由它补）：大厅（x ±6、z −14..6）按 z 分三段，拍的位置在中间那排货架上方（1.95 米高）；盒子的
+    // 地面对齐，顶比吊顶高一些（拍的位置是盒子的中心）
+    ...[-10.67, -4, 2.67].map((z, i) => entity(sid(0xa0 + i), `Reflections ${i}`, [0, 2.4, z], { reflectionProbe: { size: [12, 4.8, 6.67], boxProjection: true, blendDistance: 0.5 } })),
   ],
 });
 // ---- 散装区（照片里的蒜、洋葱、核桃、番茄、土豆）：几个筐里物理堆放，放在一张蔬果台上 ----

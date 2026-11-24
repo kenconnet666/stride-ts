@@ -45,6 +45,11 @@ export const STATE_TREE_CONDITION = s.union('type', {
   },
   /** 按概率成立（每次看都重新掷）。 */
   chance: { probability: s.number({ min: 0, max: 1, step: 0.05 }).default(0.5) },
+  /** 世界时钟（game.clock）的钟点在 from 到 to 之间（小时，0 到 24；from 比 to 大时跨过午夜）：日程（白天上街、晚上回家、营业时间）。 */
+  time: {
+    from: s.number({ min: 0, max: 24, step: 0.25, unit: 'h' }).default(8).label('From hour').describe('starts at this hour of the world clock'),
+    to: s.number({ min: 0, max: 24, step: 0.25, unit: 'h' }).default(18).label('To hour').describe('ends at this hour (before from: wraps past midnight)'),
+  },
   /** 代码里登记的条件（registerStateTreeCondition）。 */
   call: { name: s.string(), args: s.record().default({}) },
 }, { not: s.bool().default(false).describe('inverts the result') });
@@ -92,6 +97,8 @@ export const STATE_TREE_TASK = s.union('type', {
   },
   /** 设一个参数（数、开关），马上成功。 */
   set: { parameter: s.string(), value: s.number({ step: 0.05 }).default(1) },
+  /** 把实体现在的位置记进一个位置参数，马上成功（"家"、出发的地方：日程里晚上走回来）。 */
+  store: { parameter: s.string().describe('vector parameter that receives the position') },
   /** 设实体上 Animator 的参数，马上成功。 */
   animator: { parameter: s.string(), value: s.number({ step: 0.05 }).default(1) },
   /** 发一个全局的命名事件（game.events），马上成功。 */
@@ -171,6 +178,7 @@ export function checkStateTree(tree: StateTreeData, where: string): StateTreeDat
     state.tasks.forEach((task, i) => {
       const atTask = `${at} task ${i} (${task.type})`;
       if (task.type === 'set') parameter(atTask, task.parameter, ['number', 'bool']);
+      if (task.type === 'store') parameter(atTask, task.parameter, ['vector']);
       if (task.type === 'flee') parameter(atTask, task.parameter, ['vector']);
       if (task.type === 'findSpot') {
         parameter(atTask, task.store, ['vector']);

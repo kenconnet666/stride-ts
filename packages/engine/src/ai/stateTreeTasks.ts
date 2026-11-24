@@ -149,6 +149,16 @@ registerBuiltInTask('set', (context, task) => {
   return done;
 });
 
+registerBuiltInTask('store', (context, task) => {
+  const transform = context.entity?.get(Transform);
+  if (!transform) return done;
+  // 刚建的实体世界矩阵还没算（变换在脚本之后统一更新）：先算，不然第一帧记下的是原点
+  transform.updateWorldMatrix();
+  const world = transform.world;
+  context.tree.set(task.parameter, { x: world[12]!, y: world[13]!, z: world[14]! });
+  return done;
+});
+
 registerBuiltInTask('animator', (context, task) => {
   const animator = context.entity?.get(Animator);
   if (!animator) {

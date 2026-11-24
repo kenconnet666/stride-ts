@@ -20,7 +20,7 @@ export interface FieldMessages {
 const zhCN: FieldMessages = {
   labels: {
     'Table columns': '列', 'Table rows': '行', 'Target state': '去哪个状态', 'Distance to': '离哪里', 'Seen from': '从哪里看',
-    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Simulation LOD': '模拟细节层次', 'Material params': '材质实例的参数', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Irradiance volume': '辐照度体', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Simulation LOD': '模拟细节层次', 'From hour': '从几点', 'To hour': '到几点', 'Material params': '材质实例的参数', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Irradiance volume': '辐照度体', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Persistent': '持久（存档）', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
@@ -423,6 +423,9 @@ const zhCN: FieldMessages = {
     'multiplies the diffuse color of this object (white keeps it)': '乘在这个物体的漫反射色上（白是不变）',
     'seed of the material variation (0: by transform slot, differs per object)': '材质变化的种子（0 是按变换槽位，每个物体不同）',
     'hue turns up to this many degrees either way': '色相往两边最多转多少度',
+    'starts at this hour of the world clock': '世界时钟到这个钟点开始',
+    'vector parameter that receives the position': '记下位置的那个位置参数',
+    'ends at this hour (before from: wraps past midnight)': '到这个钟点结束（比开始早时跨过午夜）',
     'how much clear coat (0: none, 1: full)': '清漆有多少（0 是没有，1 是满的）',
     'roughness of the coat itself (car paint about 0.05)': '清漆自己的粗糙度（车漆约 0.05）',
     'tint seen through the coat (linear; white keeps the color)': '透过清漆看到的颜色（线性，白是不变）',

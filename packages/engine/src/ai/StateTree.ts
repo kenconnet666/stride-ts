@@ -306,6 +306,11 @@ export class StateTreeInstance {
       }
       case 'chance':
         return Math.random() < condition.probability;
+      case 'time': {
+        const clock = this.context.game?.clock;
+        if (!clock) return false;
+        return withinHours(clock.timeOfDay, condition.from, condition.to);
+      }
       case 'perceives':
         return perceivedBy(this.context, condition.tag, condition.sense, condition.seeing) !== undefined;
       case 'call': {
@@ -315,6 +320,11 @@ export class StateTreeInstance {
       }
     }
   }
+}
+
+/** 钟点 hours 在 from 到 to 之间（含 from、不含 to）；from 比 to 大时跨过午夜（22 到 6 点）。 */
+export function withinHours(hours: number, from: number, to: number): boolean {
+  return from <= to ? hours >= from && hours < to : hours >= from || hours < to;
 }
 
 /** 实体感知到的、tag 和感官对得上的最近一样东西（没有 Perceiver、没有游戏时是 undefined）。 */

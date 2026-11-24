@@ -208,6 +208,39 @@
                   "properties": {
                     "type": {
                       "enum": [
+                        "time"
+                      ]
+                    },
+                    "not": {
+                      "type": "boolean",
+                      "description": "inverts the result",
+                      "default": false
+                    },
+                    "from": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 24,
+                      "description": "starts at this hour of the world clock; unit: h",
+                      "default": 8
+                    },
+                    "to": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 24,
+                      "description": "ends at this hour (before from: wraps past midnight); unit: h",
+                      "default": 18
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
                         "call"
                       ]
                     },
@@ -708,6 +741,25 @@
                   "properties": {
                     "type": {
                       "enum": [
+                        "store"
+                      ]
+                    },
+                    "parameter": {
+                      "type": "string",
+                      "description": "vector parameter that receives the position"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "parameter"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
                         "animator"
                       ]
                     },
@@ -972,6 +1024,39 @@
                             "minimum": 0,
                             "maximum": 1,
                             "default": 0.5
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "enum": [
+                              "time"
+                            ]
+                          },
+                          "not": {
+                            "type": "boolean",
+                            "description": "inverts the result",
+                            "default": false
+                          },
+                          "from": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 24,
+                            "description": "starts at this hour of the world clock; unit: h",
+                            "default": 8
+                          },
+                          "to": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 24,
+                            "description": "ends at this hour (before from: wraps past midnight); unit: h",
+                            "default": 18
                           }
                         },
                         "required": [

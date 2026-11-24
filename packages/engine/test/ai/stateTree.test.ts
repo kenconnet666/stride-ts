@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { registerStateTreeCondition, registerStateTreeTask, StateTreeInstance, type StateTreeTaskRun } from '../../src';
+import { registerStateTreeCondition, registerStateTreeTask, StateTreeInstance, WorldClock, type StateTreeTaskRun } from '../../src';
+import { withinHours } from '../../src/ai/StateTree';
 import { STATE_TREE, checkStateTree, type StateTreeFile } from '../../src/content/formats/format';
 import '../../src/ai/stateTreeTasks';
 
@@ -84,6 +85,30 @@ describe('状态树', () => {
     tree.restart();
     expect(tree.activePath).toEqual(['Even']);
     expect(log.at(-1)).toBe('exit after 1');
+  });
+
+  test('按世界时钟的钟点选状态（日程）：白天进 Day，过了 20 点回到根上、进 Night；跨午夜的区间', () => {
+    expect([10, 21, 3, 7].map((h) => withinHours(h, 20, 7))).toEqual([false, true, true, false]);
+    expect([7.9, 8, 19.99, 20].map((h) => withinHours(h, 8, 20))).toEqual([false, true, true, false]);
+    const clock = new WorldClock();
+    clock.set({ hours: 10 });
+    const tree = new StateTreeInstance({ path: 'Schedule', data: checkStateTree(STATE_TREE.parse({
+      name: 'Schedule',
+      states: [
+        { name: 'Night', enter: [{ type: 'time', from: 20, to: 7 }], tasks: [{ type: 'wait', seconds: 100 }], transitions: [{ on: 'tick', when: [{ type: 'time', from: 7, to: 20 }], to: '$root' }] },
+        { name: 'Day', tasks: [{ type: 'wait', seconds: 100 }], transitions: [{ on: 'tick', when: [{ type: 'time', from: 20, to: 7 }], to: '$root' }] },
+      ],
+    }, 'test'), 'test') }, { game: { clock } as never });
+    tree.update(0.1);
+    expect(tree.activePath).toEqual(['Day']);
+    clock.set({ hours: 21 });
+    tree.update(0.1);
+    tree.update(0.1);
+    expect(tree.activePath).toEqual(['Night']);
+    clock.set({ hours: 8 });
+    tree.update(0.1);
+    tree.update(0.1);
+    expect(tree.activePath).toEqual(['Day']);
   });
 
   test('文件里名字对不上、有环、目标不存在、参数种类不对时报错', () => {

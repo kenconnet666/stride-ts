@@ -1,20 +1,42 @@
 // 行人：平时等一会儿、附近走一走、有时找张空着的长椅坐一会儿（智能物体，activity sit）；看见 threat（挂 PerceptionStimulus、tag 是 threat 的东西）或者收到 scare 事件就慌了：
-// 先找一个威胁看不见的地方（环境查询）躲过去，找不到就背对着它跑开；跑完还看得见就接着慌，看不见了回到平时
+// 先找一个威胁看不见的地方（环境查询）躲过去，找不到就背对着它跑开；跑完还看得见就接着慌，看不见了回到平时。
+// 日程（世界时钟）：一开始记下站的地方当"家"，晚上 8 点到早上 7 点走回家站着，白天照旧
 {
   "name": "Pedestrian",
   "parameters": [
     { "name": "alarm", "type": "bool" },
     { "name": "threat", "type": "vector" },
-    { "name": "cover", "type": "vector" }
+    { "name": "cover", "type": "vector" },
+    { "name": "home", "type": "vector" },
+    { "name": "homed", "type": "bool" }
   ],
   "states": [
+    {
+      "name": "Init",
+      "enter": [{ "type": "parameter", "parameter": "homed", "value": 0 }],
+      "tasks": [{ "type": "store", "parameter": "home" }, { "type": "set", "parameter": "homed", "value": 1 }],
+      "transitions": [{ "to": "$root" }]
+    },
+    {
+      "name": "Night",
+      "enter": [{ "type": "time", "from": 20, "to": 7 }, { "type": "parameter", "parameter": "alarm", "value": 0 }],
+      "tasks": [{ "type": "sense", "tag": "threat", "sense": "sight", "store": "threat", "flag": "alarm" }],
+      "transitions": [
+        { "on": "event", "event": "scare", "to": "Panic" },
+        { "on": "tick", "when": [{ "type": "parameter", "parameter": "alarm", "value": 1 }], "to": "Panic" },
+        { "on": "tick", "when": [{ "type": "time", "from": 7, "to": 20 }], "to": "$root" }
+      ]
+    },
+    { "name": "GoHome", "parent": "Night", "tasks": [{ "type": "moveTo", "parameter": "home", "tolerance": 1, "timeout": 120 }], "transitions": [{ "to": "$next" }] },
+    { "name": "AtHome", "parent": "Night", "tasks": [{ "type": "stand" }, { "type": "wait", "seconds": 30 }], "transitions": [{ "to": "$root" }] },
     {
       "name": "Calm",
       "enter": [{ "type": "parameter", "parameter": "alarm", "value": 0 }],
       "tasks": [{ "type": "sense", "tag": "threat", "sense": "sight", "store": "threat", "flag": "alarm" }],
       "transitions": [
         { "on": "event", "event": "scare", "to": "Panic" },
-        { "on": "tick", "when": [{ "type": "parameter", "parameter": "alarm", "value": 1 }], "to": "Panic" }
+        { "on": "tick", "when": [{ "type": "parameter", "parameter": "alarm", "value": 1 }], "to": "Panic" },
+        { "on": "tick", "when": [{ "type": "time", "from": 20, "to": 7 }], "to": "$root" }
       ]
     },
     { "name": "Idle", "parent": "Calm", "tasks": [{ "type": "wait", "seconds": 1, "random": 4 }], "transitions": [{ "to": "$next" }] },

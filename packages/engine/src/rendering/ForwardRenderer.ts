@@ -34,6 +34,7 @@ import { SubsurfaceScattering } from './screenspace/SubsurfaceScattering';
 import { ScreenSpaceReflections } from './screenspace/ScreenSpaceReflections';
 import { ContactShadows } from './screenspace/ContactShadows';
 import { RayTracedShadows } from './raytracing/RayTracedShadows';
+import { RayTracedLocalLights } from './raytracing/RayTracedLocalLights';
 import { DepthOfField } from './screenspace/DepthOfField';
 import { MotionBlur } from './screenspace/MotionBlur';
 import { Skybox } from './lighting/Skybox';
@@ -147,6 +148,9 @@ export class ForwardRenderer {
   readonly rayTracedShadows: RayTracedShadows;
   /** 这一帧主画面用光追的阴影（光追场景、管线都好了）。 */
   #rayTracedShadows = false;
+  /** 局部光的光追阴影（ReSTIR，开关同 rayTracedShadows）。 */
+  readonly rayTracedLocalLights: RayTracedLocalLights;
+  #rayTracedLocalLights = false;
   /** 屏幕空间反射（开不开照合成器的 LocalReflections，见 ScreenSpaceReflections.ts）。 */
   readonly screenSpaceReflections: ScreenSpaceReflections;
   /** 屏幕空间反射开着时的不透明阶段：颜色之外写表面（法线、粗糙度、环境镜面反射）。 */
@@ -315,6 +319,7 @@ export class ForwardRenderer {
     this.screenSpaceReflections = new ScreenSpaceReflections(renderSystem.device, renderSystem.resources.linearClamp);
     this.contactShadows = new ContactShadows(renderSystem.device);
     this.rayTracedShadows = new RayTracedShadows(renderSystem.device);
+    this.rayTracedLocalLights = new RayTracedLocalLights(renderSystem.device);
     this.motionBlur = new MotionBlur(renderSystem.device);
     this.depthOfField = new DepthOfField(renderSystem.device);
     this.#pool = new GraphTexturePool(renderSystem.device);
@@ -345,6 +350,7 @@ export class ForwardRenderer {
     this.subsurfaceScattering.enabled = subsurfaceScattering === true;
     this.rayTracedShadows.enabled = rayTracedShadows === true;
     this.rayTracedShadows.reset();
+    this.rayTracedLocalLights.reset();
     this.particlesOverUI = particlesOverUI === true;
     this.#mainView.cullingMask = ((renderMask ?? RENDER_GROUP_ALL) & RENDER_GROUP_VISIBLE) >>> 0;
     this.clearColor.set(r, g, b, a);
@@ -460,11 +466,17 @@ export class ForwardRenderer {
     const pathTracing = renderSystem.pathTracing;
     const pathTracingWanted = this.hasCamera && pathTracing.enabled && renderSystem.planarReflections.supported;
     // 光追的阴影：投阴影的方向光、画质开着全局光照时；场景和管线都好了才用（阴影图收集前定：用的话级联只画光追里没有的投影者）
-    const rayTracedShadowsWanted = this.hasCamera && this.rayTracedShadows.enabled && this.drawShadows && this.quality.shadows && this.quality.globalIllumination && renderSystem.lighting.shadowLight >= 0;
-    if (rayTracedReflections || pathTracingWanted || rayTracedShadowsWanted) renderSystem.rayTracing.update(context.game);
+    const rayTracedWanted = this.hasCamera && this.rayTracedShadows.enabled && this.drawShadows && this.quality.shadows && this.quality.globalIllumination;
+    const rayTracedShadowsWanted = rayTracedWanted && renderSystem.lighting.shadowLight >= 0;
+    // 局部光（点光、聚光、面光源）的光追阴影：有局部光时
+    const rayTracedLocalWanted = rayTracedWanted && this.rayTracedLocalLights.enabled && renderSystem.lighting.localCount > 0;
+    if (rayTracedReflections || pathTracingWanted || rayTracedShadowsWanted || rayTracedLocalWanted) renderSystem.rayTracing.update(context.game);
     this.#rayTracedShadows = rayTracedShadowsWanted && this.rayTracedShadows.ready(renderSystem.rayTracing);
     if (!this.#rayTracedShadows) this.rayTracedShadows.reset();
     this.#mainView.rayTracedShadows = this.#rayTracedShadows;
+    this.#rayTracedLocalLights = rayTracedLocalWanted && this.rayTracedLocalLights.ready(renderSystem.rayTracing);
+    if (!this.#rayTracedLocalLights) this.rayTracedLocalLights.reset();
+    this.#mainView.rayTracedLocalLights = this.#rayTracedLocalLights;
     pathTracing.active = pathTracingWanted && pathTracing.ready(renderSystem.rayTracing);
     this.#mainView.screenIndirect = this.#indirect || pathTracing.active;
     if (volumes.active || rayTracedReflections || pathTracing.active) renderSystem.rayTracing.lighting.write(renderSystem.lighting);
@@ -641,6 +653,7 @@ export class ForwardRenderer {
     this.screenSpaceReflections.destroy();
     this.contactShadows.destroy();
     this.rayTracedShadows.destroy();
+    this.rayTracedLocalLights.destroy();
     this.motionBlur.destroy();
     this.depthOfField.destroy();
     this.picker.destroy();
@@ -739,6 +752,10 @@ export class ForwardRenderer {
     // 分簇：着色时像素只看所在那一簇的点光、贴花
     if (view?.clustered) {
       frame.pass(`${label} clusters`, (pass) => pass.sideEffect(), () => renderSystem.clusters.record(encoder, view, profiler.passTimestamps(`${label} clusters`)));
+    }
+    // 局部光的光追阴影：要簇的列表（候选按簇取），和太阳的可见度拼成 rg 当 screenShadow
+    if (view === this.#mainView && !isGraphTexture(depth) && this.#rayTracedLocalLights) {
+      view.screenShadow = this.rayTracedLocalLights.record(frame, depth, view, renderSystem.rayTracing, renderSystem.localLights.buffer, renderSystem.clusters.buffer, renderSystem.lighting.localCount, view.screenShadow);
     }
     frame.pass(`${label} opaque`, (pass) => {
       if (isGraphTexture(target)) pass.write(target);

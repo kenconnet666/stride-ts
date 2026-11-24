@@ -139,11 +139,14 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
     for (const key of ['length', 'steps', 'thickness'] as const) if (typeof args[key] === 'number') contact[key] = args[key];
     return { enabled: contact.enabled, length: contact.length, steps: contact.steps, thickness: contact.thickness };
   });
-  debug.command('rtshadow', 'Ray traced shadows of the shadow-casting directional light in the main view (soft penumbra from the light angle; shadow maps then only draw casters that are not in the ray tracing scene). Needs the global illumination quality. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
+  debug.command('rtshadow', 'Ray traced shadows of the shadow-casting directional light in the main view (soft penumbra from the light angle; shadow maps then only draw casters that are not in the ray tracing scene). Point, spot and area lights get ray traced shadows too (ReSTIR: a few cluster lights resampled per pixel, one shadow ray). Needs the global illumination quality. args: on (true/false, or "toggle"; omitted keeps it and just reports), local (false keeps the shadow atlas for local lights).', (args) => {
     const shadows = game.graphicsCompositor.rayTracedShadows;
+    const local = game.graphicsCompositor.rayTracedLocalLights;
     shadows.enabled = switchArg(args, shadows.enabled);
+    if (typeof args['local'] === 'boolean') local.enabled = args['local'];
     if (!shadows.enabled) shadows.reset();
-    return { enabled: shadows.enabled, lightAngle: game.renderSystem.lighting.directionalShadow?.lightAngle ?? null };
+    if (!shadows.enabled || !local.enabled) local.reset();
+    return { enabled: shadows.enabled, local: local.enabled, lightAngle: game.renderSystem.lighting.directionalShadow?.lightAngle ?? null };
   });
   debug.command('ssgi', 'Screen-space global illumination of the main view (indirect diffuse light and occlusion; replaces GTAO while on). args: on (true/false, or "toggle"; omitted keeps it and just reports), radius, thickness (world units), intensity, feedback.', (args) => {
     const gi = game.graphicsCompositor.globalIllumination;

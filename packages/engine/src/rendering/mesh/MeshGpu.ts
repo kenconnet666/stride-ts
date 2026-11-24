@@ -716,7 +716,7 @@ export class MeshGpu {
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
       data.set([wetness, snowCover, puddles, rain], o + 240);
       const refraction = this.#refraction;
-      data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, 0, 0], o + 244);
+      data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, view.rayTracedLocalLights ? 1 : 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
       data.set(planar.active && view === planar.receiver ? planar.params : PLANAR_OFF, o + 256);
       // 原点是 1024 米的整数倍，按 65536 米取模（图案 65 公里重复一次，单精度在这个范围里是毫米级）

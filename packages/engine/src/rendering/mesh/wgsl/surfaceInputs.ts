@@ -215,6 +215,12 @@ fn screenCurvature(position: vec4f) -> f32 {
   return textureLoad(screenOcclusion, min(vec2u(position.xy) / 2u, size - 1u), 0).g * 2.0 - 1.0;
 }
 
+/** 局部光的光追可见比例（RayTracedLocalLights，screenShadow 的 g）；只在视图常量的 decal.z 开着时读。 */
+fn screenLocalVisibility(position: vec4f) -> f32 {
+  let size = textureDimensions(screenShadow);
+  return textureLoad(screenShadow, min(vec2u(position.xy), size - 1u), 0).g;
+}
+
 /** 投阴影的方向光的接触阴影（ContactShadows，全分辨率；没开时是白图）。 */
 fn screenContactShadow(position: vec4f) -> f32 {
   let size = textureDimensions(screenShadow);

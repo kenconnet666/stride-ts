@@ -226,6 +226,11 @@ export class RenderView {
   /** 这一帧投阴影的方向光用光追的阴影（RayTracedShadows）：阴影图收集时给它的级联标 skipsRayTraced。 */
   rayTracedShadows = false;
   /**
+   * 这一帧局部光（点光、聚光、面光源）的阴影来自光追（RayTracedLocalLights，screenShadow 的 g）：着色时不透明阶段的局部光不查
+   * 阴影图集，和乘 g（视图常量的 decal.z）。
+   */
+  rayTracedLocalLights = false;
+  /**
    * 画哪些渲染组（Stride 的 RenderView.CullingMask，合成器里相机渲染器的 RenderMask）：第 g 位是 1 时画第 g 组。
    * 默认除了烘焙组（RENDER_GROUP_BAKE）全画。
    */

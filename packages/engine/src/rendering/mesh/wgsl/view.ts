@@ -47,7 +47,8 @@ struct View {
   cloudShadow: vec4f,
   // 天气（RenderSystem.surfaceWeather）：x：地面多湿，y：积了多少雪，z：积了多少水（水洼），w：雨多大（涟漪），都是 0 到 1
   weather: vec4f,
-  // x：贴花的个数（decals 的前几个），y：折射拷的画面最粗的 mip 级 + 1（0 是这个视图没有，screenspace/Refraction.ts）
+  // x：贴花的个数（decals 的前几个），y：折射拷的画面最粗的 mip 级 + 1（0 是这个视图没有，screenspace/Refraction.ts），
+  // z：1 时局部光的阴影来自光追（screenShadow 的 g，RayTracedLocalLights；不透明阶段不查阴影图集）
   decal: vec4f,
   // 分簇（lighting/Clusters.ts 的 clusterParams）：(格数 / 视图宽、格数 / 视图高、层数 / ln(far / near)、分不分簇)，
   // (视图的前方, ln near)

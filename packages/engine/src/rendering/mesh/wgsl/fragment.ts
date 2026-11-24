@@ -177,7 +177,9 @@ fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, world: 
   let attenuation = at.w;
   // 这个视图用不用阴影看图集的尺寸（不用时是 0）
   var shadow = 1.0;
-  if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0) {
+  // 局部光的阴影来自光追时（不透明阶段）不查图集，整体乘可见比例
+  let rayTraced = view.decal.z > 0.5 && !TRANSPARENT_STAGE;
+  if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0 && !rayTraced) {
     shadow = computeLocalShadow(u32(light.direction.w), world, n, max(dot(n, l), 0.0001), light.position.xyz);
   }
   return shadeLight(surface, l, light.color.rgb, attenuation, shadow * occlusion);
@@ -799,10 +801,12 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   if (localCount > 0u) {
     area = areaShading(surface);
   }
+  // 局部光的阴影来自光追时（不透明阶段）：所有局部光的和乘这个像素的可见比例（RayTracedLocalLights）
+  let localVisibility = select(1.0, screenLocalVisibility(in.position), view.decal.z > 0.5 && !TRANSPARENT_STAGE);
   for (var k = 0u; k < localCount; k++) {
     let lit = localLightLit(localLight(select(k, clusters[firstLight + k], clustered)), surface, area, in.world, n, directOcclusion);
-    direct.diffuse += lit.diffuse;
-    direct.specular += lit.specular;
+    direct.diffuse += lit.diffuse * localVisibility;
+    direct.specular += lit.specular * localVisibility;
   }
   // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致。
   // scattered 是所有漫反射光（次表面散射模糊的就是它），镜面反射和自发光另加

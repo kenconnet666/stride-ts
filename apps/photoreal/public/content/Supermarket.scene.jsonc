@@ -31,7 +31,8 @@
     "localShadows": 0.3
    }
   },
-  "transparent": true
+  "transparent": true,
+  "rayTracedShadows": true
  },
  "entities": [
   {

@@ -226,6 +226,7 @@ export { StateTreeInstance, registerStateTreeCondition, registerStateTreeTask, t
 export { StateTreeRunner } from './ai/StateTreeRunner';
 export { Perceiver, PerceptionStimulus, PerceptionSystem, type Perceived } from './ai/Perception';
 export { SmartObject, SmartObjectSystem, type SmartObjectClaim, type SmartObjectSearch } from './ai/SmartObjects';
+export { SimulationLod, SimulationLodSystem, levelFor, simulationLevel, type SimulationLodLevel, type SimulationLodSettings } from './ai/SimulationLod';
 export { runEnvironmentQuery, type EnvironmentQueryInput, type EnvironmentQueryResult } from './ai/EnvironmentQuery';
 export { Animator } from './animation/Animator';
 export { FootIk } from './animation/FootIk';

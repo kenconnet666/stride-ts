@@ -633,6 +633,8 @@ export interface SceneEntityFile {
     readonly water?: { readonly water: string };
     /** 浮力（Stride 没有，见 world/Buoyancy.ts）：刚体在水里浮起来；没写的项用组件的默认值。 */
     readonly buoyancy?: { readonly buoyancy?: number; readonly linearDrag?: number; readonly angularDrag?: number };
+    /** 模拟细节层次（Stride 没有，见 ai/SimulationLod.ts）：按离主相机的距离分档、远处降频推进；distanceScale 大于 1 远一些才降档。 */
+    readonly simulationLod?: { readonly distanceScale?: number };
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */
     readonly cameraRig?: {

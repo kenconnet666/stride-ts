@@ -54,6 +54,7 @@
 | `packages/pipeline/experiments/` | 几何实验 E1（位移微图的大小）、E4（规则生成对下载）、Basis 编码耗时（`basis-bench.ts`：2K 单张 76 秒，线程池默认开以后 1K 19.6 → 3.9 秒） | `node packages/pipeline/experiments/<脚本>.ts` |
 | `dev/shelf-stats.ts` | 货架生成的统计（商品数、顶点和三角形、图集大小） | 见文件头 |
 | `dev/frame-bench.ts` | 4K 帧时间的预算（帧率目标：稳定的 4K 30 Hz）：站台、超市、开放世界的山谷各开 3840×2160 的无头 Chrome，CPU、GPU 每帧的 p99 要在 33.3 毫秒以内，`--check` 再比 `frame-budgets.json` 的基线 | `node tools/dev/frame-bench.ts --check`（`--update` 重记基线，`--only Subway` 只量一处）；要独占显卡，阶段结束时跑 |
+| `dev/pedestrians.eval.ts` | 海量行人（海量实体的模拟层）：主相机周围 600 米撒 2000 个挂 SimulationLod、CrowdAgent、状态树的行人；`__pedestrians`、`__radius`、`__noLod` 改人数、范围、对照不分档 | 开放世界的山谷里 `stride eval --file tools/dev/pedestrians.eval.ts`，再 `stride perf`、`stride call simlod` |
 | `dev/many-lights.eval.ts` | 大量局部光：主画面前撒 300 盏点光（每像素重叠四五十盏），看着色和局部光的光追阴影随重叠的灯数怎么涨 | 超市页面（4K）里 `stride perf`，`stride eval --file tools/dev/many-lights.eval.ts`，再 `stride perf` |
 
 原生部分的脚本（PowerShell 7）：

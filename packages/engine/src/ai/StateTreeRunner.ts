@@ -6,12 +6,13 @@
  *   brain.send('scared');
  *   brain.activePath;   // ['Calm', 'Stroll']
  *
- * 走路的任务要同一个实体上有 CrowdAgent。
+ * 走路的任务要同一个实体上有 CrowdAgent。挂了 SimulationLod 时按档位的间隔推进（远处的人 0.5、2 秒想一次）。
  */
 import { prop } from '../data/prop';
 import type { Vec3Like } from '../data/vectors';
 import { SyncScript } from '../engine/scripts';
 import type { GameTime } from '../engine/GameTime';
+import { SimulationLod } from './SimulationLod';
 import { StateTreeInstance, type StateTreeStatus } from './StateTree';
 import './stateTreeTasks';
 
@@ -60,8 +61,11 @@ export class StateTreeRunner extends SyncScript.props('StateTreeRunner', {
   override update(time: GameTime): void {
     const instance = this.#instance;
     if (!instance) return;
+    // 挂了 SimulationLod 的按档位的间隔推进，跳过的时间攒着一次推进
+    const lod = this.entity.get(SimulationLod);
+    if (lod && !lod.due) return;
     if (instance.status !== 'running' && this.loop) instance.restart();
-    instance.update(time.elapsed * this.timeFactor);
+    instance.update((lod ? lod.elapsed : time.elapsed) * this.timeFactor);
   }
 
   override cancel(): void {

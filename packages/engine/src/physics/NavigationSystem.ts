@@ -17,6 +17,7 @@ import type { EntityManager } from '../engine/EntityManager';
 import type { GameTime } from '../engine/GameTime';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
+import { SimulationLod } from '../ai/SimulationLod';
 import type { CrowdAgent } from './CrowdAgent';
 import type { Simulation } from './Simulation';
 
@@ -66,6 +67,20 @@ const SEARCH_EXTENTS = [2, 4, 2] as const;
 const SETTLE_SECONDS = 0.3;
 /** 块的编号：x、y 各 21 位（±100 万块，块 10 米时 ±1 万公里）拼成一个安全整数。 */
 const TILE_RANGE = 2 ** 20;
+/** 引子够得着的块（NavigationSystem 的 #coverage）：块相对 (minX, minY) 按列排的序号 → 离最近的引子多远。 */
+interface Coverage {
+  readonly minX: number;
+  readonly minY: number;
+  readonly rows: number;
+  readonly distances: Map<number, number>;
+}
+
+/** 分块流式的引子：位置（世界的 x、z）和周围建多远。 */
+interface Invoker {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+}
 const tileKey = (x: number, y: number): number => (x + TILE_RANGE) * 2 ** 21 + (y + TILE_RANGE);
 const tileX = (key: number): number => Math.floor(key / 2 ** 21) - TILE_RANGE;
 const tileY = (key: number): number => (key % 2 ** 21) - TILE_RANGE;
@@ -91,7 +106,7 @@ export class NavigationSystem {
   crowdAvoidance: 0 | 1 | 2 | 3 = 1;
   #appliedAvoidance = -1;
   /** 上一次人群更新：几个人、原生走一步花了多少毫秒。 */
-  crowdStats = { agents: 0, milliseconds: 0 };
+  crowdStats = { agents: 0, coarse: 0, milliseconds: 0 };
 
   readonly #entities: EntityManager;
   /** 分块流式时导航网格的原点（世界坐标，双精度；建网格时取第一个引子所在的块角，导航网格里的坐标都相对它，远离原点时保住精度）。 */
@@ -107,7 +122,12 @@ export class NavigationSystem {
   #idleSignature = '';
   /** 在建的一批：建好后 built 有值，下一帧的 update 换上。 */
   #batch: { keys: number[]; generation: number; started: number; built: NavTileBatch | undefined } | undefined;
-  readonly #invokers: { x: number; z: number; radius: number }[] = [];
+  readonly #invokers: Invoker[] = [];
+  /**
+   * 这一帧引子够得着的块（按 extra 缓存，见 #coverage）：反过来从每个引子标它够得着的块，不是每块和所有引子比——几百个引子、
+   * 几千块时挨个比一帧要上百毫秒（11-24 量的：500 个行人、4000 块，213 毫秒）。
+   */
+  readonly #coverageCache = new Map<number, Coverage>();
   readonly #collectInvokers = system('Navigation.invokers', {
     with: { invoker: NavigationInvoker, transform: Transform },
     update: ({ invoker, transform, count }) => {
@@ -197,9 +217,12 @@ export class NavigationSystem {
     this.#invokers.length = 0;
     this.#entities.run(this.#collectInvokers, time);
     for (const agent of this.#agents) {
+      // 只有 0、1 档（SimulationLod）的人要导航网格：远处的直线走，不让它们周围建块
+      if ((agent.entity.get(SimulationLod)?.level ?? 0) > 1) continue;
       const world = agent.entity.require(Transform).world;
       this.#invokers.push({ x: world[12]!, z: world[14]!, radius: streaming.radius });
     }
+    this.#coverageCache.clear();
     this.#markChanged();
     // 引子都没走进别的块、块没变、没有到时候要重建的块：上一次扫过没有要建、要去的，这次也没有
     const signature = this.#signature();
@@ -285,10 +308,54 @@ export class NavigationSystem {
 
   /** 块的中心离某个引子不到（它的半径 + extra + 半块的对角线）。 */
   #nearInvoker(key: number, extra: number): boolean {
-    const size = this.#tileSize;
-    const cx = this.#origin.x + (tileX(key) + 0.5) * size, cz = this.#origin.z + (tileY(key) + 0.5) * size;
+    return this.#covered(extra, key) !== undefined;
+  }
+
+  /**
+   * 引子够得着的块（块的中心离引子不到它的半径 + extra + 半块的对角线）→ 离最近的引子多远（中心到引子减半径，排先后用）；
+   * 一帧按 extra 算一次。键是相对引子范围左下角的小整数（Map 的键是小整数时快得多，全局的块号超过 2³¹）。
+   */
+  #coverage(extra: number): Coverage {
+    let covered = this.#coverageCache.get(extra);
+    if (covered) return covered;
+    const size = this.#tileSize, o = this.#origin;
     const reach = size * Math.SQRT1_2 + extra;
-    return this.#invokers.some((invoker) => Math.hypot(cx - invoker.x, cz - invoker.z) <= invoker.radius + reach);
+    let minX = Infinity, minY = Infinity, maxY = -Infinity;
+    for (const invoker of this.#invokers) {
+      const limit = invoker.radius + reach;
+      minX = Math.min(minX, Math.floor((invoker.x - limit - o.x) / size));
+      minY = Math.min(minY, Math.floor((invoker.z - limit - o.z) / size));
+      maxY = Math.max(maxY, Math.floor((invoker.z + limit - o.z) / size));
+    }
+    const rows = Number.isFinite(maxY) ? maxY - minY + 1 : 0;
+    const distances = new Map<number, number>();
+    covered = { minX, minY, rows, distances };
+    this.#coverageCache.set(extra, covered);
+    for (const invoker of this.#invokers) {
+      const limit = invoker.radius + reach;
+      const x0 = Math.floor((invoker.x - limit - o.x) / size), x1 = Math.floor((invoker.x + limit - o.x) / size);
+      const y0 = Math.floor((invoker.z - limit - o.z) / size), y1 = Math.floor((invoker.z + limit - o.z) / size);
+      for (let x = x0; x <= x1; x++) {
+        const dx = o.x + (x + 0.5) * size - invoker.x;
+        for (let y = y0; y <= y1; y++) {
+          const distance = Math.hypot(dx, o.z + (y + 0.5) * size - invoker.z);
+          if (distance > limit) continue;
+          const local = (x - minX) * rows + (y - minY);
+          const near = distance - invoker.radius;
+          const before = distances.get(local);
+          if (before === undefined || near < before) distances.set(local, near);
+        }
+      }
+    }
+    return covered;
+  }
+
+  /** 块 key 在 #coverage 里的距离；够不着时 undefined。 */
+  #covered(extra: number, key: number): number | undefined {
+    const { minX, minY, rows, distances } = this.#coverage(extra);
+    const y = tileY(key) - minY;
+    if (y < 0 || y >= rows) return undefined;
+    return distances.get((tileX(key) - minX) * rows + y);
   }
 
   /**
@@ -303,9 +370,8 @@ export class NavigationSystem {
     const consider = (key: number): void => {
       if (seen.has(key) || this.#building.has(key)) return;
       seen.add(key);
-      const cx = o.x + (tileX(key) + 0.5) * size, cz = o.z + (tileY(key) + 0.5) * size;
-      let distance = Infinity;
-      for (const invoker of this.#invokers) distance = Math.min(distance, Math.hypot(cx - invoker.x, cz - invoker.z) - invoker.radius);
+      // 离最近的引子多远（排先后）；要重建的块周围没有引子时排在最后
+      const distance = this.#covered(0, key) ?? Infinity;
       wanted.push({ key, distance });
     };
     for (const [key, ready] of this.#dirty) if (ready <= this.#now) consider(key);
@@ -444,12 +510,17 @@ export class NavigationSystem {
   updateCrowd(time: GameTime): void {
     if (time.frameCount === this.#crowdFrame) return;
     this.#crowdFrame = time.frameCount;
+    // 降了档的（SimulationLod 1 档起）不在人群里，自己走；剩下的交给人群
+    const members = this.#moveCoarse();
     const navMesh = this.#navMesh;
-    if (!navMesh || this.#agents.size === 0) return;
-    if (!this.#crowd || this.#agents.size > this.#crowdCapacity) {
+    if (!navMesh || members.length === 0) {
+      this.crowdStats = { agents: 0, coarse: this.#agents.size - members.length, milliseconds: 0 };
+      return;
+    }
+    if (!this.#crowd || members.length > this.#crowdCapacity) {
       this.#dropCrowd();
-      this.#crowdCapacity = Math.max(64, 2 ** Math.ceil(Math.log2(this.#agents.size * 1.5)));
-      const radius = Math.max(...[...this.#agents].map((agent) => agent.radius));
+      this.#crowdCapacity = Math.max(64, 2 ** Math.ceil(Math.log2(members.length * 1.5)));
+      const radius = Math.max(...members.map((agent) => agent.radius));
       this.#crowd = navMesh.createCrowd(this.#crowdCapacity, radius);
       this.#appliedAvoidance = -1;
     }
@@ -459,10 +530,10 @@ export class NavigationSystem {
       this.#appliedAvoidance = this.crowdAvoidance;
     }
     // 这一帧才出生的实体世界矩阵还没算（变换存储下一次更新才算）：要加人时先更新一次
-    const joining = [...this.#agents].find((agent) => agent.slot === -1);
+    const joining = members.find((agent) => agent.slot === -1);
     if (joining) joining.game.transforms.update();
     const o = this.#origin;
-    for (const agent of this.#agents) {
+    for (const agent of members) {
       const world = agent.entity.require(Transform).world;
       if (agent.slot === -1) {
         try {
@@ -491,14 +562,55 @@ export class NavigationSystem {
     }
     const started = performance.now();
     crowd.update(time.elapsed);
-    this.crowdStats = { agents: this.#agents.size, milliseconds: performance.now() - started };
+    this.crowdStats = { agents: members.length, coarse: this.#agents.size - members.length, milliseconds: performance.now() - started };
     const positions = crowd.positions(), velocities = crowd.velocities();
-    for (const agent of this.#agents) {
+    for (const agent of members) {
       if (agent.slot === -1) continue;
       const k = agent.slot * 3;
       agent.velocity.set(velocities[k]!, velocities[k + 1]!, velocities[k + 2]!);
       placeAgent(agent, positions[k]! + o.x, positions[k + 1]! + o.y, positions[k + 2]! + o.z);
     }
+  }
+
+  /**
+   * 降了档的人（SimulationLod 1 档起）离开人群，按档位的间隔自己走：1 档沿导航网格的路径（找不到路时直线），2、3 档直线走向
+   * 目标（远处不建导航网格），不避让。返回留在人群里（0 档、没挂 SimulationLod）的。
+   */
+  #moveCoarse(): CrowdAgent[] {
+    const members: CrowdAgent[] = [];
+    for (const agent of this.#agents) {
+      const lod = agent.entity.get(SimulationLod);
+      if (!lod || lod.level === 0) {
+        members.push(agent);
+        continue;
+      }
+      if (agent.slot !== -1) {
+        this.#crowd?.removeAgent(agent.slot);
+        agent.slot = -1;
+        // 回到人群时重新交目标
+        agent.route = undefined;
+      }
+      if (!lod.due) continue;
+      const target = agent.target;
+      const world = agent.entity.require(Transform).world;
+      if (!target) {
+        agent.velocity.set(0, 0, 0);
+        continue;
+      }
+      const onPath = lod.level === 1;
+      if (agent.targetDirty || !agent.route || agent.routeOnPath !== onPath) {
+        const from = { x: world[12]!, y: world[13]!, z: world[14]! };
+        agent.route = (onPath ? this.findPath(from, target)?.slice(1) : undefined) ?? [target.clone()];
+        agent.routeOnPath = onPath;
+        agent.targetDirty = false;
+      }
+      const [x, y, z] = followRoute(agent.route, world[12]!, world[13]!, world[14]!, agent.maxSpeed * lod.elapsed);
+      const dx = x - world[12]!, dz = z - world[14]!;
+      const moved = Math.hypot(dx, dz);
+      agent.velocity.set(moved > 1e-6 ? (dx / moved) * agent.maxSpeed : 0, 0, moved > 1e-6 ? (dz / moved) * agent.maxSpeed : 0);
+      placeAgent(agent, x, y, z);
+    }
+    return members;
   }
 
   /** 交给人群（导航网格的坐标）；目标不在导航网格上时是 false。 */
@@ -538,6 +650,32 @@ export class NavigationSystem {
 const PARENT_INVERSE = Matrix.identity();
 
 /** 人群算出的世界位置（和朝向）写回实体：有父实体时换成本地的。 */
+/** 沿着拐点走 step 米（走过的拐点从 route 里去掉），返回走到的位置。 */
+export function followRoute(route: Vector3[], x: number, y: number, z: number, step: number): [number, number, number] {
+  let left = step;
+  while (route.length > 0 && left > 0) {
+    const next = route[0]!;
+    const dx = next.x - x, dy = next.y - y, dz = next.z - z;
+    const distance = Math.hypot(dx, dz);
+    if (distance <= left) {
+      x = next.x;
+      y = next.y;
+      z = next.z;
+      left -= distance;
+      // 终点留着（到了以后还站在那）
+      if (route.length === 1) break;
+      route.shift();
+      continue;
+    }
+    const t = left / distance;
+    x += dx * t;
+    y += dy * t;
+    z += dz * t;
+    left = 0;
+  }
+  return [x, y, z];
+}
+
 function placeAgent(agent: CrowdAgent, x: number, y: number, z: number): void {
   const transform = agent.entity.require(Transform);
   const parent = transform.parent?.require(Transform).world;

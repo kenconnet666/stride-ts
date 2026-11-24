@@ -42,6 +42,7 @@ import { Scatter, type ScatterAsset } from '../world/Scatter';
 import { City, type CityAsset } from '../world/City';
 import { Water, type WaterAsset } from '../world/Water';
 import { Buoyancy } from '../world/Buoyancy';
+import { SimulationLod } from '../ai/SimulationLod';
 import type { SpriteSheet } from '../rendering/SpriteSheet';
 import type { SpriteFont } from '../rendering/text/SpriteFont';
 import type { Texture } from '../graphics/Texture';
@@ -441,6 +442,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   city: { add: (entity, { city }, { assets }) => entity.add(City.with({ city: assets.cities.get(city)!.id })), remove: drop(City) },
   water: { add: (entity, { water }, { assets }) => entity.add(Water.with({ water: assets.waters.get(water)!.id })), remove: drop(Water) },
   buoyancy: { add: (entity, value) => entity.add(Buoyancy.with(value)), remove: drop(Buoyancy) },
+  simulationLod: { add: (entity, value) => entity.add(SimulationLod.with(value)), remove: drop(SimulationLod) },
   // 风场和雨雪（Stride 没有）：没写的字段用组件的默认值
   windZone: { add: (entity, zone) => entity.add(WindZone.with({ ...zone })), remove: drop(WindZone) },
   precipitation: { add: (entity, precipitation) => entity.add(Precipitation.with({ ...precipitation })), remove: drop(Precipitation) },

@@ -6,6 +6,7 @@ import { Animator } from '../animation/Animator';
 import { Transform } from '../engine/transform';
 import { CrowdAgent } from '../physics/CrowdAgent';
 import { runEnvironmentQuery } from './EnvironmentQuery';
+import { simulationLevel } from './SimulationLod';
 import { perceivedBy, registerBuiltInTask, type StateTreeContext, type StateTreeStatus, type StateTreeTaskRun } from './StateTree';
 
 const done: StateTreeTaskRun = { update: () => 'succeeded' };
@@ -54,11 +55,18 @@ registerBuiltInTask('wander', (context, task) => {
   const from = { x: world[12]!, y: world[13]!, z: world[14]! };
   for (let attempt = 0; attempt < 8; attempt++) {
     const angle = Math.random() * Math.PI * 2, distance = task.radius * Math.sqrt(Math.random());
-    const end = navigation.findPath(from, { x: from.x + Math.cos(angle) * distance, y: from.y, z: from.z + Math.sin(angle) * distance })?.at(-1);
+    const point = { x: from.x + Math.cos(angle) * distance, y: from.y, z: from.z + Math.sin(angle) * distance };
+    // 远处（SimulationLod 2 档起）不建导航网格、人直线走：随便挑的点就行
+    const end = coarse(context) ? point : navigation.findPath(from, point)?.at(-1);
     if (end && Math.hypot(end.x - from.x, end.z - from.z) > task.tolerance) return walk(agent, end, task.tolerance, task.timeout);
   }
   return { update: () => 'failed' };
 });
+
+/** 实体在远处（SimulationLod 2 档起）：周围没有导航网格，走路的任务直接按直线挑点。 */
+function coarse(context: StateTreeContext): boolean {
+  return context.entity !== undefined && simulationLevel(context.entity) >= 2;
+}
 
 registerBuiltInTask('flee', (context, task) => {
   const agent = agentOf(context, 'flee');
@@ -71,7 +79,8 @@ registerBuiltInTask('flee', (context, task) => {
   const away = Math.atan2(from.z - threat.z, from.x - threat.x);
   for (const turn of [0, 0.5, -0.5, 1, -1]) {
     const angle = away + turn;
-    const end = navigation.findPath(from, { x: from.x + Math.cos(angle) * task.distance, y: from.y, z: from.z + Math.sin(angle) * task.distance })?.at(-1);
+    const point = { x: from.x + Math.cos(angle) * task.distance, y: from.y, z: from.z + Math.sin(angle) * task.distance };
+    const end = coarse(context) ? point : navigation.findPath(from, point)?.at(-1);
     if (end && Math.hypot(end.x - from.x, end.z - from.z) > task.distance * 0.3) return walk(agent, end, task.tolerance, task.timeout);
   }
   return { update: () => 'failed' };

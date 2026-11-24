@@ -42,6 +42,7 @@ import { Animator } from '../animation/Animator';
 import { StateTreeRunner } from '../ai/StateTreeRunner';
 import { PerceptionSystem } from '../ai/Perception';
 import { SmartObject, SmartObjectSystem } from '../ai/SmartObjects';
+import { SimulationLodSystem } from '../ai/SimulationLod';
 import { FootIk } from '../animation/FootIk';
 import { LookAt } from '../animation/LookAt';
 import { SoftBody } from '../physics/SoftBody';
@@ -237,6 +238,8 @@ export class Game {
   readonly perception = new PerceptionSystem();
   /** 智能物体：长椅、柜台这类东西的槽，占、放开，见 ai/SmartObjects.ts。 */
   readonly smartObjects = new SmartObjectSystem();
+  /** 海量实体的模拟细节层次：挂 SimulationLod 的实体按离主相机的距离分档、按档降频推进，见 ai/SimulationLod.ts。 */
+  readonly simulationLod = new SimulationLodSystem();
   /** 存档和世界状态的持久化：挂 Persistent 的场景实体卸掉再读回来状态还在，save() / load() 存档读档，见 world/Persistence.ts。 */
   readonly persistence = new PersistenceSystem(this.entities, this.clock);
   /**
@@ -772,6 +775,11 @@ export class Game {
     const eye = this.terrain.eyeWorld();
     if (this.simulation) this.simulation.focus = eye;
     if (this.animation) this.animation.focus = eye;
+    // 海量实体分档在脚本之前（人群、状态树、动画都读这一帧的档位）；编辑状态下不分档（视口里都要看得见）
+    if (!this.editing) {
+      this.simulationLod.focus = eye;
+      this.simulationLod.update(this.entities, time);
+    }
     // 分块流式的导航网格在物理之后看静态物体的变化、引子走到哪了
     this.entities.update(time, this.simulation ? (t) => {
       this.simulation!.update(t);

@@ -5,7 +5,8 @@
  *
  *   entity.require(CrowdAgent).moveTo({ x: 10, y: 0, z: 5 });
  *
- * 实体自己别再挂会动它的物理（角色胶囊）：人群管位置。
+ * 实体自己别再挂会动它的物理（角色胶囊）：人群管位置。挂了 SimulationLod 的按档位走：0 档在人群里，1 档沿导航网格的路径、
+ * 2、3 档直线走（都不避让，见 ai/SimulationLod.ts）。
  */
 import type { AgentId } from '@stride-ts/native';
 import { prop } from '../data/prop';
@@ -32,6 +33,9 @@ export class CrowdAgent extends SyncScript.props('CrowdAgent', {
   targetDirty = false;
   /** @internal 目标不在导航网格上时，下一次试的游戏时间（秒）。 */
   retryAt = 0;
+  /** @internal 降了档（SimulationLod 1 档起）时自己走的拐点（走过的去掉），routeOnPath：是按导航网格的路径（1 档）还是直线。 */
+  route: Vector3[] | undefined;
+  routeOnPath = false;
 
   /** 走到 point（世界位置）。目标还不在导航网格上时（分块流式还没建到那）先朝它走，建到了再按真的目标走。 */
   moveTo(point: Vec3Like): void {

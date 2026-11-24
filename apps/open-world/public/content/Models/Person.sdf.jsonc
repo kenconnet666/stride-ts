@@ -1,0 +1,10 @@
+// 行人的占位模型（海量实体的模拟层的演示、tools/dev/pedestrians.eval.ts）：胶囊的身体、球的头，1.5 米高，脚在原点
+{
+  "name": "Person",
+  "materials": ["Materials/Box"],
+  "resolution": 0.04,
+  "shapes": [
+    { "name": "Body", "kind": "roundCone", "operation": "add", "position": [0, 0.62, 0], "height": 0.8, "bottomRadius": 0.14, "topRadius": 0.22 },
+    { "name": "Head", "kind": "sphere", "operation": "add", "smoothness": 0.05, "position": [0, 1.36, 0], "radius": 0.14 }
+  ]
+}

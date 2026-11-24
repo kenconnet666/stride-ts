@@ -1913,6 +1913,20 @@
                 "required": [],
                 "additionalProperties": false
               },
+              "simulationLod": {
+                "title": "Simulation LOD",
+                "type": "object",
+                "properties": {
+                  "distanceScale": {
+                    "type": "number",
+                    "minimum": 0.01,
+                    "description": "multiplies the LOD distances: above 1 keeps full simulation farther away (important characters)",
+                    "default": 1
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
               "cameraRig": {
                 "title": "Camera rig",
                 "type": "object",

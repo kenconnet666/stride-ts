@@ -252,6 +252,13 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: {},
   },
+  simulationLod: {
+    label: 'Simulation LOD',
+    type: object(fields<NonNullable<Components['simulationLod']>>({
+      distanceScale: { type: number({ min: 0.01, step: 0.25 }), optional: true, default: 1, description: 'multiplies the LOD distances: above 1 keeps full simulation farther away (important characters)' },
+    })),
+    initial: {},
+  },
   cameraRig: {
     label: 'Camera rig',
     type: object(fields<NonNullable<Components['cameraRig']>>({

@@ -24,6 +24,7 @@ import { AnimationComponent, type AnimationBlendStack } from './AnimationCompone
 import { PropertyAnimated, PropertyStack } from './curves';
 import { ModelMorphs, Morphed, MorphStack } from './morphs';
 import { AnimationClip, type Skeleton } from './resources';
+import { SimulationLod } from '../ai/SimulationLod';
 
 /** 带骨架的模型：模型实体上，state 是动画系统里的骨架状态（从 1 开始）。 */
 export const ModelSkeleton = component('ModelSkeleton', {
@@ -308,6 +309,8 @@ export class AnimationSystem {
 
   /** 这个实体这一帧要不要求动画（按距离降频）。 */
   #due(state: SkeletonState, entity: Entity, frame: number): boolean {
+    // 远处的（SimulationLod 2 档起）姿势停住：低档看不清、关档不画
+    if (state.posed && !state.fade && (entity.get(SimulationLod)?.level ?? 0) >= 2) return false;
     const focus = this.focus, distances = this.lod.distances;
     if (!focus || distances.length === 0 || !state.posed || state.fade) return true;
     const world = entity.require(Transform).world;

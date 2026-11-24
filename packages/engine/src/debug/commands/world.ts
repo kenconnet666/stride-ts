@@ -63,6 +63,16 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
       ...(entity ? { perceives: perception.of(entity).map((item) => ({ entity: item.entity?.name, tag: item.tag, sense: item.sense, seeing: item.seeing, position: [item.position.x, item.position.y, item.position.z].map((v) => +v.toFixed(2)), age: +(game.updateTime.total - item.time).toFixed(2) })) } : {}),
     };
   });
+  debug.command('simlod', 'Simulation LOD of massive crowds (SimulationLod: by distance to the main camera, level 0 full / 1 path, no avoidance / 2 straight, frozen animation / 3 off, hidden): reports how many are at each level and how many stepped this frame, and the crowd split. args: show (true/false) draws a dot over each (green 0, yellow 1, orange 2, red 3); distances ([3 numbers] m), maxHigh, intervals ([4 numbers] s), hysteresis.', (args) => {
+    const lod = game.simulationLod;
+    if (typeof args['show'] === 'boolean') lod.show = args['show'];
+    const settings = lod.settings;
+    if (Array.isArray(args['distances']) && args['distances'].length === 3) settings.distances = args['distances'] as [number, number, number];
+    if (Array.isArray(args['intervals']) && args['intervals'].length === 4) settings.intervals = args['intervals'] as [number, number, number, number];
+    if (typeof args['maxHigh'] === 'number') settings.maxHigh = args['maxHigh'];
+    if (typeof args['hysteresis'] === 'number') settings.hysteresis = args['hysteresis'];
+    return { show: lod.show, settings, ...lod.stats, crowd: game.navigation?.crowdStats ?? null };
+  });
   debug.command('smartobjects', 'Smart objects (SmartObject: benches, counters with slots people claim and use): reports objects, slots and claims (who uses which slot). args: show (true/false) draws every slot (green free, red claimed) with its facing.', (args) => {
     const system = game.smartObjects;
     if (typeof args['show'] === 'boolean') system.show = args['show'];

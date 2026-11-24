@@ -130,13 +130,14 @@ function time(game: Game, args: Args): unknown {
   if (args['resume'] === true) game.paused = false;
   if (typeof args['timeScale'] === 'number') game.timeScale = args['timeScale'];
   if ('fixedTimeStep' in args) game.fixedTimeStep = typeof args['fixedTimeStep'] === 'number' ? args['fixedTimeStep'] : undefined;
+  if ('maxFrameRate' in args) game.maxFrameRate = typeof args['maxFrameRate'] === 'number' && args['maxFrameRate'] > 0 ? args['maxFrameRate'] : undefined;
   // 把游戏时钟拨到这个秒数（比对截图：按时间动的着色器两边在同一个时间截）
   if (typeof args['total'] === 'number') game.updateTime.total = args['total'];
   if (typeof args['step'] === 'number') {
     if (!game.paused) throw new Error('step needs a paused game: pause first');
     game.step(args['step']);
   }
-  return { frame: game.frames, total: game.updateTime.total, paused: game.paused, timeScale: game.timeScale, fixedTimeStep: game.fixedTimeStep ?? null };
+  return { frame: game.frames, total: game.updateTime.total, paused: game.paused, timeScale: game.timeScale, fixedTimeStep: game.fixedTimeStep ?? null, maxFrameRate: game.maxFrameRate ?? null };
 }
 const MOUSE_BUTTONS: Record<MouseButton, number> = { left: 0, middle: 1, right: 2 };
 /** 合成的鼠标指针的 pointerId（浏览器真实鼠标的是 1，用别的值不和它混在一起）。 */
@@ -278,7 +279,7 @@ export function registerCoreCommands(debug: Debug, game: Game): void {
   debug.command('entities', 'List entities. args: name (substring), with (component or script name), limit (default 200).', (args) => entities(game, args));
   debug.command('inspect', 'All component values and script properties of one entity. args: entity (id, name, or in the editor the scene file id).', (args) => inspect(game, entityArg(game, args)));
   debug.command('set', "Set a component field or script property. args: entity, path ('Component.field' or 'Script.prop', optionally '.x'), value.", (args) => set(game, args));
-  debug.command('time', 'Pause, resume, step frames, time scale, fixed time step, set the game clock. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear), total (seconds).', (args) => time(game, args));
+  debug.command('time', 'Pause, resume, step frames, time scale, fixed time step, set the game clock. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear), maxFrameRate (frames per second cap, e.g. 30 for a steady 30 Hz; null or 0 clears), total (seconds).', (args) => time(game, args));
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('debug-text', 'Lines the scripts printed with game.debugText in the last frame.', () => game.debugText.lines);
   debug.command('devtools', "Run a DevTools protocol command on this tab through the Stride Debug Bridge extension (tools/debug-bridge). args: method ('detach' ends this session's debugging; the tab stays attached while other sessions use it), params, waitFor (an event to wait for after the command; returns its params), session (the debugging session's id, so several sessions can share the tab).", (args) =>

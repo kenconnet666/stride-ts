@@ -76,6 +76,10 @@ export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
 
 export interface GameOptions {
   /**
+   * 每秒最多出几帧（见 Game.maxFrameRate）；默认不限，跟着屏幕的刷新率。页面地址的 `?stride-fps=N` 也能给（测稳定的 30 Hz 时用）。
+   */
+  maxFrameRate?: number;
+  /**
    * 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1、最多 8（多了只多占 CPU，见 docs/decisions.md）。调试时页面地址的 `?stride-workers=N` 也能给（同一个标签页里
    * 一直有效），回归用它固定线程数：每个线程的栈算在原生内存里，线程数随机器变的话 `native.allocated.bytes` 的预算就没法比。
    */
@@ -273,6 +277,17 @@ export class Game {
   timeScale = 1;
   /** 设了以后每帧固定前进这么多秒，不看真实时间（调试时复现同样的过程）。 */
   fixedTimeStep: number | undefined;
+  /**
+   * 每秒最多出几帧（帧率上限，Stride 没有对应的设置）：屏幕刷新得比它快时隔几次刷新才跑一帧，按固定的间隔出帧——内容撑不住屏幕的
+   * 刷新率时，与其在 40 到 60 帧之间来回跳，不如稳定在 30 帧（项目的目标是稳定的 4K 30 Hz）。undefined 是不限；游戏时间照真实的
+   * 间隔走，不受影响。离线渲染接管帧循环、按需出帧时不看它。
+   */
+  maxFrameRate: number | undefined;
+  /** 帧率上限下一帧最早什么时候跑（requestAnimationFrame 的时间戳）。 */
+  #nextFrameAt: number | undefined;
+  /** 屏幕刷新的间隔（毫秒，requestAnimationFrame 两次回调之间最短的那个，慢慢放宽）：上限下的出帧时刻提前半个刷新周期判断。 */
+  #refreshInterval = 1000 / 60;
+  #lastCallback: number | undefined;
 
   status: GameStatus = 'starting';
   error: string | undefined;
@@ -346,6 +361,8 @@ export class Game {
       performance.setResourceTimingBufferSize(10_000);
     }
     this.editing = options.editing ?? (debugging && query.has('stride-edit'));
+    const fps = Number(query.get('stride-fps'));
+    this.maxFrameRate = options.maxFrameRate ?? (fps > 0 ? fps : undefined);
     try {
       if (options.modules) this.registry.registerModules(options.modules);
       reportLoading('native');
@@ -821,6 +838,10 @@ export class Game {
 
   private readonly frame = async (now: number): Promise<void> => {
     if (this.status !== 'running') return;
+    if (this.#skipForFrameRate(now)) {
+      requestAnimationFrame(this.#nextFrame);
+      return;
+    }
     const interval = this.lastFrameTime === undefined ? 0 : now - this.lastFrameTime;
     this.lastFrameTime = now;
     // 离线渲染接管着帧循环时只排下一次；按需出帧、没人叫醒时也只排下一次
@@ -841,6 +862,29 @@ export class Game {
     }
     requestAnimationFrame(this.#nextFrame);
   };
+
+  /**
+   * 帧率上限下这次刷新不出帧。出帧的时刻按固定的间隔往后排（不是"上次出帧后过了一个间隔"：那样每次多等到下一次刷新，帧率掉到
+   * 上限以下），落后超过一个间隔时从现在重新排；判断时提前半个刷新周期，刷新的时刻有抖动也不会错过本该出的那次。
+   */
+  #skipForFrameRate(now: number): boolean {
+    if (this.#lastCallback !== undefined) {
+      const callback = now - this.#lastCallback;
+      // 最短的间隔是刷新周期；慢慢放宽，换到刷新率低的屏幕上时跟过去
+      if (callback > 0) this.#refreshInterval = Math.min(callback, this.#refreshInterval * 1.01);
+    }
+    this.#lastCallback = now;
+    const limit = this.maxFrameRate;
+    if (!limit || limit <= 0 || this.framesTakenOver || this.renderOnDemand) {
+      this.#nextFrameAt = undefined;
+      return false;
+    }
+    const period = 1000 / limit;
+    const due = this.#nextFrameAt;
+    if (due !== undefined && now < due - this.#refreshInterval / 2) return true;
+    this.#nextFrameAt = due === undefined || now - due > period ? now + period : due + period;
+    return false;
+  }
 
   /** 交给 requestAnimationFrame 的回调（它不管返回的 Promise；帧里的错 frame 自己接住、报出来）。 */
   readonly #nextFrame = (now: number): void => void this.frame(now);

@@ -1,0 +1,14 @@
+{
+  "photoreal Subway": {
+    "cpuP99": 5.03,
+    "gpuP99": 16.21
+  },
+  "photoreal Supermarket": {
+    "cpuP99": 4.4,
+    "gpuP99": 22.6
+  },
+  "open-world Valley": {
+    "cpuP99": 9.46,
+    "gpuP99": 8
+  }
+}

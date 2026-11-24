@@ -133,7 +133,7 @@ const MODEL_SOURCE_EDITORS: readonly {
 ];
 
 export const Inspector = _component(({ session }: { session: EditorSession }) => {
-  const { version, selection, agent, assets } = session;
+  const { version, selection, agent, assets } = _untrack(session);
   // 资源字段的提示：每种资源一个 datalist
   const assetLists = _derived.by(() => {
     const byKind = new Map<string, string[]>();

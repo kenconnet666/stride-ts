@@ -83,7 +83,7 @@ function prefabLabel(session: EditorSession, id: string) {
  * 最上面一个节点是文档（场景、预制体）本身：选中它（或者在视口里点空处）属性面板显示场景的设置，实体拖到它上面就挂到根上。
  */
 export const SceneTree = _component(({ session }: { session: EditorSession }) => {
-  const { version, selection, agent } = session;
+  const { version, selection, agent } = _untrack(session);
   const roots = _derived.by((): Node[] => {
     void version.value;
     if (!agent.value || !session.opened.value) return [];

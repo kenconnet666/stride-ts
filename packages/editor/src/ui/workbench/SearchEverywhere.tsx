@@ -22,7 +22,7 @@ const OPENABLE: ReadonlySet<AssetKind> = new Set(['scene', 'prefab', 'timeline']
  * 场景里的实体和资源；回车执行操作、选中实体、打开资源（场景、预制体、时间轴）或在属性面板里看它。列表打开时才建。
  */
 export const SearchEverywhere = _component(({ session, playing, onTogglePlay }: { session: EditorSession; playing: boolean; onTogglePlay: () => void }) => {
-  const { palette } = session;
+  const { palette } = _untrack(session);
 
   /** 现在做得了的操作（试玩时只有停止）。 */
   const actions = (): PaletteItem[] => {

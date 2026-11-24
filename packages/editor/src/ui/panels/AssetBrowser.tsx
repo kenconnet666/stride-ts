@@ -60,7 +60,7 @@ const ICONS = { model: Box, image: Image, texture: Image, audio: Music, sound: M
  * 音频、图片导入成声音、贴图，放进同一个文件夹。
  */
 export const AssetBrowser = _component(({ session }: { session: EditorSession }) => {
-  const { assets } = session;
+  const { assets } = _untrack(session);
   const roots = _derived(buildTree(assets.value));
   const nodes = _derived.by(() => {
     const all = new Map<string, Node>();

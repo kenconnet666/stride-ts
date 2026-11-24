@@ -48,7 +48,8 @@ function hasTextSelection(target: EventTarget | null): boolean {
  */
 export const App = _component(({ session }: { session: EditorSession }) => {
   let playing = _state(false);
-  const { dirty, version } = session;
+  // 会话对象整个界面只有一个、不会换：取一次它的字段（字段本身是响应式的）
+  const { dirty, version } = _untrack(session);
 
   // Ctrl+Shift+V 粘贴成子实体：paste 事件不带按键，按下时记着
   let pasteAsChild = false;

@@ -25,7 +25,7 @@ const CHECKER = 'color-mix(in srgb, currentColor 8%, transparent)';
 const OUTLINE = '#ff9a3c';
 
 export const UvPanel = _component(({ session }: { session: EditorSession }) => {
-  const tools = session.tools;
+  const tools = _untrack(session).tools;
   /** 正在拖：按下时的 UV 坐标、现在挪了多少（UV 单位）。 */
   let drag = _state.raw<{ readonly from: readonly [number, number]; offset: [number, number] } | undefined>(undefined);
   let svg = _state.raw<SVGSVGElement | null>(null);

@@ -345,6 +345,8 @@ export interface MaterialFile {
   readonly emissiveLighting?: boolean;
   /** 每个物体按种子的变化（色相的度数、饱和度、明暗、粗糙度的正负范围），见 Material 的 variation。 */
   readonly variation?: { readonly hue?: number; readonly saturation?: number; readonly value?: number; readonly roughness?: number };
+  /** 清漆层（叠在上面的透明漆：车漆、上漆的木头、釉面），见 Material 的 coat。 */
+  readonly coat?: { readonly factor: number; readonly roughness: number; readonly color?: Vec3Tuple };
   /**
    * 化不成"贴图乘颜色"的自发光（比如有着色器类）：整棵颜色树（格式同粒子材质的，见 ParticleModuleFile），运行时编译成 WGSL；
    * 有它时不看 emissive、emissiveTexture。useAlpha：输出的 alpha 用自发光的 alpha（Stride 的 UseAlpha）。

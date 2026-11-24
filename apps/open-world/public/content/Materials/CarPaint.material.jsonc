@@ -1,0 +1,8 @@
+// 车漆：半金属的红色底漆，上面一层光亮的清漆（清漆层 coat：自己的倒影清楚，下面的底漆照旧有点糊）
+{
+  "name": "CarPaint",
+  "baseColor": [0.45, 0.02, 0.02, 1],
+  "metalness": 0.5,
+  "roughness": 0.45,
+  "coat": { "factor": 1, "roughness": 0.03 }
+}

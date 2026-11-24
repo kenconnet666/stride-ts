@@ -118,6 +118,13 @@ export interface MaterialShaderLayer {
   readonly occlusion?: { readonly directLighting: number };
 }
 
+/** 清漆层：factor 是有多少（0 到 1），roughness 是清漆自己的粗糙度，color 是透过清漆看到的下面乘的颜色（线性，没写是白）。 */
+export interface MaterialCoat {
+  readonly factor: number;
+  readonly roughness: number;
+  readonly color?: readonly [number, number, number];
+}
+
 /** 每个物体按种子的变化：色相（度）、饱和度、明暗（比例）、粗糙度，都是正负的范围，没写是 0。 */
 export interface MaterialVariation {
   readonly hue?: number;
@@ -166,6 +173,12 @@ export interface MaterialDesc {
    * 粗糙度加减多少，都是正负的范围；种子是 MaterialParams 的 seed，没有时按变换槽位。一片果蔬、一排车、一街的楼不再一模一样。
    */
   readonly variation?: MaterialVariation;
+  /**
+   * 清漆层（叠在材质上面的一层透明的漆，照 glTF 的 KHR_materials_clearcoat、Filament、虚幻 Substrate 的竖直叠层）：车漆、上过漆的
+   * 木头、釉面。一次画完：清漆自己一个镜面波瓣（折射率 1.5，F0 0.04，自己的粗糙度），下面整层按清漆反射走的比例变暗、透过 color
+   * 的颜色。和 Stride 的 MaterialClearCoat（两遍、带金属碎片的车漆）是两回事。
+   */
+  readonly coat?: MaterialCoat;
   /** 编译好的颜色树（自发光、法线贴图、位移贴图）；有自发光树时不看 emissive、emissiveTexture。 */
   readonly shaderTrees?: MaterialShaderTrees;
   /** 两面都画（Stride 的 CullMode 是 None），默认只画正面。 */
@@ -338,6 +351,8 @@ export class Material {
   readonly emissiveLighting: boolean;
   /** 每个物体按种子的变化（见 MaterialDesc.variation）。 */
   readonly variation: MaterialVariation | undefined;
+  /** 清漆层（见 MaterialDesc.coat）。 */
+  readonly coat: MaterialCoat | undefined;
   readonly shaderTrees: MaterialShaderTrees | undefined;
   readonly doubleSided: boolean;
   readonly ambientOcclusion: { readonly value: number; readonly texture: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a' } | undefined; readonly directLighting: number };
@@ -390,6 +405,7 @@ export class Material {
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
     this.emissiveLighting = desc.emissiveLighting ?? false;
     this.variation = desc.variation;
+    this.coat = desc.coat;
     this.shaderTrees = desc.shaderTrees;
     this.doubleSided = desc.doubleSided ?? false;
     const occlusion = desc.ambientOcclusion;

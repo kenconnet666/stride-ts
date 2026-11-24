@@ -458,6 +458,7 @@ export class ContentManager {
         ...(emissiveTexture ? { emissiveTexture } : {}),
         ...(file.emissiveLighting ? { emissiveLighting: true } : {}),
         ...(file.variation ? { variation: file.variation } : {}),
+        ...(file.coat ? { coat: file.coat } : {}),
         ...(shaderTrees ? { shaderTrees } : {}),
         ...(file.doubleSided ? { doubleSided: true } : {}),
         ...(occlusion ? { ambientOcclusion: { value: occlusion.value, directLighting: occlusion.directLighting, ...(occlusionTexture ? { texture: { ...occlusionTexture, channel: occlusion.texture!.channel } } : {}) } } : {}),

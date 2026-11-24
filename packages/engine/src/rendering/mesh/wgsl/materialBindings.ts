@@ -59,6 +59,9 @@ struct Material {
   diffuseTransmission: vec4f,
   // 每个物体按种子的变化（Material.variation）：色相（弧度）、饱和度、明暗、粗糙度的正负范围，都是 0 是没有
   variation: vec4f,
+  // 清漆层（Material.coat）：比例（0 是没有）、粗糙度；透过清漆的颜色
+  coat: vec4f,
+  coatColor: vec4f,
   // 节点图的数值参数（Material.shaderTrees.graphParams，materialGraph.ts 的 GraphParams）：代码里读 material.graph[i].x
   graph: array<vec4f, 64>,
 };
@@ -85,4 +88,7 @@ struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: ve
 @group(2) @binding(1) var<storage, read> morphData: array<u32>;
 // 管线常量：网格有形变时为 true，没有时形变的代码整段去掉
 override MORPHED: bool = false;
+// 材质有清漆层（Material.coat）：面光源按清漆再积一次分这些贵的部分只编进这些管线（前向的大着色器多了代码、走不到也少开
+// 线程：超市 4K 不透明那一遍多 1 毫秒）。湿的时候的水膜不靠它（只算方向光、点光聚光和环境光的清漆）
+override COATED: bool = false;
 `;

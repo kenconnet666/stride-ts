@@ -23,7 +23,8 @@ fn clusterCounts(cluster: i32) -> vec2u {
 }
 
 /** 贴花、天气改过的表面和法线。 */
-struct Decaled { surface: LayerSurface, normal: vec3f };
+/** 贴花、天气以后的表面：属性、法线，湿的地方盖的水膜（清漆层的比例，0 是没有）。 */
+struct Decaled { surface: LayerSurface, normal: vec3f, film: f32 };
 
 fn decodeSrgb(c: vec3f) -> vec3f {
   return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045));
@@ -35,7 +36,7 @@ fn decodeSrgb(c: vec3f) -> vec3f {
  * 盖在前面的上面。导数在循环外算（循环里是非一致的控制流）。
  */
 fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface, cluster: i32) -> Decaled {
-  var r = Decaled(s, n);
+  var r = Decaled(s, n, 0.0);
   if (u32(view.decal.x) == 0u) {
     return r;
   }
@@ -194,7 +195,7 @@ fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, state
   let wetness = view.weather.x;
   let snowCover = view.weather.y;
   let puddles = view.weather.z;
-  var result = Decaled(s, n);
+  var result = Decaled(s, n, 0.0);
   // 物体自己的湿、雪（状态层）：不看淋不淋得到
   let ownWet = state.x;
   let ownSnow = state.w;
@@ -207,9 +208,11 @@ fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, state
   // 水洼之间的地面按 wetness 湿：雨停了它先干（5 分钟），水洼还在（15 分钟）
   let wet = max(wetness * exposure, ownWet);
   r.albedo *= mix(1.0, 0.45, wet * (1.0 - s.metalness));
-  // 水膜让表面光滑一些，但保留材质自己粗糙度的变化（全压到一个很小的值，地面就成了一面映着天的镜子，贴图都看不见了）
-  // 金属不吸水，水在上面成珠、不成一层均匀的膜：光滑得少（不然半金属的地面成了映着阴天的镜子）
-  r.roughness = mix(s.roughness, max(s.roughness * 0.35, 0.1), wet * mix(0.6, 1.0, up) * (1.0 - 0.75 * s.metalness));
+  // 水吸进去的表面自己光滑一点（保留材质粗糙度的变化），上面再盖一层光滑的水膜（清漆层，Substrate 的思路：水膜是一层，不是
+  // 把下面的粗糙度压没——那样地面成了一面映着天的镜子，贴图都看不见）；朝上的面水膜厚、竖着的流走一半；金属不吸水、水成珠，
+  // 水膜少
+  r.roughness = mix(s.roughness, max(s.roughness * 0.7, 0.2), wet * (1.0 - 0.75 * s.metalness));
+  result.film = wet * mix(0.5, 1.0, up) * (1.0 - 0.6 * s.metalness);
   if (puddles > 0.0 && exposure > 0.0) {
     // 两层噪声（几米和一米左右的斑块）；积水越多阈值越低、水洼越大，边缘 0.06 宽的过渡
     let ground = world.xz + view.origin.xz;

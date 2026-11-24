@@ -48,7 +48,7 @@ const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
 const ORIGIN_PATTERN_PERIOD = 65536;
 /** 材质 uniform：Material 结构（按 materialBindings.ts 的字段顺序），按 16 字节对齐。 */
-const MATERIAL_BYTES = 1712;
+const MATERIAL_BYTES = 1744;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 const DISTRIBUTION_CODES = { ggx: 0, beckmann: 1, blinnPhong: 2 } as const;
@@ -428,7 +428,8 @@ export class MeshGpu {
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     const depthFragment = colorFormat === undefined ? material.depthFragment : undefined;
     const transmits = stage.transparent && material.transmission !== undefined;
-    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${deform}:${doubleSided}:${depthFragment}:${materialPass?.name}:${transmits}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
+    const coated = colorFormat !== undefined && material.coat !== undefined;
+    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${deform}:${doubleSided}:${depthFragment}:${materialPass?.name}:${transmits}:${coated}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
   }
 
   #pipelineDescriptor(stage: RenderStage, layout: VertexLayout, skinned: boolean, deform: VertexDeform, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipelineDescriptor {
@@ -477,7 +478,7 @@ export class MeshGpu {
             module,
             // 要留表面的阶段（屏幕空间反射开着时的不透明阶段）：普通的材质写表面，别的那一遍不写（写掩码 0）
             entryPoint: materialPass?.entryPoint ?? (surfaceFormats ? 'fsSurface' : 'fs'),
-            ...(stage.transparent ? { constants: { TRANSPARENT_STAGE: 1 } } : {}),
+            ...(stage.transparent || material.coat ? { constants: { ...(stage.transparent ? { TRANSPARENT_STAGE: 1 } : {}), ...(material.coat ? { COATED: 1 } : {}) } } : {}),
             targets: [
               { format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) },
               ...(surfaceFormats ?? []).map((format) => ({ format, ...(materialPass ? { writeMask: 0 } : {}) })),
@@ -1021,8 +1022,10 @@ export class MeshGpu {
       floats.set(diffuseTransmission ? [...diffuseTransmission.color, diffuseTransmission.factor] : [1, 1, 1, 0], 100 + CEL_RAMP_STOPS * 8);
       const variation = material.variation;
       floats.set([((variation?.hue ?? 0) * Math.PI) / 180, variation?.saturation ?? 0, variation?.value ?? 0, variation?.roughness ?? 0], 104 + CEL_RAMP_STOPS * 8);
+      const coat = material.coat;
+      floats.set(coat ? [coat.factor, coat.roughness, 0, 0, ...(coat.color ?? [1, 1, 1]), 0] : [0, 0, 0, 0, 1, 1, 1, 0], 108 + CEL_RAMP_STOPS * 8);
       // 节点图的数值参数（缓冲是共用的，上一个材质的留着，先清掉）
-      const graphAt = 108 + CEL_RAMP_STOPS * 8;
+      const graphAt = 116 + CEL_RAMP_STOPS * 8;
       floats.fill(0, graphAt, graphAt + GraphParams.SLOTS);
       if (material.shaderTrees?.graphParams) floats.set(material.shaderTrees.graphParams, graphAt);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);

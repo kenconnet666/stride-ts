@@ -1,0 +1,1 @@
+{ "format": 1, "procedural": { "type": "sphere", "radius": 0.6, "tessellation": 48 }, "materials": ["Materials/RedMatte"] }

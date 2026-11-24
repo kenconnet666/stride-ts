@@ -371,6 +371,8 @@ fn transmittance(thickness: f32, n: vec3f, l: vec3f, lightColor: vec3f, albedo: 
 struct Surface {
   n: vec3f, v: vec3f, diffuse: vec3f, specular: vec3f, hasSpecular: bool, glass: bool, alphaR: f32, nDotV: f32,
   sheenColor: vec3f, sheenAlpha: f32, sheenScaling: f32, anisotropy: f32, t: vec3f, b: vec3f, microfacet: u32,
+  // 清漆层（材质的 coat，或者湿的时候的水膜）：比例（0 是没有）、粗糙度的平方
+  coat: f32, coatAlpha: f32,
 };
 
 /**

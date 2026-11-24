@@ -228,6 +228,38 @@
       "default": false
     },
     "emissiveTree": {},
+    "coat": {
+      "type": "object",
+      "properties": {
+        "factor": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "how much clear coat (0: none, 1: full)"
+        },
+        "roughness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "roughness of the coat itself (car paint about 0.05)"
+        },
+        "color": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3,
+          "description": "tint seen through the coat (linear; white keeps the color); linear color, 0..1"
+        }
+      },
+      "required": [
+        "factor",
+        "roughness"
+      ],
+      "additionalProperties": false,
+      "description": "a clear coat over the material (car paint, varnished wood, glaze): its own glossy reflection, the layer below darker by what the coat reflects"
+    },
     "variation": {
       "type": "object",
       "properties": {

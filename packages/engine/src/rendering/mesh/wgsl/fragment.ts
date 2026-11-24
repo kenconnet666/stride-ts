@@ -98,7 +98,8 @@ fn parallaxUv(in: Varyings) -> vec2f {
 }
 
 /** 一个光源照出来的漫反射和镜面反射（分开是因为次表面散射只模糊漫反射）。 */
-struct Lit { diffuse: vec3f, specular: vec3f };
+/** 一盏灯照到的：漫反射、镜面（下面那层的），清漆层的镜面（合起来时下面那层再乘没被清漆反射走的比例）。 */
+struct Lit { diffuse: vec3f, specular: vec3f, coat: vec3f };
 
 /**
  * 卡通着色的渐变（Stride 的 IMaterialCelShadingLightFunction.Compute）：在材质的节点间按 x 线性插值，同一位置的两个节点是台阶，
@@ -150,6 +151,12 @@ fn areaShading(s: Surface) -> AreaShading {
   return AreaShading(frame, mInv, mInv * frame, fresnel, abs(determinant(mInv)), reflect(-s.v, s.n));
 }
 
+/** 清漆那一层当成一个只有镜面的表面（F0 0.04、清漆的粗糙度）：面光源再积一次分、环境光按它取。 */
+fn coatSurfaceOf(s: Surface) -> Surface {
+  return Surface(s.n, s.v, vec3f(0.0), vec3f(0.04), true, false, s.coatAlpha, s.nDotV,
+    vec3f(0.0), 1.0, 1.0, 0.0, s.t, s.b, 0u, 0.0, s.coatAlpha);
+}
+
 /** 离发光面中心超过它半径的这么多倍时漫反射当小光源算（形状因子的误差约 (1 / AREA_FAR)²，1.5% 以内）。 */
 const AREA_FAR = 8.0;
 
@@ -166,11 +173,16 @@ const AREA_FAR = 8.0;
  * （ltcRect，四个角在本地坐标里只建一次，漫反射、镜面共用），不走 12 个角的数组。
  */
 /** 一盏点光、聚光或面光源照到这个像素的漫反射和镜面（乘过直射光的遮蔽 occlusion）；面光源的每像素部分 area 先算好。 */
-fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, world: vec3f, n: vec3f, occlusion: f32) -> Lit {
+fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, coatArea: AreaShading, world: vec3f, n: vec3f, occlusion: f32) -> Lit {
   let kind = localLightKind(light);
   if (kind >= 2u) {
     let lit = areaLight(surface, area, light, world, kind);
-    return Lit(lit.diffuse * occlusion, lit.specular * occlusion);
+    // 清漆层：同一盏灯按清漆的粗糙度再积一次镜面（F0 0.04 已经在 coatArea 的菲涅耳里）
+    var coat = vec3f(0.0);
+    if (COATED && surface.coat > 0.0) {
+      coat = areaLight(coatSurfaceOf(surface), coatArea, light, world, kind).specular * surface.coat;
+    }
+    return Lit(lit.diffuse * occlusion, lit.specular * occlusion, coat * occlusion);
   }
   let at = localLightAt(light, world);
   let l = at.xyz;
@@ -186,7 +198,7 @@ fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, world: 
 }
 
 fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, kind: u32) -> Lit {
-  var result = Lit(vec3f(0.0), vec3f(0.0));
+  var result = Lit(vec3f(0.0), vec3f(0.0), vec3f(0.0));
   let toLight = light.position.xyz - world;
   let distance2 = dot(toLight, toLight);
   let window = localLightWindow(light, distance2);
@@ -399,7 +411,14 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibil
     let fake = material.cel.z;
     diffuseLight = celRamp(true, nDotL * attenuation * select(1.0, fake, fake > 0.0)) * lightColor * visibility;
   }
-  var result = Lit(s.diffuse / PI * diffuseLight, vec3f(0.0));
+  var result = Lit(s.diffuse / PI * diffuseLight, vec3f(0.0), vec3f(0.0));
+  if (s.coat > 0.0) {
+    // 清漆的波瓣（Filament 的 clear coat）：F0 0.04 的 GGX，可见性用 Kelemen（0.25 / L·H²）
+    let hc = normalize(s.v + l);
+    let lDotHc = max(dot(l, hc), 1e-2);
+    let fc = (0.04 + 0.96 * pow(1.0 - lDotHc, 5.0)) * s.coat;
+    result.coat = fc * normalDistributionGGX(s.coatAlpha, saturate(dot(s.n, hc))) * (0.25 / (lDotHc * lDotHc)) * lightColorNdotL;
+  }
   let hasSheen = any(s.sheenColor > vec3f(0.0));
   if (!s.hasSpecular && !hasSheen) {
     return result;
@@ -792,9 +811,14 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   // 微表面模型的各项在 material.specular 的第 4 位往上（MeshRenderFeature 的 microfacetBits）
   let microfacet = material.specular >> 4u;
+  // 清漆层：材质的 coat，湿的时候再盖一层光滑的水膜（weatherSurface 的 film），取多的那个
+  let materialCoat = select(0.0, material.coat.x, COATED);
+  let coatFactor = max(materialCoat, weathered.film);
+  let coatRoughness = select(0.06, select(material.coat.y, min(material.coat.y, 0.06), weathered.film > materialCoat), COATED);
+  let coatAlpha = max(coatRoughness * coatRoughness, 0.002);
   let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV,
-    sheenColor, sheenRoughness * sheenRoughness, sheenScaling, anisotropy, anisotropicT, anisotropicB, microfacet);
-  var direct = Lit(vec3f(0.0), vec3f(0.0));
+    sheenColor, sheenRoughness * sheenRoughness, sheenScaling, anisotropy, anisotropicT, anisotropicB, microfacet, coatFactor, coatAlpha);
+  var direct = Lit(vec3f(0.0), vec3f(0.0), vec3f(0.0));
   // 次表面散射的材质（有槽位）算透射
   let scatters = material.subsurface.x > 0.0;
   let lightCount = u32(view.sky.z);
@@ -813,6 +837,7 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
     let lit = shadeLight(surface, l, view.lightColors[i].rgb, 1.0, shadow * directOcclusion);
     direct.diffuse += lit.diffuse;
     direct.specular += lit.specular;
+    direct.coat += lit.coat;
     if (thinFactor > 0.0) {
       // 背面的光：阴影按反面的法线取（薄叶子在自己的阴影图里不能把自己遮住）
       var backShadow = 1.0;
@@ -833,15 +858,20 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   // 面光源每个像素只算一次的部分（有面光源时才查表）
   var area: AreaShading;
+  var coatArea: AreaShading;
   if (localCount > 0u) {
     area = areaShading(surface);
+    if (COATED && coatFactor > 0.0) {
+      coatArea = areaShading(coatSurfaceOf(surface));
+    }
   }
   // 局部光的阴影来自光追时（不透明阶段）：所有局部光的和乘这个像素的可见比例（RayTracedLocalLights）
   let localVisibility = select(1.0, screenLocalVisibility(in.position), view.decal.z > 0.5 && !TRANSPARENT_STAGE);
   for (var k = 0u; k < localCount; k++) {
-    let lit = localLightLit(localLight(select(k, clusters[firstLight + k], clustered)), surface, area, in.world, n, directOcclusion);
+    let lit = localLightLit(localLight(select(k, clusters[firstLight + k], clustered)), surface, area, coatArea, in.world, n, directOcclusion);
     direct.diffuse += lit.diffuse * localVisibility;
     direct.specular += lit.specular * localVisibility;
+    direct.coat += lit.coat * localVisibility;
   }
   // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致。
   // scattered 是所有漫反射光（次表面散射模糊的就是它），镜面反射和自发光另加
@@ -919,7 +949,16 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   // 和 Stride 不同：透明阶段里混合的材质，颜色也乘基础色（贴图）的 alpha，才是真正的预乘。Stride 只拿它管遮挡（后面的东西
   // 减多少），贴图透明的地方照样加上整块的光，得自己把贴图预乘（玻璃上的手印、水雾这种贴图大半透明的就整片发白）
   let coverage = select(1.0, base.a, TRANSPARENT_STAGE && transmission <= 0.0);
-  let color = min(scattered + direct.specular * PI + environment + transmitted + interior + layerEmissive(in, emitted.rgb), vec3f(60000.0)) * coverage;
+  // 清漆层（竖直叠层）：下面整层乘没被清漆反射走的比例（按视角的菲涅耳）和透过清漆的颜色，再加清漆自己的直射光、环境反射
+  var under = scattered + direct.specular * PI + environment;
+  var coatLight = vec3f(0.0);
+  if (coatFactor > 0.0) {
+    let fresnel = (0.04 + 0.96 * pow(1.0 - nDotV, 5.0)) * coatFactor;
+    let tint = select(vec3f(1.0), mix(vec3f(1.0), material.coatColor.rgb, saturate(material.coat.x)), COATED);
+    under *= tint * (1.0 - fresnel);
+    coatLight = direct.coat * PI + environmentRadiance(in.world, reflect(-v, n), coatRoughness, cluster) * fresnel * ao;
+  }
+  let color = min(under + coatLight + transmitted + interior + layerEmissive(in, emitted.rgb), vec3f(60000.0)) * coverage;
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
   return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment, scattered);
 }`;

@@ -36,6 +36,14 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   emissiveTexture: { type: object(textureSlot), optional: true, group: 'emissive' },
   emissiveLighting: { type: bool, optional: true, default: false, group: 'emissive', description: 'lights nearby surfaces through ray tracing (screens, light boxes, neon; uses the average emission of the whole mesh)' },
   emissiveTree: { type: json, optional: true, group: 'advanced' },
+  coat: {
+    type: object(fields<NonNullable<MaterialFile['coat']>>({
+      factor: { type: number({ min: 0, max: 1, step: 0.05 }), description: 'how much clear coat (0: none, 1: full)' },
+      roughness: { type: number({ min: 0, max: 1, step: 0.01 }), description: 'roughness of the coat itself (car paint about 0.05)' },
+      color: { type: colorLinear3, optional: true, description: 'tint seen through the coat (linear; white keeps the color)' },
+    })),
+    optional: true, group: 'surface', description: 'a clear coat over the material (car paint, varnished wood, glaze): its own glossy reflection, the layer below darker by what the coat reflects',
+  },
   variation: {
     type: object(fields<NonNullable<MaterialFile['variation']>>({
       hue: { type: number({ min: 0, max: 180, step: 1, unit: 'deg' }), optional: true, default: 0, description: 'hue turns up to this many degrees either way' },

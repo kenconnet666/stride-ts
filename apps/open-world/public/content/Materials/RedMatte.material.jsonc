@@ -1,0 +1,7 @@
+// 对照：和车漆一样的底漆，没有清漆
+{
+  "name": "RedMatte",
+  "baseColor": [0.45, 0.02, 0.02, 1],
+  "metalness": 0.5,
+  "roughness": 0.45
+}

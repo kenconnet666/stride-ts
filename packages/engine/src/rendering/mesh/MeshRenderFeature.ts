@@ -16,6 +16,7 @@
  *   （GPU 蒙皮，Stride 的 TransformationSkinning），再乘世界矩阵。阴影投射阶段只画投射阴影的批次，管线只写深度。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
+import { rayTraceable } from './rayTraceable';
 import { shaderTime } from '../../engine/GameTime';
 import type { EntityId } from '../../data/prop';
 import type { ColumnsOf } from '../../engine/component';
@@ -84,6 +85,7 @@ export interface MeshBatch {
   /** @internal 各阶段上次用的管线（材质改了、输出格式或网格效果换了才重新查，不用每次画都拼管线的键）。 */
   readonly pipelines: Map<RenderStage, CachedPipeline>;
 }
+
 
 export class MeshRenderFeature extends RootRenderFeature {
   readonly name = 'MeshRenderFeature';
@@ -541,7 +543,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       const batch = this.batches[b]!;
       const first = runs ? runs[i * 3 + 1]! : 0;
       const count = runs ? runs[i * 3 + 2]! : this.#cpuCount(cullPass, index, b);
-      if (!batch.ready || !visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent)) continue;
+      if (!batch.ready || !visible(b) || (stage.shadowCasters ? !batch.isShadowCaster : !batch.visibleInCamera && !stage.surfaceBake) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent) || (view.skipsRayTraced && rayTraceable(batch) && !batch.material.wind)) continue;
       if (stage.velocity && !this.#moves(batch, context.game.updateTime.frameCount)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);

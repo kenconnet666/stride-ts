@@ -43,7 +43,7 @@ const zhCN: FieldMessages = {
     parent: '父状态', enter: '进入条件', tasks: '任务', on: '时机', event: '事件', not: '取反', probability: '概率', seconds: '秒数', random: '随机多等',
     point: '位置', tolerance: '到达的距离', timeout: '超时', args: '参数值', defaultVector: '默认位置', chance: '概率', wander: '闲逛', moveTo: '走到',
     stand: '站着', set: '设参数', animator: '动画参数', emit: '发事件', call: '调用代码',
-    tag: '种类', useSmartObject: '用智能物体', activity: '干什么', slots: '槽', yaw: '朝向', findSpot: '找地方', query: '环境查询', generator: '候选点', rings: '几圈', grid: '方格', tests: '测试', pick: '取哪个', around: '围着', want: '要', prefer: '偏好',
+    rayTracedShadows: '光追的阴影', tag: '种类', useSmartObject: '用智能物体', activity: '干什么', slots: '槽', yaw: '朝向', findSpot: '找地方', query: '环境查询', generator: '候选点', rings: '几圈', grid: '方格', tests: '测试', pick: '取哪个', around: '围着', want: '要', prefer: '偏好',
     reachable: '走得到', visible: '看得见',
     perceives: '感知到', sense: '感知', flee: '跑开', store: '位置写进', flag: '有没有写进', seeing: '正看得见',
     parameters: '参数', parameter: '参数', loop: '循环', states: '状态', initial: '初始状态', transitions: '过渡', motion: '动作', blend1d: '一维混合', when: '条件', exitTime: '退出时间', test: '判断',

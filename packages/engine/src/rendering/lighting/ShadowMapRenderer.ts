@@ -143,7 +143,10 @@ export class ShadowMapRenderer {
     cascades.collect(view, lighting.directionals[lighting.shadowLight]!.direction, settings, size, rectangles, this.#atlasSize, receiver);
     view.shadow = receiver;
     const views = cascades.views.slice(0, receiver.cascadeCount);
-    for (const cascade of views) this.#stages.set(cascade, this.casterStage);
+    for (const cascade of views) {
+      this.#stages.set(cascade, this.casterStage);
+      cascade.skipsRayTraced = view.rayTracedShadows;
+    }
     return views;
   }
 

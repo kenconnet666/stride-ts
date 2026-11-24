@@ -219,6 +219,13 @@ export class RenderView {
    */
   skipsTransparent = false;
   /**
+   * 阴影投射的阶段里不画进了光追场景、不随风动的批（rayTraceable；随风动的光追里是静止的，阴影射线跳过它们）：主画面用光追的阴影时那盏方向光的级联用，阴影图
+   * 只补光追里没有的投影者（蒙皮的角色、透明的、关了 visibleInRayTracing 的）。
+   */
+  skipsRayTraced = false;
+  /** 这一帧投阴影的方向光用光追的阴影（RayTracedShadows）：阴影图收集时给它的级联标 skipsRayTraced。 */
+  rayTracedShadows = false;
+  /**
    * 画哪些渲染组（Stride 的 RenderView.CullingMask，合成器里相机渲染器的 RenderMask）：第 g 位是 1 时画第 g 组。
    * 默认除了烘焙组（RENDER_GROUP_BAKE）全画。
    */

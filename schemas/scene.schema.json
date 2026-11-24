@@ -769,6 +769,10 @@
           "type": "boolean",
           "default": false
         },
+        "rayTracedShadows": {
+          "type": "boolean",
+          "default": false
+        },
         "meshEffect": {
           "type": "string"
         }

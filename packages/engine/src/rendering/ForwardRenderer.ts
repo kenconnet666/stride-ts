@@ -33,6 +33,7 @@ import { ScreenSpaceGlobalIllumination } from './screenspace/ScreenSpaceGlobalIl
 import { SubsurfaceScattering } from './screenspace/SubsurfaceScattering';
 import { ScreenSpaceReflections } from './screenspace/ScreenSpaceReflections';
 import { ContactShadows } from './screenspace/ContactShadows';
+import { RayTracedShadows } from './raytracing/RayTracedShadows';
 import { DepthOfField } from './screenspace/DepthOfField';
 import { MotionBlur } from './screenspace/MotionBlur';
 import { Skybox } from './lighting/Skybox';
@@ -142,6 +143,10 @@ export class ForwardRenderer {
   readonly #lastViewProjection = Matrix.identity();
   /** 接触阴影（投阴影的方向光，屏幕空间；默认关，见 ContactShadows.ts）。 */
   readonly contactShadows: ContactShadows;
+  /** 光追的阴影（合成器的 rayTracedShadows；开着时主画面不另算接触阴影）。 */
+  readonly rayTracedShadows: RayTracedShadows;
+  /** 这一帧主画面用光追的阴影（光追场景、管线都好了）。 */
+  #rayTracedShadows = false;
   /** 屏幕空间反射（开不开照合成器的 LocalReflections，见 ScreenSpaceReflections.ts）。 */
   readonly screenSpaceReflections: ScreenSpaceReflections;
   /** 屏幕空间反射开着时的不透明阶段：颜色之外写表面（法线、粗糙度、环境镜面反射）。 */
@@ -309,6 +314,7 @@ export class ForwardRenderer {
     this.subsurfaceScattering = new SubsurfaceScattering(renderSystem.device);
     this.screenSpaceReflections = new ScreenSpaceReflections(renderSystem.device, renderSystem.resources.linearClamp);
     this.contactShadows = new ContactShadows(renderSystem.device);
+    this.rayTracedShadows = new RayTracedShadows(renderSystem.device);
     this.motionBlur = new MotionBlur(renderSystem.device);
     this.depthOfField = new DepthOfField(renderSystem.device);
     this.#pool = new GraphTexturePool(renderSystem.device);
@@ -335,8 +341,10 @@ export class ForwardRenderer {
   }
 
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering }: CompositorSettings): void {
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering, rayTracedShadows }: CompositorSettings): void {
     this.subsurfaceScattering.enabled = subsurfaceScattering === true;
+    this.rayTracedShadows.enabled = rayTracedShadows === true;
+    this.rayTracedShadows.reset();
     this.particlesOverUI = particlesOverUI === true;
     this.#mainView.cullingMask = ((renderMask ?? RENDER_GROUP_ALL) & RENDER_GROUP_VISIBLE) >>> 0;
     this.clearColor.set(r, g, b, a);
@@ -451,7 +459,12 @@ export class ForwardRenderer {
     // 路径追踪的间接光（成片导出）：开着、设备放得下第 27 个贴图时；光追场景和管线都好了才用（不然这一帧网格着色读不到它）
     const pathTracing = renderSystem.pathTracing;
     const pathTracingWanted = this.hasCamera && pathTracing.enabled && renderSystem.planarReflections.supported;
-    if (rayTracedReflections || pathTracingWanted) renderSystem.rayTracing.update(context.game);
+    // 光追的阴影：投阴影的方向光、画质开着全局光照时；场景和管线都好了才用（阴影图收集前定：用的话级联只画光追里没有的投影者）
+    const rayTracedShadowsWanted = this.hasCamera && this.rayTracedShadows.enabled && this.drawShadows && this.quality.shadows && this.quality.globalIllumination && renderSystem.lighting.shadowLight >= 0;
+    if (rayTracedReflections || pathTracingWanted || rayTracedShadowsWanted) renderSystem.rayTracing.update(context.game);
+    this.#rayTracedShadows = rayTracedShadowsWanted && this.rayTracedShadows.ready(renderSystem.rayTracing);
+    if (!this.#rayTracedShadows) this.rayTracedShadows.reset();
+    this.#mainView.rayTracedShadows = this.#rayTracedShadows;
     pathTracing.active = pathTracingWanted && pathTracing.ready(renderSystem.rayTracing);
     this.#mainView.screenIndirect = this.#indirect || pathTracing.active;
     if (volumes.active || rayTracedReflections || pathTracing.active) renderSystem.rayTracing.lighting.write(renderSystem.lighting);
@@ -627,6 +640,7 @@ export class ForwardRenderer {
     this.subsurfaceScattering.destroy();
     this.screenSpaceReflections.destroy();
     this.contactShadows.destroy();
+    this.rayTracedShadows.destroy();
     this.motionBlur.destroy();
     this.depthOfField.destroy();
     this.picker.destroy();
@@ -691,9 +705,14 @@ export class ForwardRenderer {
       } else if (view === this.#mainView && !isGraphTexture(depth) && this.ambientOcclusion.enabled && this.quality.ambientOcclusion) {
         view.screenOcclusion = this.ambientOcclusion.record(frame, depth, view, this.#temporal);
       }
-      // 接触阴影：投阴影的那盏方向光（没有就不算）
+      // 光追的阴影，或者接触阴影：投阴影的那盏方向光（没有就不算）
       const { lighting } = renderSystem;
-      if (view === this.#mainView && !isGraphTexture(depth) && this.contactShadows.enabled && this.quality.contactShadows && lighting.shadowLight >= 0) {
+      if (view === this.#mainView && !isGraphTexture(depth) && this.#rayTracedShadows) {
+        const { direction } = lighting.directionals[lighting.shadowLight]!;
+        const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
+        const angle = lighting.directionalShadow?.lightAngle ?? 0.53;
+        view.screenShadow = this.rayTracedShadows.record(frame, depth, view, renderSystem.rayTracing, [-direction.x / length, -direction.y / length, -direction.z / length], angle);
+      } else if (view === this.#mainView && !isGraphTexture(depth) && this.contactShadows.enabled && this.quality.contactShadows && lighting.shadowLight >= 0) {
         const { direction } = lighting.directionals[lighting.shadowLight]!;
         const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
         view.screenShadow = this.contactShadows.record(frame, depth, view, [-direction.x / length, -direction.y / length, -direction.z / length]);

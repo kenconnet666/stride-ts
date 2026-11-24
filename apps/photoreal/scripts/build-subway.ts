@@ -121,6 +121,8 @@ await write('scene', 'Subway', {
       // 直方图测光：大片的天空和黑的门框不把曝光拽偏；局部曝光提亮暗处（手机的 HDR 合成）
       exposure: { metering: 'histogram', localShadows: 0.4, localHighlights: 1.4 } },
     transparent: true,
+    // 太阳的影子用光追（半影随遮挡物远近变，顶棚的梁不漏光）；随风摆的树叶、蒙皮的、关了光追的小杂物照旧靠阴影图
+    rayTracedShadows: true,
   },
   entities: [
     entity('0b6c7c1e-0001-4000-8000-000000000001', 'Camera', eye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 2000 } }, lookAt(eye, [0.67, 1.2, -0.27])),

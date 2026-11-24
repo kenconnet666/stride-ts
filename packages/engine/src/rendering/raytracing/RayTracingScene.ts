@@ -13,6 +13,7 @@ import { SurfaceColors } from './SurfaceColors';
 import { RayTracedLighting } from './RayTracedLighting';
 import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from '../mesh/HeightPages';
 import type { MeshBatch } from '../mesh/MeshRenderFeature';
+import { rayTraceable } from '../mesh/rayTraceable';
 
 /** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质）、表面颜色的格号 + 1（0 是没有）、材质的颜色（rgba）、自发光（rgb、0）。 */
 export const RT_INSTANCE_WORDS = 24;
@@ -149,16 +150,21 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
 
 /** 最近的交点（世界的射线，dir 可以不归一；没打到时 instance 是 0xffffffff，t 是 tMax）。 */
 fn rtTrace(origin: vec3f, dir: vec3f, tMax: f32) -> RtHit {
-  return rtTraverse(origin, dir, tMax, false);
+  return rtTraverse(origin, dir, tMax, false, 0u);
 }
 
 /** 原点到 tMax 之间有没有挡着的（阴影射线）：打到任何一个三角形就停。 */
 fn rtOccluded(origin: vec3f, dir: vec3f, tMax: f32) -> bool {
-  return rtTraverse(origin, dir, tMax, true).instance != 0xffffffffu;
+  return rtTraverse(origin, dir, tMax, true, 0u).instance != 0xffffffffu;
 }
 
-/** 两层 BVH 的遍历：any 是假时找最近的交点，真时打到任何一个就停。顶层同 BLAS 是宽 BVH，叶子是实例（射线变到网格的坐标再走它的 BLAS）。 */
-fn rtTraverse(origin: vec3f, dir: vec3f, tMax: f32, any: bool) -> RtHit {
+/** 同 rtOccluded，但跳过随风动的实例（树叶、草：光追里是静止的，影子交给阴影图；主画面光追的阴影用）。 */
+fn rtOccludedStatic(origin: vec3f, dir: vec3f, tMax: f32) -> bool {
+  return rtTraverse(origin, dir, tMax, true, 2u).instance != 0xffffffffu;
+}
+
+/** 两层 BVH 的遍历：any 是假时找最近的交点，真时打到任何一个就停；标志位和 skip 有交集的实例不算。顶层同 BLAS 是宽 BVH，叶子是实例（射线变到网格的坐标再走它的 BLAS）。 */
+fn rtTraverse(origin: vec3f, dir: vec3f, tMax: f32, any: bool, skip: u32) -> RtHit {
   var hit = RtHit(tMax, 0xffffffffu, 0u, vec2f(0.0), false, 0u);
   if (arrayLength(&rtTlas) < 8u) { return hit; }
   let inverse = 1.0 / select(dir, vec3f(1e-20), abs(dir) < vec3f(1e-20));
@@ -192,6 +198,7 @@ fn rtTraverse(origin: vec3f, dir: vec3f, tMax: f32, any: bool) -> RtHit {
         continue;
       }
       for (var i = children[c]; i < children[c] + counts[c]; i++) {
+        if ((bitcast<vec4u>(rtInstances[i * 6u + 3u]).z & skip) != 0u) { continue; }
         // 世界的射线变到网格的坐标：乘世界矩阵的逆（3 行）
         let r0 = rtInstances[i * 6u];
         let r1 = rtInstances[i * 6u + 1u];
@@ -373,7 +380,7 @@ export class RayTracingScene {
     const meshes = game.meshes;
     const entries: Entry[] = [];
     for (const batch of meshes.batches) {
-      if (!traceable(batch)) continue;
+      if (!rayTraceable(batch)) continue;
       for (let i = 0; i < batch.count; i++) {
         const slot = batch.slots[i]!;
         if (batch.mesh.heightfield) {
@@ -490,7 +497,8 @@ export class RayTracingScene {
         inverseAffine(world, slot * 16, instances, o);
         words[o + 12] = blas.nodeOffset;
         words[o + 13] = blas.triangleOffset;
-        words[o + 14] = batch.material.doubleSided ? 1 : 0;
+        // 第 1 位：双面的材质；第 2 位：随风动的（顶点着色器里摆，光追里是静止的：阴影射线跳过，影子交给阴影图）
+        words[o + 14] = (batch.material.doubleSided ? 1 : 0) | (batch.material.wind ? 2 : 0);
         words[o + 15] = (this.surfaces.tileOf(surface) ?? -1) + 1;
         const { baseColor, emissive } = batch.material;
         instances.set([baseColor.r, baseColor.g, baseColor.b, 1, emissive[0], emissive[1], emissive[2], 0], o + 16);
@@ -603,15 +611,6 @@ export class RayTracingScene {
     this.lighting.destroy();
     for (const buffer of Object.values(this.#buffers)) buffer?.destroy();
   }
-}
-
-/**
- * 光追得到的批：不透明、不蒙皮、不形变、不是远处卡片、有三角形（空网格的 BVH 根是个数为 0 的叶子，GPU 上和内部节点分不开）。
- * 地形块（高度页的网格）按每块的高度建。
- */
-function traceable(batch: MeshBatch): boolean {
-  const mesh = batch.mesh;
-  return batch.count > 0 && batch.visibleInRayTracing && mesh.data.indices.length >= 3 && !batch.skinned && !batch.material.isTransparent && !mesh.impostor && mesh.data.morph === undefined;
 }
 
 function append(target: Uint32Array | Float32Array, used: number, data: Uint32Array | Float32Array): Uint32Array | Float32Array {

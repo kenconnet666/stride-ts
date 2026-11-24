@@ -189,6 +189,8 @@ export interface CompositorSettings extends SceneForwardRenderer {
   readonly shadows?: false;
   /** 粒子画在 UI 上面（见 SceneCompositor.particlesOverUI）。 */
   readonly particlesOverUI?: true;
+  /** 光追的阴影（见 SceneCompositor.rayTracedShadows）。 */
+  readonly rayTracedShadows?: true;
   /** 网格效果的名字（见 SceneCompositor.meshEffect）。 */
   readonly meshEffect?: string;
 }

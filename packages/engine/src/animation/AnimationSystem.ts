@@ -120,12 +120,13 @@ export class AnimationSystem {
 
   readonly #native: StrideNative;
   readonly #retargeted = new WeakMap<AnimationClip, Map<string, AnimationClip>>();
+  readonly #autoRetargeted = new WeakMap<AnimationClip, WeakMap<Skeleton, AnimationClip>>();
 
   constructor(native: StrideNative, entities: EntityManager) {
     this.#native = native;
     this.#entities = entities;
     this.#batch = new AnimationBatch(native);
-    this.#stack = new BatchStack(this.#batch);
+    this.#stack = new BatchStack(this.#batch, (clip, target) => this.#retargetTo(clip, target));
     this.#cloning = entities.onClone((clones) => this.#attachClones(clones));
   }
 
@@ -242,8 +243,11 @@ export class AnimationSystem {
    * 选项只建一次）。关节默认按名字对（去掉 `mixamorig:` 这类命名空间前缀，不分大小写，只看字母和数字），map 写"目标关节名: 源关节名"
    * 盖掉自动对的；对不上的目标关节保持静止姿势跟着父关节。髋默认找两边都对上的、名字带 hips 或 pelvis 的，没有时取第一个对上的；
    * inPlace 时髋不挪（原地的动画）。两边的静止姿势要像（都是 T 字或都是 A 字）。
+   *
+   * sameRig：两边是同一套绑定（同一个角色的模型和只为动画导出的文件），对上的关节直接拷剪辑的局部变换（同桌面 Stride 按关节名
+   * 绑定动画）：只为动画导出的文件里的默认姿势是随便哪一帧，按"离静止姿势转了多少"搬会丢掉动作。
    */
-  retarget(clip: AnimationClip, target: Skeleton, options: { map?: Readonly<Record<string, string>>; inPlace?: boolean } = {}): AnimationClip {
+  retarget(clip: AnimationClip, target: Skeleton, options: { map?: Readonly<Record<string, string>>; inPlace?: boolean; sameRig?: boolean } = {}): AnimationClip {
     const bones = clip.bones;
     if (!bones) throw new Error(`retarget: animation '${clip.name}' has no skeleton tracks`);
     const key = `${target.name}|${JSON.stringify(options)}`;
@@ -264,13 +268,25 @@ export class AnimationSystem {
     });
     if (!sourceOf.some((s) => s >= 0)) throw new Error(`retarget: no joint of '${target.name}' matches '${source.name}' (give a map)`);
     let hips = -1;
-    if (!options.inPlace) {
+    if (!options.inPlace && !options.sameRig) {
       hips = target.joints.findIndex((joint, j) => sourceOf[j]! >= 0 && /hips|pelvis/i.test(joint.name));
       if (hips < 0) hips = sourceOf.findIndex((s) => s >= 0);
     }
-    const native = this.#native.retargetAnimation(bones.native, source.native, target.native, sourceOf, hips, hips >= 0 ? sourceOf[hips]! : -1);
+    const native = this.#native.retargetAnimation(bones.native, source.native, target.native, sourceOf, options.sameRig ? { copyLocals: true } : hips >= 0 ? { hips: [hips, sourceOf[hips]!] } : {});
     const result = new AnimationClip(`${clip.name}@${target.name}`, clip.duration, clip.repeatMode, { skeleton: target, native }, clip.morphWeights, clip.curves);
     byKey.set(key, result);
+    return result;
+  }
+
+  /**
+   * 放给别的骨架做的剪辑时按关节名绑定（retarget 的 sameRig）：只为动画做的 FBX 导入成自己的一副骨架（同一套绑定、关节可能少几个），
+   * 剪辑照样能放在模型上。比例、绑定不同的骨架要显式 retarget。每对剪辑和骨架只建一次，之后每帧是两次 WeakMap 查找。
+   */
+  #retargetTo(clip: AnimationClip, target: Skeleton): AnimationClip {
+    let byTarget = this.#autoRetargeted.get(clip);
+    if (!byTarget) this.#autoRetargeted.set(clip, (byTarget = new WeakMap()));
+    let result = byTarget.get(target);
+    if (!result) byTarget.set(target, (result = this.retarget(clip, target, { sameRig: true })));
     return result;
   }
 
@@ -424,12 +440,13 @@ export class AnimationSystem {
 }
 
 /**
- * 给 BlendTreeBuilder 的混合栈：骨架的部分直接写进原生的 AnimationBatch（检查剪辑和模型用的是同一个骨架），形变的部分在
+ * 给 BlendTreeBuilder 的混合栈：骨架的部分直接写进原生的 AnimationBatch（给别的骨架做的剪辑先自动重定向到模型的骨架），形变的部分在
  * MorphStack 上做，属性曲线的部分在 PropertyStack 上做。没有骨架的实体只算后两样。有骨架的模型也可以播没有骨架轨道的剪辑
  * （只有形变或者属性曲线）：它不往原生的栈里压姿势，合并的时候只有一边有姿势就留那一边。
  */
 class BatchStack implements AnimationBlendStack {
   readonly #batch: AnimationBatch;
+  readonly #retarget: (clip: AnimationClip, target: Skeleton) => AnimationClip;
   readonly morphs = new MorphStack();
   readonly properties = new PropertyStack();
   #skeleton: Skeleton | undefined;
@@ -439,8 +456,9 @@ class BatchStack implements AnimationBlendStack {
   /** 压进原生栈的骨架姿势的个数。 */
   poses = 0;
 
-  constructor(batch: AnimationBatch) {
+  constructor(batch: AnimationBatch, retarget: (clip: AnimationClip, target: Skeleton) => AnimationClip) {
     this.#batch = batch;
+    this.#retarget = retarget;
   }
 
   begin(skeleton: Skeleton | undefined, morphs: ModelMorphs | undefined): void {
@@ -454,10 +472,9 @@ class BatchStack implements AnimationBlendStack {
   push(clip: AnimationClip, time: number): this {
     let posed = false;
     if (this.#skeleton && clip.bones) {
-      if (clip.bones.skeleton !== this.#skeleton) {
-        throw new Error(`animation '${clip.name}' is for skeleton '${clip.bones.skeleton.name}', but the model uses '${this.#skeleton.name}'`);
-      }
-      this.#batch.push(clip.bones.native, time);
+      // 同 Stride 按关节名绑定（Stride 的动画资源导入时绑在模型的骨架上；这里剪辑带着自己的骨架，放的时候绑）
+      const bones = clip.bones.skeleton === this.#skeleton ? clip.bones : this.#retarget(clip, this.#skeleton).bones!;
+      this.#batch.push(bones.native, time);
       posed = true;
       this.poses++;
     }

@@ -2,7 +2,7 @@
  * 共用资源的包 @stride-ts/assets（单独的仓库 kenconnet666/world-engine-assets，用户 2026-11-22 定：字体、图片这类不适合进 git 的资源
  * 放单独的仓库，先用 GitHub Release 打包安装，同 vue-tsx-pro 的字体包）：
  *
- *   node tools/assets.ts build             照资源仓库的 sources/sources.json 用编辑器的导入器把源文件（ttf、扫描贴图）导入成
+ *   node tools/assets.ts build             照资源仓库的 sources/sources.json 用编辑器的导入器把源文件（ttf、扫描贴图、模型）导入成
  *                                          content/Shared 下引擎能用的内容；源文件没变的跳过（哈希记在 sources/.built.json）
  *   node tools/assets.ts dev               资源仓库打包、发成预发行版 dev-<提交>（仓库要先提交推送），override 指过去，pnpm install
  *   node tools/assets.ts release <版本>    同上，发正式版 v<版本>（版本要和资源仓库 package.json 的一样）
@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { EditorBackend, type MaterialCredit } from '@stride-ts/editor/server';
+import { EditorBackend, type ImportOptions, type MaterialCredit } from '@stride-ts/editor/server';
 
 const root = path.resolve(import.meta.dirname, '..');
 const assets = process.env['STRIDE_ASSETS'] ?? 'C:/code/stride-ts-assets';
@@ -26,6 +26,15 @@ interface Sources {
   readonly fonts: readonly { readonly file: string; readonly folder: string; readonly name: string }[];
   /** 一套扫描材质：parallaxDepth 是有高度贴图时视差的最深处（米，默认 1 厘米，按这套材质实际的起伏给）。 */
   readonly materials: readonly { readonly folder: string; readonly name: string; readonly files: readonly string[]; readonly credit?: MaterialCredit; readonly parallaxDepth?: number }[];
+  /**
+   * 源模型（glb、gltf、fbx、obj）：settings 改导入设置（只为动画做的 FBX 写 `{ "meshes": false }`，只要骨架和动画剪辑）；
+   * materials 按材质名盖掉导入出的材质文件的字段（源文件里没有的粗糙度、金属度、自发光，照原作者的材质填）。署名写在资源仓库的
+   * CREDITS.md。包里只留导入的结果：源文件和导入设置不进包（源文件在 sources/）。
+   */
+  readonly models?: readonly {
+    readonly file: string; readonly folder: string; readonly name: string; readonly settings?: ImportOptions['model'];
+    readonly materials?: Readonly<Record<string, Record<string, unknown>>>;
+  }[];
 }
 
 async function build(): Promise<void> {
@@ -46,17 +55,33 @@ async function build(): Promise<void> {
       if (entry === name || entry.startsWith(`${name}.`)) rmSync(path.join(directory, entry), { recursive: true, force: true });
     }
   };
-  const pending = [...sources.fonts.map((font) => ({ key: `font:${font.folder}/${font.name}`, files: [font.file], ...font })), ...sources.materials.map((material) => ({ key: `material:${material.folder}/${material.name}`, ...material }))]
+  // 字体和模型都是一个源文件、经 importFile 导入
+  const singles = [
+    ...sources.fonts.map((font) => ({ key: `font:${font.folder}/${font.name}`, files: [font.file], ...font })),
+    ...(sources.models ?? []).map((model) => ({ key: `model:${model.folder}/${model.name}`, files: [model.file], ...model })),
+  ];
+  const pending = [...singles, ...sources.materials.map((material) => ({ key: `material:${material.folder}/${material.name}`, ...material }))]
     .filter((item) => built[item.key] !== hashOf(item.files, item));
   for (const item of pending) clear(item.folder, item.name);
   const backend = await EditorBackend.open(assets, assets);
-  for (const font of sources.fonts) {
-    const key = `font:${font.folder}/${font.name}`, hash = hashOf([font.file], { key, files: [font.file], ...font });
-    if (built[key] === hash) continue;
-    const bytes = await readFile(path.join(assets, 'sources', font.file));
-    const result = await backend.importFile(font.folder, font.name + path.extname(font.file), bytes);
-    console.log(`${key}: ${result.asset.kind} ${result.asset.path}${result.warnings.length ? ` (${result.warnings.join('; ')})` : ''}`);
-    built[key] = hash;
+  for (const item of singles) {
+    const hash = hashOf(item.files, item);
+    if (built[item.key] === hash) continue;
+    const bytes = await readFile(path.join(assets, 'sources', item.file));
+    const model = item.key.startsWith('model:') ? item as NonNullable<Sources['models']>[number] : undefined;
+    const result = await backend.importFile(item.folder, item.name + path.extname(item.file), bytes, model?.settings ? { model: model.settings } : {});
+    if (model) {
+      const base = path.join(assets, 'content', item.folder, item.name);
+      for (const [name, fields] of Object.entries(model.materials ?? {})) {
+        const file = path.join(base, 'Materials', `${name}.material.json`);
+        if (!existsSync(file)) throw new Error(`${item.key}: no imported material '${name}' to override`);
+        writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')) as object, ...fields }, null, 1));
+      }
+      rmSync(base + path.extname(item.file).toLowerCase(), { force: true });
+      rmSync(`${base}.import.json`, { force: true });
+    }
+    console.log(`${item.key}: ${result.asset.kind} ${result.asset.path}${result.warnings.length ? ` (${result.warnings.join('; ')})` : ''}`);
+    built[item.key] = hash;
   }
   for (const material of sources.materials) {
     const key = `material:${material.folder}/${material.name}`, hash = hashOf(material.files, { key, ...material });

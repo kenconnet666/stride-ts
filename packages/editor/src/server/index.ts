@@ -5,3 +5,4 @@ export { EDITOR_HEADER } from './backend/http.ts';
 export { loadProject, projectInfo, type Project } from './backend/project.ts';
 export * from '../shared/protocol.ts';
 export type { MaterialCredit } from '../shared/materialSet.ts';
+export type { ImportOptions } from './backend/importer.ts';

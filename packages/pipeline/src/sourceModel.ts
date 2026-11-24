@@ -11,7 +11,8 @@
  * 形变目标照导入（按名字合成模型的目标表）。材质照 glTF 的金属度工作流：金属度粗糙度贴图进 glossinessTexture（G 通道反着读成粗糙度，B 通道是金属度、乘系数）。
  *
  * 导入设置（ModelImportFile）：scale 乘顶点、形变位移、骨架和动画的平移，蒙皮的逆绑定矩阵跟着换（平移乘 scale：整副骨架等于
- * 被均匀缩放 S 共轭，蒙皮的结果正好也缩放 S）；materials 关着时网格用默认材质、不写材质和贴图；animations 关着时不烘动画。
+ * 被均匀缩放 S 共轭，蒙皮的结果正好也缩放 S）；meshes 关着时只写骨架和动画（只为动画做的文件）；materials 关着时网格用默认材质、
+ * 不写材质和贴图；animations 关着时不烘动画。
  */
 import { DEFAULT_MODEL_IMPORT, EXTENSIONS, encodeAnimation, encodeModel, encodeSkeleton, TEXTURE_EXTENSIONS, VERTEX_FLOATS, type MaterialFile, type ModelImportFile, type TextureEncoding, type TextureSlot } from '@stride-ts/engine/content-format';
 import type { MaterialInfo, Scene, StrideTools, TextureSlot as NativeTextureSlot } from '@stride-ts/native/tools';
@@ -30,8 +31,10 @@ export interface SourceModelOptions {
 }
 
 export interface ImportedSourceModel {
-  /** 模型的内容路径。 */
-  readonly model: string;
+  /** 模型的内容路径；只导骨架和动画（meshes 关着）时没有。 */
+  readonly model?: string;
+  /** 骨架的内容路径（有蒙皮或动画时）。 */
+  readonly skeleton?: string;
   /** 动画剪辑：名字（文件里的动画名）和内容路径；没有动画时是空的。 */
   readonly animations: readonly { readonly name: string; readonly clip: string }[];
   /** 要写的文件：相对内容目录的路径和内容。 */
@@ -47,8 +50,9 @@ export function isSourceModel(fileName: string): boolean {
 }
 
 export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, { fileName, folder, name, settings = {} }: SourceModelOptions): Promise<ImportedSourceModel> {
-  const { scale, materials: withMaterials, animations: withAnimations, sampleRate } = { ...DEFAULT_MODEL_IMPORT, ...settings };
+  const { scale, meshes: withMeshes = true, materials: withMaterials, animations: withAnimations, sampleRate } = { ...DEFAULT_MODEL_IMPORT, ...settings };
   if (!(scale > 0)) throw new Error(`${fileName}: the import scale must be positive (got ${scale})`);
+  if (!withMeshes && !withAnimations) throw new Error(`${fileName}: with meshes off only animations are imported; turn one of them on`);
   const extension = extensionOf(fileName);
   if (!isSourceModel(fileName)) throw new Error(`${fileName}: not a model file (glb, gltf, fbx, obj)`);
   const base = (name ?? fileName.slice(0, fileName.length - extension.length)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Model';
@@ -78,6 +82,12 @@ export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, {
       return file ? { texture: file.path, encoding: file.encoding, srgb, scale: slot.scale, offset: slot.offset } : undefined;
     };
 
+    if (!withMeshes) {
+      if (scene.animations.length === 0) throw new Error(`${fileName}: meshes are off but the file has no animations`);
+      const skeleton = sceneSkeleton(scene, `${root}/${base}`, tools, files, scale);
+      const animations = await sceneAnimations(scene, skeleton, `${root}/Animations`, files, tools, sampleRate, scale);
+      return { skeleton: skeleton.path, animations, files, warnings };
+    }
     const materialPaths = !withMaterials ? [] : scene.materials.map((materialName, i) => {
       const info = scene.materialInfos[i]!;
       const path = `${root}/Materials/${materialName.replace(/[^A-Za-z0-9_-]+/g, '') || `material${i}`}`;
@@ -105,7 +115,7 @@ export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, {
       path: root + EXTENSIONS.model,
       content: encodeModel({ meshes: compressMeshes(meshes, tools), materials: materialPaths, ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphTargets.length > 0 ? { morphTargets } : {}) }),
     });
-    return { model: root, animations, files, warnings };
+    return { model: root, ...(skeleton ? { skeleton: skeleton.path } : {}), animations, files, warnings };
   } finally {
     scene.destroy();
   }

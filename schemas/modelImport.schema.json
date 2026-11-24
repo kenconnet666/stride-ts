@@ -17,6 +17,10 @@
       "minimum": 0.001,
       "description": "uniform scale applied to vertices, bones and animation (0.01 for an FBX made in centimeters)"
     },
+    "meshes": {
+      "type": "boolean",
+      "description": "import the meshes (model, materials, textures); off: only the skeleton and animation clips (an animation-only FBX that also carries the mesh)"
+    },
     "materials": {
       "type": "boolean",
       "description": "import materials and their textures; off: meshes use the default material. Material files already there are kept on reimport"

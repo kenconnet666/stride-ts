@@ -63,4 +63,37 @@ describe('动画重定向', () => {
     expect(positionAt(inPlace, 1)).toEqual([0, 2, 0]);
     expect(() => animation.retarget(clip, target, { map: { LeftLeg: 'Nope' } })).toThrow(/no joint 'Nope'/);
   });
+
+  test('同一套绑定（sameRig）：照搬剪辑的局部变换，源文件里的默认姿势是哪一帧都不影响', () => {
+    const s = Math.SQRT1_2;
+    // 只为动画导出的文件：默认姿势是大腿抬着 45° 的一帧
+    const source = skeleton('Walk', [
+      { parent: -1, translation: [0, 1, 0], name: 'Hips' },
+      { parent: 0, translation: [0.1, 0, 0], rotation: [-0.383, 0, 0, 0.924], name: 'Thigh' },
+      { parent: 1, translation: [0, -0.5, 0], name: 'Knee' },
+    ]);
+    const model = skeleton('Model', [
+      { parent: -1, translation: [0, 1, 0], name: 'Hips' },
+      { parent: 0, translation: [0.1, 0, 0], name: 'Thigh' },
+      { parent: 1, translation: [0, -0.5, 0], name: 'Knee' },
+      { parent: 2, translation: [0, -0.5, 0], name: 'Foot' },
+    ]);
+    const nativeClip = native.loadAnimation(tools.buildAnimation(1, [
+      { translations: [[0, 0, 1, 0]], rotations: [[0, 0, 0, 0, 1]], scales: [[0, 1, 1, 1]] },
+      { translations: [[0, 0.1, 0, 0]], rotations: [[0, 0, 0, 0, 1], [1, -s, 0, 0, s]], scales: [[0, 1, 1, 1]] },
+      { translations: [[0, 0, -0.5, 0]], rotations: [[0, 0, 0, 0, 1]], scales: [[0, 1, 1, 1]] },
+    ]));
+    const clip = new AnimationClip('Walk', 1, 'loopInfinite', { skeleton: source, native: nativeClip });
+    const bound = new AnimationSystem(native, new Game().entities).retarget(clip, model, { sameRig: true });
+    const instance = model.native.createInstance();
+    using batch = new AnimationBatch(native);
+    const footAt = (time: number) => {
+      batch.clear().instance(instance).push(bound.bones!.native, time);
+      batch.evaluate();
+      const m = instance.modelMatrices();
+      return [12, 13, 14].map((k) => +m[3 * 16 + k]!.toFixed(3) + 0);
+    };
+    expect(footAt(0)).toEqual([0.1, 0, 0]);
+    expect(footAt(1)).toEqual([0.1, 1, 1]);
+  });
 });

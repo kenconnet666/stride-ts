@@ -33,6 +33,13 @@ export interface ImportBaked {
   readonly files: readonly string[];
   readonly warnings: readonly string[];
   readonly animations?: ImportResult['animations'];
+  /** 只导了骨架和动画（导入设置的 meshes 关着）时的骨架。 */
+  readonly skeleton?: string;
+}
+
+/** 导入时改默认设置：model 改源模型的导入设置（比如只为动画做的 FBX 关掉 meshes）。 */
+export interface ImportOptions {
+  readonly model?: Partial<Omit<ModelImportFile, 'source'>>;
 }
 
 /** 导入要用的后端的几样东西。 */
@@ -112,9 +119,9 @@ export class Importer {
    * （glb、gltf、fbx、obj）经导入器（pipeline 的 importSourceModel，原生的场景导入）成模型、材质、贴图；字体（ttf、otf、ttc）
    * 编成运行时字体（pipeline 的 importFontFile，字形轮廓按码位分块）。名字取文件名，重名的加数字。返回新资源和导入时的警告。
    */
-  async importFile(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+  async importFile(folder: string, fileName: string, bytes: Uint8Array, options: ImportOptions = {}): Promise<ImportResult> {
     if (folder !== '') checkContentPath(folder);
-    if (isSourceModel(fileName)) return this.#importModel(folder, fileName, bytes);
+    if (isSourceModel(fileName)) return this.#importModel(folder, fileName, bytes, options.model ?? {});
     if (isFontFile(fileName)) {
       return this.#importConverted('font', folder, fileName, async (tools, name) => {
         const { font, files } = await importFontFile(tools, bytes, { fileName, folder, name });
@@ -223,14 +230,15 @@ export class Importer {
 
   /**
    * 导入源模型：源文件放进 folder（`<名字>.<格式>`），旁边写一份默认的导入设置（`<名字>.import.json`），照设置导入成同名的
-   * 模型（连材质、贴图、骨架、动画；#bake）。名字不和已有的模型、导入设置重复。导入不了时什么也不留。
+   * 模型（连材质、贴图、骨架、动画；#bake）。名字不和已有的模型、导入设置重复。导入不了时什么也不留。overrides 改默认的设置
+   * （meshes 关着时只有骨架和动画，返回骨架）。
    */
-  #importModel(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+  #importModel(folder: string, fileName: string, bytes: Uint8Array, overrides: NonNullable<ImportOptions['model']>): Promise<ImportResult> {
     return this.#host.enqueue(async () => {
       const source = path.extname(fileName).slice(1).toLowerCase() as ModelSourceFormat;
       const base = fileName.slice(0, fileName.length - path.extname(fileName).length).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
       const assetPath = this.#freePath(folder, base, ['model', 'modelImport']);
-      const settings: ModelImportFile = { source, ...DEFAULT_MODEL_IMPORT };
+      const settings: ModelImportFile = { source, ...DEFAULT_MODEL_IMPORT, ...overrides };
       const sourceFile = `${assetPath}.${source}`;
       await writeAtomically(path.join(this.#host.contentDir, sourceFile), bytes);
       let baked: ImportBaked;
@@ -244,7 +252,8 @@ export class Importer {
       await writeAtomically(path.join(this.#host.contentDir, main), JSON.stringify(settings, null, 1));
       await this.#host.refresh([sourceFile, main, ...baked.files]);
       const animations = baked.animations ?? [];
-      return { asset: this.#host.database.get('model', assetPath)!, warnings: [...baked.warnings], ...(animations.length > 0 ? { animations } : {}) };
+      const asset = baked.skeleton !== undefined ? this.#host.database.get('skeleton', baked.skeleton) : this.#host.database.get('model', assetPath);
+      return { asset: asset!, warnings: [...baked.warnings], ...(animations.length > 0 ? { animations } : {}) };
     });
   }
 

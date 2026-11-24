@@ -739,6 +739,11 @@ export interface ModelImportFile {
   readonly source: ModelSourceFormat;
   /** 整体缩放（Stride 的 ScaleImport、Unity 的 Scale Factor）：顶点、骨架和动画的平移、形变的位移都乘它；厘米做的 FBX 写 0.01。 */
   readonly scale: number;
+  /**
+   * 导入网格（模型、材质、贴图）；关着时只导骨架和动画剪辑：只为动画做的 FBX（Mixamo、Stride 角色包的 Walk.fbx 这类）里也带着整套网格，
+   * 关掉免得每个动画都多一份模型。没写的旧设置当开着。
+   */
+  readonly meshes?: boolean;
   /** 导入材质（和它们的贴图）；关着时网格用默认材质。 */
   readonly materials: boolean;
   /** 导入动画（每个动画一个剪辑）；关着时只在有蒙皮时导骨架。 */

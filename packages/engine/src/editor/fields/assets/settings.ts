@@ -24,6 +24,7 @@ export const GAME_SETTINGS_FIELDS = fields<GameSettingsFile>({
 export const MODEL_IMPORT_FIELDS = fields<ModelImportFile>({
   source: { type: oneOf('glb', 'gltf', 'fbx', 'obj'), description: 'format of the source file next to these settings (same name); drop a new file to replace it' },
   scale: { type: number({ min: 0.001, step: 0.001 }), description: 'uniform scale applied to vertices, bones and animation (0.01 for an FBX made in centimeters)' },
+  meshes: { type: bool, optional: true, description: 'import the meshes (model, materials, textures); off: only the skeleton and animation clips (an animation-only FBX that also carries the mesh)' },
   materials: { type: bool, description: 'import materials and their textures; off: meshes use the default material. Material files already there are kept on reimport' },
   animations: { type: bool, description: 'import each animation as a clip (the skeleton comes too)' },
   sampleRate: { type: integer(1, 240), description: 'animation keyframes per second when baking' },

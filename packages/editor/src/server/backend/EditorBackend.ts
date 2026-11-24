@@ -25,7 +25,7 @@ import { generatedKinds, generatorFor, isGenerated, REBAKE_WITH } from './bakers
 import { checkContentPath, contentHash, writeAtomically } from './files.ts';
 import { generatorCodeIsStale, generatorVersion } from './generatorVersion.ts';
 import { handleEditorRequest, HttpError } from './http.ts';
-import { Importer, type MaterialSetOptions } from './importer.ts';
+import { Importer, type ImportBaked, type ImportOptions, type MaterialSetOptions } from './importer.ts';
 
 /** 导出的成片、图像序列放在工程的这个文件夹里（不提交）。 */
 export const EXPORTS_DIR = 'exports';
@@ -372,8 +372,8 @@ export class EditorBackend {
   }
 
   /** 导入一个拖进来的文件（见 importer.ts 的 Importer.importFile）。 */
-  importFile(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
-    return this.#importer.importFile(folder, fileName, bytes);
+  importFile(folder: string, fileName: string, bytes: Uint8Array, options?: ImportOptions): Promise<ImportResult> {
+    return this.#importer.importFile(folder, fileName, bytes, options);
   }
 
   /** 导入一套扫描的材质（见 Importer.importMaterialSet）。 */
@@ -618,7 +618,7 @@ export class EditorBackend {
    * 照 bakers.ts 的表把生成模型的资源烘成同名的模型（和附带的图集、材质），或者照导入设置把旁边的源模型导入成同名的模型（importSourceModel：连材质、贴图、骨架、动画；已经有的材质文件不动，导入以后可能改过）。写好文件，
    * 返回它们的相对路径（还没刷新数据库）和导入的警告、动画。形状、设置不对时报错。
    */
-  async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<Baked> {
+  async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<ImportBaked> {
     const where = `${kind} ${assetPath}`;
     // 生成代码在这个进程起来以后改过：不用旧代码烘（会盖掉别的进程用新代码烘的），保存时报错、被动重烘时只留警告
     if (await generatorCodeIsStale()) throw new Error(`${where}: the asset generator code changed after this editor backend started; restart it (the dev server or the MCP service) to bake`);
@@ -631,7 +631,7 @@ export class EditorBackend {
         throw new Error(`${where}: the source file ${assetPath}.${settings.source} is missing`);
       });
       const folder = assetPath.includes('/') ? assetPath.slice(0, assetPath.lastIndexOf('/')) : '';
-      const { files, warnings, animations } = await importSourceModel(tools, bytes, { fileName, folder, name: path.basename(assetPath), settings });
+      const { files, warnings, animations, model, skeleton } = await importSourceModel(tools, bytes, { fileName, folder, name: path.basename(assetPath), settings });
       const written: string[] = [];
       for (const file of files) {
         const target = path.join(this.project.contentDir, file.path);
@@ -640,7 +640,7 @@ export class EditorBackend {
         written.push(file.path);
       }
       await this.#recordBake(`${kind}:${assetPath}`, content);
-      return { files: written, warnings, animations };
+      return { files: written, warnings, animations, ...(model === undefined && skeleton !== undefined ? { skeleton } : {}) };
     }
     // 读 `.json` 时没有就找同名的 `.jsonc`（人手写、带注释的），烘焙器那边用 parseJsonc 解
     const read = (file: string) => readFile(path.join(this.project.contentDir, file)).catch(async (error: NodeJS.ErrnoException) => {
@@ -659,7 +659,7 @@ export class EditorBackend {
    * 照贴图的导入设置压缩：compress 不是 none 时解码源图片、按 maxSize 等比缩小（宽高补到 4 的倍数）、编成 Basis 的 KTX2 写在
    * 旁边；none 时删掉 KTX2。然后引用这张贴图的 JSON 文件改成读新的编码。返回写了、删了的文件。
    */
-  async #encodeImage(assetPath: string, settings: ImageImportFile): Promise<Baked> {
+  async #encodeImage(assetPath: string, settings: ImageImportFile): Promise<ImportBaked> {
     const where = `imageImport ${assetPath}`;
     if (!['png', 'jpeg', 'webp'].includes(settings.source)) throw new Error(`${where}: source must be png, jpeg or webp`);
     const ktx2 = assetPath + TEXTURE_EXTENSIONS.ktx2;
@@ -718,9 +718,3 @@ export class EditorBackend {
 }
 
 /** 烘一次的结果：写了的文件（相对内容目录），导入源模型时的警告和动画剪辑。 */
-interface Baked {
-  readonly files: readonly string[];
-  readonly warnings: readonly string[];
-  readonly animations?: ImportResult['animations'];
-}
-

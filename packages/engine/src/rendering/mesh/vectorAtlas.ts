@@ -9,10 +9,13 @@
  *
  * 数据是一个 u32 数组（浮点按位存）：
  * - 头（HEADER 个字）：魔数、版本、图集的宽高（f32）、格子的列数和行数，形状表、点、带从哪个字开始，形状数，格子、格子里的列表从
- *   哪个字开始；
- * - 形状（SHAPE_WORDS 个字）：sRGB 的颜色（pack4x8unorm）、标志（第 0 位 evenodd）、带的变换（4 个 f32：坐标乘 xy 加 zw 得到竖带、
+ *   哪个字开始，渐变表从哪个字开始（第 12 个字；没有渐变、旧文件是 0）；
+ * - 形状（SHAPE_WORDS 个字）：sRGB 的颜色（pack4x8unorm）、标志（第 0 位 evenodd，第 1 位是擦除形状：遮罩擦掉的地方，挡住后面的、
+ *   自己不出颜色）、带的变换（4 个 f32：坐标乘 xy 加 zw 得到竖带、
  *   横带的下标）、第一个点、带从哪开始（相对带的起点）、横带数、竖带数、边界（4 个 f32：形状的外框和裁剪的交，外面不算、边上按
- *   裁剪抗锯齿）；
+ *   裁剪抗锯齿）、渐变（第 14 个字：在渐变表里的偏移加 1，0 是纯色）；
+ * - 渐变：标志（第 0 位径向）、6 个 f32 的矩阵（图集坐标 → 渐变参数，见 svgShapes 的 VectorGradient）、色标数、每个色标一对（位置 f32、
+ *   sRGB 的颜色 pack4x8unorm）；
  * - 点：每条二次曲线三个点（f32 的 x、y）；
  * - 带：每个形状先是横带、竖带各一对（条数、列表的偏移），后面是列表（曲线第一个点的下标）；
  * - 格子：每格一对（形状数、列表的偏移），列表是形状的下标（从前往后）。
@@ -37,12 +40,14 @@ export function buildVectorAtlas(image: VectorImage): Uint32Array {
   const shapeFloats = new Float32Array(shapeWords.buffer);
   const points: number[] = [];
   const bands: number[] = [];
+  /** 渐变表（u32，浮点按位存）。 */
+  const gradients: number[] = [];
   const cells: number[][] = Array.from({ length: columns * rows }, () => []);
   shapes.forEach((shape, s) => {
     const bounds = boundsOf(shape);
     const o = s * VECTOR_SHAPE_WORDS;
     shapeWords[o] = packColor(shape.color);
-    shapeWords[o + 1] = shape.evenOdd ? 1 : 0;
+    shapeWords[o + 1] = (shape.evenOdd ? 1 : 0) | (shape.erase ? 2 : 0);
     const pointStart = points.length / 2;
     for (const value of shape.curves) points.push(value);
     const curveCount = shape.curves.length / 6;
@@ -56,6 +61,12 @@ export function buildVectorAtlas(image: VectorImage): Uint32Array {
     shapeWords[o + 8] = hBands;
     shapeWords[o + 9] = vBands;
     shapeFloats.set(bounds, o + 10);
+    if (shape.gradient) {
+      const { radial, matrix, stops } = shape.gradient;
+      shapeWords[o + 14] = gradients.length + 1;
+      gradients.push(radial ? 1 : 0, ...matrix.map(floatBits), stops.length);
+      for (const [offset, r, g, b, a] of stops) gradients.push(floatBits(offset), packColor([r, g, b, a]));
+    }
     // 带：先占好 (hBands + vBands) 对表头，列表接在后面
     const head = bands.length;
     for (let i = 0; i < 2 * (hBands + vBands); i++) bands.push(0);
@@ -103,12 +114,14 @@ export function buildVectorAtlas(image: VectorImage): Uint32Array {
     for (let i = cell.length - 1; i >= 0; i--) lists.push(cell[i]!);
   }
   const shapesAt = HEADER, pointsAt = shapesAt + shapeWords.length, bandsAt = pointsAt + points.length, gridAt = bandsAt + bands.length, listsAt = gridAt + grid.length;
-  const out = new Uint32Array(listsAt + lists.length);
+  const gradientsAt = listsAt + lists.length;
+  const out = new Uint32Array(gradientsAt + gradients.length);
   const outFloats = new Float32Array(out.buffer);
   out.set([VECTOR_MAGIC, 1], 0);
   outFloats.set([width, height], 2);
-  // 4 列数、5 行数、6 形状表、7 点、8 带、9 形状数、10 格子、11 格子里的列表
-  out.set([columns, rows, shapesAt, pointsAt, bandsAt, shapes.length, gridAt, listsAt], 4);
+  // 4 列数、5 行数、6 形状表、7 点、8 带、9 形状数、10 格子、11 格子里的列表、12 渐变表
+  out.set([columns, rows, shapesAt, pointsAt, bandsAt, shapes.length, gridAt, listsAt, gradients.length > 0 ? gradientsAt : 0], 4);
+  out.set(gradients, gradientsAt);
   out.set(shapeWords, shapesAt);
   outFloats.set(points, pointsAt);
   out.set(bands, bandsAt);
@@ -142,24 +155,51 @@ function boundsOf(shape: VectorShape): [number, number, number, number] {
   return shape.clip ? [Math.max(box[0], shape.clip[0]), Math.max(box[1], shape.clip[1]), Math.min(box[2], shape.clip[2]), Math.min(box[3], shape.clip[3])] : box;
 }
 
+const floatScratch = new Float32Array(1);
+const floatBits = (value: number): number => {
+  floatScratch[0] = value;
+  return new Uint32Array(floatScratch.buffer)[0]!;
+};
+
 function packColor([r, g, b, a]: readonly number[]): number {
   const byte = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
   return (byte(r!) | (byte(g!) << 8) | (byte(b!) << 16) | (byte(a!) << 24)) >>> 0;
 }
 
 /**
- * 着色器：vectorData（第 1 组的第 11 个绑定）是一张矢量贴图（没有时头是 0）。vectorColor 返回 uv（贴图坐标，0..1）处的颜色
- * （线性、预乘）和盖住的比例；perPixel 是 fwidth(图集像素坐标)，要在一致的控制流里算好传进来。用到 slug.ts 的根的判别和求交。
+ * 读矢量贴图的着色器函数（vectorColor 返回 uv（贴图坐标，0..1）处的颜色（线性、预乘）和盖住的比例；perPixel 是图集坐标每个屏幕
+ * 像素走多少，要在一致的控制流里算好传进来）。写的是 vectorData、从 0 起；vectorFunctionsWgsl 换成别的缓冲、起点和函数名前缀
+ * （贴花的矢量拼在一个缓冲里，每个贴花从自己的起点读；图集里的偏移都是相对图集开头的，访问时统一加起点）。
  */
-export const VECTOR_ATLAS_WGSL = /* wgsl */ `
-${SLUG_CURVE_WGSL}
-@group(1) @binding(11) var<storage, read> vectorData: array<u32>;
-
+const VECTOR_FUNCTIONS = /* wgsl */ `
 fn vectorWord(i: u32) -> u32 { return vectorData[i]; }
 fn vectorFloat(i: u32) -> f32 { return bitcast<f32>(vectorData[i]); }
 fn vectorPoint(i: u32) -> vec2f {
   let at = vectorData[7u] + i * 2u;
   return vec2f(bitcast<f32>(vectorData[at]), bitcast<f32>(vectorData[at + 1u]));
+}
+
+// 渐变在 coord（图集坐标）处的颜色（sRGB、a 是不透明度）：record 是形状第 14 个字（渐变表里的偏移加 1）
+fn vectorGradient(record: u32, coord: vec2f) -> vec4f {
+  let g = vectorData[12u] + record - 1u;
+  let m = array<f32, 6>(vectorFloat(g + 1u), vectorFloat(g + 2u), vectorFloat(g + 3u), vectorFloat(g + 4u), vectorFloat(g + 5u), vectorFloat(g + 6u));
+  let u = vec2f(m[0] * coord.x + m[2] * coord.y + m[4], m[1] * coord.x + m[3] * coord.y + m[5]);
+  let t = saturate(select(u.x, length(u), (vectorData[g] & 1u) != 0u));
+  let count = vectorData[g + 7u];
+  let stops = g + 8u;
+  var color = unpack4x8unorm(vectorData[stops + 1u]);
+  var previous = vectorFloat(stops);
+  for (var i = 1u; i < count; i++) {
+    let at = vectorFloat(stops + i * 2u);
+    let next = unpack4x8unorm(vectorData[stops + i * 2u + 1u]);
+    if (t <= at) {
+      // 在这两个色标之间按 sRGB 插值（SVG 的默认）
+      return mix(color, next, select(0.0, (t - previous) / (at - previous), at > previous));
+    }
+    color = next;
+    previous = at;
+  }
+  return color;
 }
 
 fn vectorAtlasSize() -> vec2f {
@@ -229,7 +269,7 @@ fn vectorShapeCoverage(shape: u32, coord: vec2f, pixelsPerUnit: vec2f) -> f32 {
   return saturate(max(abs(xcov * xwgt + ycov * ywgt) / max(xwgt + ywgt, 1.0 / 65536.0), min(abs(xcov), abs(ycov))));
 }
 
-// uv 处的颜色（线性、预乘的 rgb，a 是盖住的比例）
+// uv 处的颜色（线性、预乘的 rgb，a 是盖住的比例；擦除形状挡住后面的，不算盖住）
 fn vectorColor(uv: vec2f, perPixel: vec2f) -> vec4f {
   if (arrayLength(&vectorData) < ${HEADER}u || vectorData[0] != ${VECTOR_MAGIC}u) { return vec4f(0.0); }
   let size = vectorAtlasSize();
@@ -243,6 +283,7 @@ fn vectorColor(uv: vec2f, perPixel: vec2f) -> vec4f {
   let list = vectorData[11u] + vectorData[head + 1u];
   var color = vec3f(0.0);
   var remaining = 1.0;
+  var erased = 0.0;
   for (var i = 0u; i < count; i++) {
     let shape = vectorData[list + i];
     let o = vectorData[6u] + shape * ${VECTOR_SHAPE_WORDS}u;
@@ -250,15 +291,47 @@ fn vectorColor(uv: vec2f, perPixel: vec2f) -> vec4f {
     // 外框（也是裁剪）：外面不算，边上按到边的距离抗锯齿
     let inside = min(min(coord.x - bounds.x, bounds.z - coord.x) * pixelsPerUnit.x, min(coord.y - bounds.y, bounds.w - coord.y) * pixelsPerUnit.y);
     if (inside < -0.5) { continue; }
-    let rgba = unpack4x8unorm(vectorWord(o));
+    var rgba = unpack4x8unorm(vectorWord(o));
+    let gradient = vectorWord(o + 14u);
+    if (gradient != 0u) {
+      let g = vectorGradient(gradient, coord);
+      rgba = vec4f(g.rgb, g.a * rgba.a);
+    }
     let alpha = rgba.a * vectorShapeCoverage(shape, coord, pixelsPerUnit) * saturate(inside + 0.5);
     if (alpha <= 0.0) { continue; }
-    // sRGB 的颜色换成线性
-    let linear = select(pow((rgba.rgb + 0.055) / 1.055, vec3f(2.4)), rgba.rgb / 12.92, rgba.rgb <= vec3f(0.04045));
-    color += remaining * alpha * linear;
+    if ((vectorWord(o + 1u) & 2u) != 0u) {
+      erased += remaining * alpha;
+    } else {
+      // sRGB 的颜色换成线性
+      let linear = select(pow((rgba.rgb + 0.055) / 1.055, vec3f(2.4)), rgba.rgb / 12.92, rgba.rgb <= vec3f(0.04045));
+      color += remaining * alpha * linear;
+    }
     remaining *= 1.0 - alpha;
     if (remaining < 0.004) { break; }
   }
-  return vec4f(color, 1.0 - remaining);
+  return vec4f(color, 1.0 - remaining - erased);
 }
 `;
+
+/** 矢量贴图的着色器函数：prefix 换掉函数名里的 vector，data 是缓冲，base 是这张图在缓冲里的起点（WGSL 的表达式）。 */
+export function vectorFunctionsWgsl(prefix: string, data: string, base: string): string {
+  return VECTOR_FUNCTIONS
+    .replaceAll('arrayLength(&vectorData) < ', `arrayLength(&${data}) < ${base} + `)
+    .replaceAll('vectorData[', `${data}[${base} + `)
+    .replace(/\bvector(?=(Word|Float|Point|AtlasSize|Gradient|ShapeCoverage|Color)\b)/g, prefix);
+}
+
+/** 材质的矢量贴图：vectorData（第 1 组的第 11 个绑定；没有时头是 0）。用到 slug.ts 的根的判别和求交。 */
+export const VECTOR_ATLAS_WGSL = /* wgsl */ `
+${SLUG_CURVE_WGSL}
+@group(1) @binding(11) var<storage, read> vectorData: array<u32>;
+${vectorFunctionsWgsl('vector', 'vectorData', '0u')}`;
+
+/**
+ * 贴花的矢量贴图（mesh/Decals.ts：用到的拼成一个缓冲，第 0 组的第 30 个绑定）：decalVectorBase 设成这个贴花的起点再调
+ * decalVectorColor。
+ */
+export const DECAL_VECTOR_WGSL = /* wgsl */ `
+@group(0) @binding(30) var<storage, read> decalVectors: array<u32>;
+var<private> decalVectorBase: u32;
+${vectorFunctionsWgsl('decalVector', 'decalVectors', 'decalVectorBase')}`;

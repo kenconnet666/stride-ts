@@ -2,29 +2,50 @@
  * 生成的 SVG（标签图集、价签、器具的漆面……）拆成一个个填充形状，给矢量贴图用（rendering/mesh/vectorAtlas.ts：近处按曲线逐像素
  * 算覆盖率，走多近都清楚）。只认我们的生成代码写的那部分 SVG：
  * - 元素：svg（根、嵌套的：x、y、width、height、viewBox，preserveAspectRatio 只按 none 算，嵌套的按自己的视口裁剪）、g、rect（可带
- *   rx、ry）、circle、ellipse、path（M L H V Q T C S A Z 和小写的相对命令）、polygon、polyline、line；defs 里的渐变只取各个色标的
- *   平均色（标签图集里没有渐变，冷柜门上的水雾那张不用矢量）；mask、filter、clipPath 不管。
+ *   rx、ry）、circle、ellipse、path（M L H V Q T C S A Z 和小写的相对命令）、polygon、polyline、line；线性、径向渐变（gradientUnits、
+ *   gradientTransform、href 继承、百分比；焦点不在圆心的径向渐变、pad 以外的 spreadMethod 按近似算）；mask 只认"白底上画深色"的（招牌、地贴的磨损：第一个子元素是
+ *   白色的 rect，后面的深色形状换成擦除形状，见 VectorShape.erase）；filter、clipPath 不管。
  * - 属性：fill、fill-rule、fill-opacity、stroke、stroke-width、stroke-opacity、stroke-linecap（round、square）、opacity、transform
  *   （matrix、translate、scale、rotate、skewX、skewY），g 上的往下继承。颜色是 #rgb、#rrggbb、rgb()、几个常用的名字。
  * - 描边换成填充的轮廓：每一段一个矩形，拐点、圆头补一个圆（都按同一个绕向，非零规则下并在一起）。
  * 曲线一律换成二次贝塞尔（直线的控制点在中点，三次的按段数拆开近似，椭圆弧先换成三次），坐标是根 svg 的用户坐标（viewBox 的）。
+ * 拆的时候近似了的（渐变取了平均色、mask 这些没管的元素和属性、viewBox 不从原点起）记在 approximations 里：空的才和浏览器画的
+ * 一样，手写的 SVG 贴图只有这样的才在加载时建矢量贴图（ContentManager）。
  */
 
-/** 一个填充形状：颜色（sRGB 的 0..1，a 是不透明度）、规则、裁剪（嵌套 svg 的视口，[x0, y0, x1, y1]）和二次曲线（每条 6 个数：起点、控制点、终点）。 */
+/**
+ * 一个填充形状：颜色（sRGB 的 0..1，a 是不透明度）、规则、裁剪（嵌套 svg 的视口，[x0, y0, x1, y1]）和二次曲线（每条 6 个数：起点、
+ * 控制点、终点）。erase 的是遮罩擦掉的地方：盖住它下面的（按 color.a 的比例），自己不出颜色。
+ */
 export interface VectorShape {
   readonly color: readonly [number, number, number, number];
+  readonly erase?: boolean;
+  /** 渐变填充：color 的 a 再乘上渐变在这一点的颜色（rgb 取渐变的，color 的 rgb 是色标的平均，给只认纯色的地方用）。 */
+  readonly gradient?: VectorGradient;
   readonly evenOdd: boolean;
   readonly clip: readonly [number, number, number, number] | undefined;
   readonly curves: readonly number[];
 }
 
-/** 解析出来的 SVG：根的 viewBox（[x, y, 宽, 高]）和按画的顺序排的形状。 */
+/**
+ * 渐变：matrix 把根 svg 的用户坐标换到渐变的参数空间（2×3，列主序 [a, b, c, d, e, f]：u = (a x + c y + e, b x + d y + f)），线性的
+ * 参数是 u.x，径向的是 |u|（圆心是 0、半径是 1）；两头之外取端点的颜色（pad）。stops：[位置 0..1, r, g, b, a]（sRGB），按 SVG 的
+ * 默认在 sRGB 里插值。
+ */
+export interface VectorGradient {
+  readonly radial: boolean;
+  readonly matrix: Matrix;
+  readonly stops: readonly (readonly [number, number, number, number, number])[];
+}
+
+/** 解析出来的 SVG：根的 viewBox（[x, y, 宽, 高]）、按画的顺序排的形状、近似了的地方（空的是和浏览器画的一样）。 */
 export interface VectorImage {
   readonly viewBox: readonly [number, number, number, number];
   readonly shapes: readonly VectorShape[];
+  readonly approximations: readonly string[];
 }
 
-type Matrix = readonly [number, number, number, number, number, number];
+export type Matrix = readonly [number, number, number, number, number, number];
 const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
 
 interface Style {
@@ -50,22 +71,35 @@ export function svgShapes(svg: string, where = 'svg'): VectorImage {
   const root = parseXml(svg, where);
   if (root.name !== 'svg') throw new Error(`${where}: the root element is ${root.name}, not svg`);
   const box = viewBoxOf(root.attributes);
-  const gradients = new Map<string, readonly [number, number, number, number]>();
+  const gradients = new Map<string, Element>();
   collectGradients(root, gradients);
   const shapes: VectorShape[] = [];
-  walk(root.children, IDENTITY, DEFAULT_STYLE, undefined, { gradients, shapes, where });
-  return { viewBox: box ?? [0, 0, number(root.attributes['width'], 0), number(root.attributes['height'], 0)], shapes };
+  const approximations = new Set<string>();
+  const masks = new Map<string, Element>();
+  collectMasks(root, masks);
+  walk(root.children, IDENTITY, DEFAULT_STYLE, undefined, { gradients, masks, shapes, where, approximations });
+  // 矢量贴图按 viewBox 的宽高对齐 UV，原点不是 0 时对不上
+  if (box && (box[0] !== 0 || box[1] !== 0)) approximations.add('viewBox origin');
+  return { viewBox: box ?? [0, 0, number(root.attributes['width'], 0), number(root.attributes['height'], 0)], shapes, approximations: [...approximations] };
 }
 
 interface Context {
-  readonly gradients: ReadonlyMap<string, readonly [number, number, number, number]>;
+  readonly gradients: ReadonlyMap<string, Element>;
+  readonly masks: ReadonlyMap<string, Element>;
   readonly shapes: VectorShape[];
   readonly where: string;
+  readonly approximations: Set<string>;
 }
+
+/** 不画、也不影响画出来的样子的元素（渐变在 collectGradients 里收过）。 */
+const INERT = new Set(['defs', 'title', 'desc', 'metadata', 'linearGradient', 'radialGradient', 'stop', 'mask']);
+/** 我们不管的、会改变样子的属性（mask 在 applyMask 里看认不认）。 */
+const UNSUPPORTED_ATTRIBUTES = ['filter', 'clip-path', 'style'];
 
 function walk(elements: readonly Element[], matrix: Matrix, inherited: Style, clip: VectorShape['clip'], context: Context): void {
   for (const element of elements) {
     const a = element.attributes;
+    for (const name of UNSUPPORTED_ATTRIBUTES) if (a[name] !== undefined) context.approximations.add(`${name}=`);
     const style = styleOf(a, inherited);
     let m = a['transform'] ? multiply(matrix, parseTransform(a['transform'], context.where)) : matrix;
     switch (element.name) {
@@ -88,29 +122,170 @@ function walk(elements: readonly Element[], matrix: Matrix, inherited: Style, cl
         break;
       }
       default:
-        // defs、渐变（已经收过）、mask、filter、clipPath、title……不画
+        // defs、渐变（已经收过）、遮罩（用到时画）、title……不画；filter、clipPath、text、image 这些会改变样子，记成近似
+        if (!INERT.has(element.name)) context.approximations.add(`<${element.name}>`);
         break;
     }
+    if (a['mask'] !== undefined) applyMask(a['mask'], m, clip, context);
   }
+}
+
+/**
+ * 元素的 mask：只认白底上画深色的（第一个子元素是白色、不透明的 rect，铺满要遮的地方），后面的形状按亮度换成擦除形状，叠在
+ * 刚画的元素上面（擦掉它和它下面的）；遮罩内容和元素同一个用户坐标（maskContentUnits 默认的 userSpaceOnUse）。别的写法记成近似。
+ */
+function applyMask(reference: string, m: Matrix, clip: VectorShape['clip'], context: Context): void {
+  const id = /^url\(#([^)]+)\)$/.exec(reference.trim())?.[1];
+  const mask = id === undefined ? undefined : context.masks.get(id);
+  if (!mask) {
+    context.approximations.add('mask=');
+    return;
+  }
+  const shapes: VectorShape[] = [];
+  walk(mask.children, m, DEFAULT_STYLE, clip, { ...context, shapes });
+  const [base, ...marks] = shapes;
+  const white = base && base.color[0] > 0.99 && base.color[1] > 0.99 && base.color[2] > 0.99 && base.color[3] > 0.99 && mask.children[0]?.name === 'rect';
+  if (!white) {
+    context.approximations.add('mask=');
+    return;
+  }
+  for (const mark of marks) {
+    const [r, g, b, alpha] = mark.color;
+    // 遮罩按亮度留：盖上的深色形状擦掉 (1 - 亮度) × 不透明度
+    const erased = alpha * (1 - (0.2126 * r + 0.7152 * g + 0.0722 * b));
+    if (erased > 0) context.shapes.push({ ...mark, color: [0, 0, 0, erased], erase: true });
+  }
+}
+
+function collectMasks(element: Element, out: Map<string, Element>): void {
+  if (element.name === 'mask' && element.attributes['id']) out.set(element.attributes['id'], element);
+  for (const child of element.children) collectMasks(child, out);
 }
 
 /** 一个元素的填充和描边各出一个形状（描边在上面）。 */
 function emit(contours: Contour[], fillable: boolean, m: Matrix, style: Style, clip: VectorShape['clip'], context: Context): void {
-  const fill = fillable ? colorOf(style.fill, context) : undefined;
-  if (fill && fill[3] > 0) {
-    const alpha = fill[3] * style.fillOpacity * style.opacity;
+  // 渐变的 objectBoundingBox 是元素几何（不含描边）的外框，在元素自己的坐标里
+  const box = () => tightBounds(contours.flatMap((contour) => contour.curves));
+  const fill = fillable ? paintOf(style.fill, m, box, context) : undefined;
+  if (fill && fill.color[3] > 0) {
+    const alpha = fill.color[3] * style.fillOpacity * style.opacity;
     // 只围出一条线的（没写 fill 的描边路径默认填黑）面积是 0，不出形状
     const closed = contours.map((contour) => closeContour(contour.curves));
     const curves = closed.flatMap((contour) => transformCurves(contour, m));
-    if (alpha > 0 && curves.length > 0 && Math.abs(signedArea(curves)) > 1e-9) context.shapes.push({ color: [fill[0], fill[1], fill[2], alpha], evenOdd: style.fillRule === 'evenodd', clip, curves });
+    if (alpha > 0 && curves.length > 0 && Math.abs(signedArea(curves)) > 1e-9) {
+      context.shapes.push({ color: [fill.color[0], fill.color[1], fill.color[2], alpha], evenOdd: style.fillRule === 'evenodd', clip, curves, ...(fill.gradient ? { gradient: fill.gradient } : {}) });
+    }
   }
-  const stroke = colorOf(style.stroke, context);
-  if (stroke && stroke[3] > 0 && style.strokeWidth > 0) {
-    const alpha = stroke[3] * style.strokeOpacity * style.opacity;
+  const stroke = paintOf(style.stroke, m, box, context);
+  if (stroke && stroke.color[3] > 0 && style.strokeWidth > 0) {
+    const alpha = stroke.color[3] * style.strokeOpacity * style.opacity;
     // 描边在用户坐标里展开（线宽跟着变换一起缩放），再变换
     const curves = transformCurves(strokeOutline(contours, style.strokeWidth, style.cap), m);
-    if (alpha > 0 && curves.length > 0) context.shapes.push({ color: [stroke[0], stroke[1], stroke[2], alpha], evenOdd: false, clip, curves });
+    if (alpha > 0 && curves.length > 0) context.shapes.push({ color: [stroke.color[0], stroke.color[1], stroke.color[2], alpha], evenOdd: false, clip, curves, ...(stroke.gradient ? { gradient: stroke.gradient } : {}) });
   }
+}
+
+/** fill、stroke 的值：纯色，或者渐变（color 是色标的平均，a 是 1：不透明度在色标里）。 */
+function paintOf(value: string, m: Matrix, box: () => [number, number, number, number], context: Context): { color: readonly [number, number, number, number]; gradient?: VectorGradient } | undefined {
+  const id = /^url\(#([^)]+)\)$/.exec(value.trim())?.[1];
+  if (id === undefined) {
+    const color = colorOf(value);
+    return color ? { color } : undefined;
+  }
+  const element = context.gradients.get(id);
+  if (!element) {
+    context.approximations.add('paint url');
+    return undefined;
+  }
+  const gradient = gradientOf(element, m, box, context);
+  if (!gradient) return undefined;
+  const average = [1, 2, 3, 4].map((k) => gradient.stops.reduce((sum, stop) => sum + stop[k]!, 0) / gradient.stops.length);
+  return { color: [average[0]!, average[1]!, average[2]!, 1], gradient };
+}
+
+/** 渐变的属性和色标（href 指的渐变上的作为默认，自己写的盖掉；色标取链上第一个有色标的）。 */
+function gradientAttributes(element: Element, context: Context): { attributes: Record<string, string>; stops: readonly Element[] } {
+  const chain: Element[] = [];
+  for (let at: Element | undefined = element; at && !chain.includes(at); at = context.gradients.get((at.attributes['href'] ?? at.attributes['xlink:href'] ?? '').replace(/^#/, ''))) chain.push(at);
+  const attributes: Record<string, string> = {};
+  for (const link of [...chain].reverse()) Object.assign(attributes, link.attributes);
+  const stops = chain.map((link) => link.children.filter((child) => child.name === 'stop')).find((list) => list.length > 0) ?? [];
+  return { attributes, stops };
+}
+
+/** 渐变换成 VectorGradient：渐变空间 → 元素坐标（objectBoundingBox 时先按外框拉伸）→ 根坐标的逆，再接上线性、径向的参数化。 */
+function gradientOf(element: Element, m: Matrix, box: () => [number, number, number, number], context: Context): VectorGradient | undefined {
+  const { attributes: a, stops: stopElements } = gradientAttributes(element, context);
+  const radial = element.name === 'radialGradient';
+  const boxUnits = (a['gradientUnits'] ?? 'objectBoundingBox') === 'objectBoundingBox';
+  if ((a['spreadMethod'] ?? 'pad') !== 'pad') context.approximations.add('spreadMethod');
+  // 长度：objectBoundingBox 里的百分比是外框的比例；userSpaceOnUse 里的百分比要视口大小，不认
+  const length = (name: string, fallback: number) => {
+    const text = a[name];
+    if (text === undefined) return fallback;
+    if (text.trim().endsWith('%')) {
+      if (!boxUnits) context.approximations.add('gradient %');
+      return Number.parseFloat(text) / 100;
+    }
+    return number(text, fallback);
+  };
+  const stops = stopElements.map((stop) => {
+    const color = parseColor(stop.attributes['stop-color'] ?? '#000000') ?? [0, 0, 0, 1];
+    const offset = Math.min(1, Math.max(0, parseOffset(stop.attributes['offset'])));
+    return [offset, color[0], color[1], color[2], color[3] * number(stop.attributes['stop-opacity'], 1)] as const;
+  });
+  if (stops.length === 0) return undefined;
+  // 位置往后不能比前面的小（SVG 的规则）
+  for (let i = 1; i < stops.length; i++) if (stops[i]![0] < stops[i - 1]![0]) stops[i] = [stops[i - 1]![0], stops[i]![1], stops[i]![2], stops[i]![3], stops[i]![4]];
+  let space: Matrix = m;
+  if (boxUnits) {
+    const [x0, y0, x1, y1] = box();
+    space = multiply(space, [Math.max(x1 - x0, 1e-9), 0, 0, Math.max(y1 - y0, 1e-9), x0, y0]);
+  }
+  if (a['gradientTransform']) space = multiply(space, parseTransform(a['gradientTransform'], context.where));
+  const toGradient = invert(space);
+  if (!toGradient) return undefined;
+  let param: Matrix;
+  if (radial) {
+    const cx = length('cx', 0.5), cy = length('cy', 0.5), r = length('r', 0.5);
+    if (length('fx', cx) !== cx || length('fy', cy) !== cy) context.approximations.add('focal');
+    if (!(r > 0)) return undefined;
+    param = [1 / r, 0, 0, 1 / r, -cx / r, -cy / r];
+  } else {
+    const x1 = length('x1', 0), y1 = length('y1', 0), x2 = length('x2', 1), y2 = length('y2', 0);
+    const dx = x2 - x1, dy = y2 - y1, d2 = dx * dx + dy * dy;
+    if (!(d2 > 0)) return undefined;
+    // t = ((p - p1) · d) / |d|²；第二行用不到
+    param = [dx / d2, 0, dy / d2, 0, -(x1 * dx + y1 * dy) / d2, 0];
+  }
+  return { radial, matrix: multiply(param, toGradient), stops };
+}
+
+/** stop 的 offset：数或百分比。 */
+function parseOffset(text: string | undefined): number {
+  if (text === undefined) return 0;
+  return text.trim().endsWith('%') ? Number.parseFloat(text) / 100 : number(text, 0);
+}
+
+/** 二次曲线串的紧外框（曲线上的点，含极值，不算控制点）。 */
+function tightBounds(curves: readonly number[]): [number, number, number, number] {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  const take = (x: number, y: number) => {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x);
+    y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  };
+  for (let c = 0; c + 5 < curves.length; c += 6) {
+    const [ax, ay, bx, by, cx, cy] = [curves[c]!, curves[c + 1]!, curves[c + 2]!, curves[c + 3]!, curves[c + 4]!, curves[c + 5]!];
+    take(ax, ay);
+    take(cx, cy);
+    // 每个轴的极值在 t = (a - b) / (a - 2b + c)
+    for (const t of [(ax - bx) / (ax - 2 * bx + cx), (ay - by) / (ay - 2 * by + cy)]) {
+      if (!(t > 0 && t < 1)) continue;
+      const u = 1 - t;
+      take(u * u * ax + 2 * u * t * bx + t * t * cx, u * u * ay + 2 * u * t * by + t * t * cy);
+    }
+  }
+  return Number.isFinite(x0) ? [x0, y0, x1, y1] : [0, 0, 0, 0];
 }
 
 // ---- 轮廓：每个子路径是一串首尾相接的二次曲线 ----
@@ -373,51 +548,102 @@ function parsePath(d: string, where: string): Contour[] {
 
 // ---- 描边 ----
 
-/** 描边换成填充的轮廓：曲线拆成折线，每段一个矩形，拐点（和 round 的两头）补一个圆；square 的两头往外伸半个线宽。 */
+/**
+ * 描边换成填充的轮廓：每段二次曲线按转角细分（每片转不过 MAX_TURN），每片是一条带——两边是偏移半个线宽的二次曲线（端点沿法线
+ * 挪，控制点取两端切线的交点，Tiller–Hanson），两头用直线连上；原来各段相接的地方补一个圆（拐角是圆的），开口的线按 cap 补圆头
+ * 或方头。都转成同一个绕向，非零规则下并在一起。曲线的描边（圆、弧）也是圆的，不是折线。
+ */
 function strokeOutline(contours: readonly Contour[], width: number, cap: string): number[] {
   const half = width / 2, out: number[] = [];
-  // 每个小轮廓各自转成同一个绕向，非零规则下并在一起
   const add = (piece: readonly number[]) => out.push(...oriented(piece));
   const disc = (x: number, y: number) => add(ellipseContour(x, y, half, half).curves);
   for (const contour of contours) {
-    const points = flatten(contour.curves);
-    if (contour.closed && points.length > 2) points.push(points[0]!);
-    for (let i = 0; i + 1 < points.length; i++) {
-      let [x0, y0] = points[i]!, [x1, y1] = points[i + 1]!;
-      const length = Math.hypot(x1 - x0, y1 - y0);
-      if (length === 0) continue;
-      const ux = (x1 - x0) / length, uy = (y1 - y0) / length;
-      if (cap === 'square' && !contour.closed) {
-        if (i === 0) [x0, y0] = [x0 - ux * half, y0 - uy * half];
-        if (i === points.length - 2) [x1, y1] = [x1 + ux * half, y1 + uy * half];
+    const { curves } = contour;
+    if (curves.length === 0) continue;
+    for (let c = 0; c < curves.length; c += 6) {
+      for (const piece of strokePieces(quadAt(curves, c))) {
+        const band = offsetBand(piece, half);
+        if (band) add(band);
       }
-      const nx = -uy * half, ny = ux * half;
-      add(polygonContour([[x0 + nx, y0 + ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny], [x0 - nx, y0 - ny]], true).curves);
     }
-    const joints = contour.closed ? points.slice(0, -1) : points.slice(1, -1);
+    // 段和段相接的地方（闭合的连首尾）补圆，拐角是圆的
+    const joints: [number, number][] = [];
+    for (let c = 6; c < curves.length; c += 6) joints.push([curves[c]!, curves[c + 1]!]);
+    if (contour.closed) joints.push([curves[0]!, curves[1]!]);
     for (const [x, y] of joints) disc(x, y);
-    if (!contour.closed && cap === 'round' && points.length > 0) {
-      disc(...points[0]!);
-      disc(...points[points.length - 1]!);
+    if (contour.closed) continue;
+    const first = quadAt(curves, 0), last = quadAt(curves, curves.length - 6);
+    const [sx, sy] = [first[0], first[1]], [ex, ey] = [last[4], last[5]];
+    if (cap === 'round') {
+      disc(sx, sy);
+      disc(ex, ey);
+    } else if (cap === 'square') {
+      // 方头：两头顺着切线各伸出半个线宽
+      for (const [x, y, [tx, ty]] of [[sx, sy, tangent(first, 0, -1)], [ex, ey, tangent(last, 1, 1)]] as const) {
+        const nx = -ty * half, ny = tx * half;
+        add(polygonContour([[x + nx, y + ny], [x + tx * half + nx, y + ty * half + ny], [x + tx * half - nx, y + ty * half - ny], [x - nx, y - ny]], true).curves);
+      }
     }
   }
   return out;
 }
 
-/** 二次曲线串拆成折线的点（按弯的程度分段）。 */
-function flatten(curves: readonly number[]): [number, number][] {
-  const points: [number, number][] = [];
-  for (let c = 0; c < curves.length; c += 6) {
-    const [x0, y0, cx, cy, x1, y1] = curves.slice(c, c + 6) as [number, number, number, number, number, number];
-    if (c === 0) points.push([x0, y0]);
-    const bend = Math.hypot(x0 - 2 * cx + x1, y0 - 2 * cy + y1);
-    const pieces = bend < 1e-9 ? 1 : Math.min(16, Math.max(2, Math.ceil(Math.sqrt(bend))));
-    for (let i = 1; i <= pieces; i++) {
-      const t = i / pieces, u = 1 - t;
-      points.push([u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1]);
-    }
+type Quad = readonly [number, number, number, number, number, number];
+const quadAt = (curves: readonly number[], c: number): Quad => [curves[c]!, curves[c + 1]!, curves[c + 2]!, curves[c + 3]!, curves[c + 4]!, curves[c + 5]!];
+/** 描边时一片曲线最多转多少（弧度）：偏移曲线的控制点按两端切线的交点取，转得少才准。 */
+const MAX_TURN = Math.PI / 8;
+
+/** 一段二次曲线按转角拆成几片（de Casteljau 的子曲线）。 */
+function strokePieces(q: Quad): Quad[] {
+  const [x0, y0, cx, cy, x1, y1] = q;
+  const a = Math.atan2(cy - y0, cx - x0), b = Math.atan2(y1 - cy, x1 - cx);
+  const turn = Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)));
+  const count = Math.min(16, Math.max(1, Math.ceil(turn / MAX_TURN)));
+  if (count === 1) return [q];
+  const at = (t: number): [number, number] => {
+    const u = 1 - t;
+    return [u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1];
+  };
+  // 子曲线 [t0, t1] 的控制点：B(t0) + (t1 - t0) / 2 · B'(t0)
+  const derivative = (t: number): [number, number] => [2 * ((1 - t) * (cx - x0) + t * (x1 - cx)), 2 * ((1 - t) * (cy - y0) + t * (y1 - cy))];
+  const pieces: Quad[] = [];
+  for (let i = 0; i < count; i++) {
+    const t0 = i / count, t1 = (i + 1) / count;
+    const [px, py] = at(t0), [qx, qy] = at(t1), [dx, dy] = derivative(t0);
+    pieces.push([px, py, px + ((t1 - t0) / 2) * dx, py + ((t1 - t0) / 2) * dy, qx, qy]);
   }
-  return points;
+  return pieces;
+}
+
+/** 曲线在 t = 0 或 1 的单位切线（sign 是 -1 时反过来）；控制点和端点重合时用弦。 */
+function tangent(q: Quad, t: 0 | 1, sign: 1 | -1): [number, number] {
+  const [x0, y0, cx, cy, x1, y1] = q;
+  let [dx, dy] = t === 0 ? [cx - x0, cy - y0] : [x1 - cx, y1 - cy];
+  if (Math.hypot(dx, dy) < 1e-9) [dx, dy] = [x1 - x0, y1 - y0];
+  const length = Math.hypot(dx, dy) || 1;
+  return [(sign * dx) / length, (sign * dy) / length];
+}
+
+/** 一片曲线两边各偏移 half 围成的带（四条二次曲线）；长度是 0 时没有。 */
+function offsetBand(q: Quad, half: number): number[] | undefined {
+  const [x0, y0, , , x1, y1] = q;
+  if (Math.hypot(x1 - x0, y1 - y0) < 1e-9 && Math.hypot(q[2] - x0, q[3] - y0) < 1e-9) return undefined;
+  const [ax, ay] = tangent(q, 0, 1), [bx, by] = tangent(q, 1, 1);
+  const side = (h: number): Quad => {
+    const sx = x0 - ay * h, sy = y0 + ax * h, ex = x1 - by * h, ey = y1 + bx * h;
+    // 控制点：起点沿起点切线、终点沿终点切线的两条线的交点；几乎平行（直线）时取中点
+    const det = ax * by - ay * bx;
+    if (Math.abs(det) < 1e-6) return [sx, sy, (sx + ex) / 2, (sy + ey) / 2, ex, ey];
+    const s = ((ex - sx) * by - (ey - sy) * bx) / det;
+    return [sx, sy, sx + ax * s, sy + ay * s, ex, ey];
+  };
+  const [o0x, o0y, ocx, ocy, o1x, o1y] = side(half), [i0x, i0y, icx, icy, i1x, i1y] = side(-half);
+  return [
+    o0x, o0y, ocx, ocy, o1x, o1y,
+    o1x, o1y, (o1x + i1x) / 2, (o1y + i1y) / 2, i1x, i1y,
+    i1x, i1y, icx, icy, i0x, i0y,
+    i0x, i0y, (i0x + o0x) / 2, (i0y + o0y) / 2, o0x, o0y,
+  ];
 }
 
 /** 填充时没闭合的子路径照 SVG 的规矩从终点连回起点。 */
@@ -449,6 +675,13 @@ function oriented(piece: readonly number[]): readonly number[] {
 }
 
 // ---- 变换、样式、颜色 ----
+
+/** 2×3 仿射矩阵的逆；不可逆时 undefined。 */
+function invert([a, b, c, d, e, f]: Matrix): Matrix | undefined {
+  const det = a * d - b * c;
+  if (Math.abs(det) < 1e-12) return undefined;
+  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det];
+}
 
 function multiply(a: Matrix, b: Matrix): Matrix {
   return [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
@@ -516,11 +749,9 @@ function styleOf(a: Readonly<Record<string, string>>, inherited: Style): Style {
 
 const NAMED: Readonly<Record<string, string>> = { white: '#ffffff', black: '#000000', red: '#ff0000', green: '#008000', blue: '#0000ff', yellow: '#ffff00', gray: '#808080', grey: '#808080' };
 
-function colorOf(value: string, context: Context): readonly [number, number, number, number] | undefined {
+function colorOf(value: string): readonly [number, number, number, number] | undefined {
   const text = value.trim();
   if (text === 'none' || text === 'transparent') return undefined;
-  const url = /^url\(#([^)]+)\)$/.exec(text);
-  if (url) return context.gradients.get(url[1]!);
   return parseColor(NAMED[text] ?? text);
 }
 
@@ -540,14 +771,8 @@ function parseColor(text: string): [number, number, number, number] | undefined 
 }
 
 /** 渐变取色标的平均色（带不透明度）。 */
-function collectGradients(element: Element, out: Map<string, readonly [number, number, number, number]>): void {
-  if ((element.name === 'linearGradient' || element.name === 'radialGradient') && element.attributes['id']) {
-    const stops = element.children.filter((child) => child.name === 'stop').map((stop) => {
-      const color = parseColor(stop.attributes['stop-color'] ?? '#000000') ?? [0, 0, 0, 1];
-      return [color[0], color[1], color[2], color[3] * number(stop.attributes['stop-opacity'], 1)] as const;
-    });
-    if (stops.length > 0) out.set(element.attributes['id']!, [0, 1, 2, 3].map((k) => stops.reduce((sum, stop) => sum + stop[k]!, 0) / stops.length) as unknown as readonly [number, number, number, number]);
-  }
+function collectGradients(element: Element, out: Map<string, Element>): void {
+  if ((element.name === 'linearGradient' || element.name === 'radialGradient') && element.attributes['id']) out.set(element.attributes['id'], element);
   for (const child of element.children) collectGradients(child, out);
 }
 

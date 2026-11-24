@@ -193,6 +193,7 @@ export class MeshGpu {
   /** 视图绑定组里的贴花图集和缓冲；换了要重建绑定组。 */
   #decalAtlas: GPUTexture | undefined;
   #decalBuffer: GPUBuffer | undefined;
+  #decalVectors: GPUBuffer | undefined;
   readonly #unclippedDepth: boolean;
   /** 着色器按自发光分变体：默认的是 ''，颜色树的按它的代码。 */
   readonly #modules = new Map<string, GPUShaderModule>();
@@ -303,6 +304,7 @@ export class MeshGpu {
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         ...(planar.supported ? [26, 27, 28].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: {} })) : []),
         { binding: 29, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        { binding: 30, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -778,7 +780,7 @@ export class MeshGpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer || planar.generation !== this.#planarGeneration || this.#refraction.generation !== this.#refractionGeneration || volumes.generation !== this.#irradianceGeneration) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#decals.vectors !== this.#decalVectors || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer || planar.generation !== this.#planarGeneration || this.#refraction.generation !== this.#refractionGeneration || volumes.generation !== this.#irradianceGeneration) {
       this.#planarGeneration = planar.generation;
       this.#irradianceGeneration = volumes.generation;
       this.#refractionGeneration = this.#refraction.generation;
@@ -786,6 +788,7 @@ export class MeshGpu {
       this.#localLightBuffer = this.#localLights.buffer;
       this.#decalAtlas = this.#decals.atlas;
       this.#decalBuffer = this.#decals.buffer;
+      this.#decalVectors = this.#decals.vectors;
       this.#cloudShadow = cloud?.texture;
       this.#occlusionBound = occlusion;
       this.#occlusionDepth = occlusion ? this.#weather.skyOcclusion.depthBuffer : undefined;
@@ -835,6 +838,7 @@ export class MeshGpu {
           { binding: 19, resource: this.#resources.linearRepeat },
           ...this.#occlusionEntries(),
           { binding: 22, resource: { buffer: this.#decals.buffer } },
+          { binding: 30, resource: { buffer: this.#decals.vectors } },
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
           { binding: 24, resource: { buffer: this.#clusters.buffer } },
           { binding: 25, resource: { buffer: this.#localLights.ltc } },

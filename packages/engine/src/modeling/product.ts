@@ -777,8 +777,13 @@ export function textPath(font: TextFont, text: string, cx: number, cy: number, w
   }
   const size = Math.min(width / Math.max(maxX - minX, 1e-6), height / Math.max(maxY - minY, 1e-6));
   const ox = (minX + maxX) / 2, oy = (minY + maxY) / 2;
-  // 文字的 y 往上，SVG 的往下
-  const d = contours.map(({ points }) => `M${points.map(([x, y]) => `${svgNumber(cx + (x - ox) * size)} ${svgNumber(cy - (y - oy) * size)}`).join('L')}Z`).join('');
+  // 文字的 y 往上，SVG 的往下；写原本的二次曲线（不折线：近处按矢量画时字的圆角也是圆的）
+  const at = (x: number, y: number) => `${svgNumber(cx + (x - ox) * size)} ${svgNumber(cy - (y - oy) * size)}`;
+  const d = contours.map(({ curves }) => {
+    let path = `M${at(curves[0]!, curves[1]!)}`;
+    for (let i = 0; i < curves.length; i += 6) path += `Q${at(curves[i + 2]!, curves[i + 3]!)} ${at(curves[i + 4]!, curves[i + 5]!)}`;
+    return `${path}Z`;
+  }).join('');
   return `<path d="${d}" fill="${color}" fill-rule="evenodd"/>`;
 }
 

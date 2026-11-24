@@ -18,17 +18,18 @@ fn baseColor(in: Varyings) -> vec4f {
   if ((u32(material.flags.w) & 1u) != 0u) {
     let uv = in.uv * material.uvTransform.xy + material.uvTransform.zw;
     texel = textureSample(baseColorTexture, baseColorSampler, uv);
-    // 矢量贴图（vectorAtlas.ts）：一个屏幕像素不到 1.5 个图集像素（位图开始糊）时按曲线算颜色，到 0.75 以下全用它；远处照旧
-    // 用位图。导数在分支外面取（一致的控制流）
+    // 矢量贴图（vectorAtlas.ts）：一个屏幕像素不到 1.5 个位图像素（位图开始糊）时按曲线算颜色和透明度，到 0.75 以下全用它；
+    // 远处照旧用位图。矢量和位图画的是同一张 SVG（手写的贴图只有拆得出、不近似的才建矢量），透明度也换：叶子、地贴的边一样
+    // 清楚。导数在分支外面取（一致的控制流）
     if ((u32(material.flags.w) & 512u) != 0u) {
-      let texels = uv * vectorAtlasSize();
-      let perPixel = fwidth(texels);
-      let footprint = max(perPixel.x, perPixel.y);
-      let sharp = saturate((1.5 - footprint) / 0.75);
+      let footprint = fwidth(uv * vec2f(textureDimensions(baseColorTexture)));
+      let perPixel = fwidth(uv * vectorAtlasSize());
+      let sharp = saturate((1.5 - max(footprint.x, footprint.y)) / 0.75);
       if (sharp > 0.0) {
         let vector = vectorColor(uv, perPixel);
-        // 矢量是线性、预乘的；没盖满的地方透出位图
-        texel = vec4f(mix(texel.rgb, vector.rgb + texel.rgb * (1.0 - vector.a), sharp), texel.a);
+        // 矢量是线性、预乘的：换回不预乘的再和位图混
+        let straight = select(vec3f(0.0), vector.rgb / vector.a, vector.a > 1e-4);
+        texel = mix(texel, vec4f(straight, vector.a), sharp);
       }
     }
     if (material.flags.y >= 0.0) {

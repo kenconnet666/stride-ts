@@ -8,9 +8,13 @@
  */
 import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../content/formats/format.ts';
 
-/** 一个字的轮廓：多边形的点（米，文字的平面里，y 向上），是不是洞（被奇数个别的轮廓包着），属于第几个字。 */
+/**
+ * 一个字的轮廓：多边形的点（米，文字的平面里，y 向上），同一个轮廓原本的二次曲线（每条 6 个数：起点、控制点、终点，同样的坐标；
+ * 写 SVG 用，不折线，放多大都是圆的），是不是洞（被奇数个别的轮廓包着），属于第几个字。
+ */
 export interface TextContour {
   readonly points: readonly (readonly [number, number])[];
+  readonly curves: readonly number[];
   readonly hole: boolean;
   readonly glyph: number;
 }
@@ -54,12 +58,15 @@ export function textContours(font: TextFont, text: string, options: TextLayoutOp
     const baseline = height / 2 - file.ascent * em - row * lineHeight;
     for (const placed of line.glyphs) {
       const x0 = placed.x + shift - widest / 2;
-      const outlines = closedContours(placed.curves).map((contour) => flatten(contour, tolerance / em).map(([x, y]) => [x0 + x * em, baseline + y * em] as [number, number]));
-      const kept = outlines.filter((points) => points.length >= 3 && Math.abs(signedArea(points)) > 1e-12);
-      kept.forEach((points, i) => {
+      const outlines = closedContours(placed.curves).map((contour) => ({
+        points: flatten(contour, tolerance / em).map(([x, y]) => [x0 + x * em, baseline + y * em] as [number, number]),
+        curves: Array.from(contour, (value, k) => (k % 2 === 0 ? x0 + value * em : baseline + value * em)),
+      }));
+      const kept = outlines.filter(({ points }) => points.length >= 3 && Math.abs(signedArea(points)) > 1e-12);
+      kept.forEach(({ points, curves }, i) => {
         // 被奇数个别的轮廓包着的是洞（不管字体按哪种绕向存的：TrueType 外顺内逆，CFF 反过来）
-        const depth = kept.filter((other, j) => j !== i && contains(other, points[0]!)).length;
-        contours.push({ points, hole: depth % 2 === 1, glyph: glyphIndex });
+        const depth = kept.filter((other, j) => j !== i && contains(other.points, points[0]!)).length;
+        contours.push({ points, curves, hole: depth % 2 === 1, glyph: glyphIndex });
       });
       glyphIndex++;
     }

@@ -8,7 +8,9 @@
  *   sRGB 的）。每张贴图最长边缩到 MAX_TILE 以内，按行装箱，四周留 PADDING 像素重复边缘的颜色（mip 不串色）；装不下时
  *   图集翻倍，到 MAX_ATLAS 还装不下就加页（页数只受设备的数组层数上限限制）。贴图的集合变了才重建图集。
  * - 每个贴花 DECAL_FLOATS 个数：世界到盒子（-1..1）的矩阵、颜色和法线在图集里的位置、颜色乘数和不透明度、几种淡出、
- *   盒子的三个轴（世界里，法线贴图的切线空间）。个数不设上限，缓冲按 2 的幂变大；内容没变时不重传。
+ *   盒子的三个轴（世界里，法线贴图的切线空间）、颜色贴图的矢量版在矢量缓冲里的起点（加 1，0 是没有）。
+ * - 颜色贴图有矢量版的（SVG 的地贴，Texture.vectorAtlas）：用到的矢量版拼成一个存储缓冲（vectors），近处按曲线画，走多近都清楚
+ *   （meshShader 的 applyDecals，同材质的矢量贴图）。个数不设上限，缓冲按 2 的幂变大；内容没变时不重传。
  * - 分簇（lighting/Clusters.ts）：每个要着色的视图里像素只看所在那一簇的贴花。
  * - 没做：只投到某些渲染组上（Godot 的 cull mask）、粗糙度和金属度的
  *   贴图、自发光、按距离淡出。
@@ -57,6 +59,8 @@ export interface DecalInstance {
   /** 颜色、法线贴图在图集数组的第几层（没有贴图时不用，0）。 */
   readonly albedoLayer?: number | undefined;
   readonly normalLayer?: number | undefined;
+  /** 颜色贴图的矢量版在矢量缓冲里的起点加 1（0 是没有）。 */
+  readonly vector?: number | undefined;
   readonly color: readonly [number, number, number];
   readonly opacity: number;
   readonly albedoMix: number;
@@ -122,7 +126,9 @@ export function packDecal(decal: DecalInstance, out: Float32Array, offset: numbe
   // 颜色、法线在图集数组的第几层
   out[offset + 44] = decal.albedoLayer ?? 0;
   out[offset + 45] = decal.normalLayer ?? 0;
-  out.fill(0, offset + 46, offset + DECAL_FLOATS);
+  // 矢量版的起点（字数，按 f32 存：2^24 个字以内是准的）
+  out[offset + 46] = decal.vector ?? 0;
+  out.fill(0, offset + 47, offset + DECAL_FLOATS);
 }
 
 /** 把一张贴图画进图集的一块（颜色层编码成 sRGB）、按上一级生成 mip。 */
@@ -154,6 +160,7 @@ interface FoundDecal extends DecalInstance {
   normal: AtlasRect | undefined;
   albedoLayer: number;
   normalLayer: number;
+  vector: number;
   opacity: number;
   albedoMix: number;
   normalFade: number;
@@ -164,7 +171,7 @@ interface FoundDecal extends DecalInstance {
 }
 
 function createFoundDecal(): FoundDecal {
-  return { world: new Float32Array(16), size: [0, 0, 0], color: [0, 0, 0], albedoId: 0, normalId: 0, albedo: undefined, normal: undefined, albedoLayer: 0, normalLayer: 0, opacity: 0, albedoMix: 0, normalFade: 0, upperFade: 0, lowerFade: 0, dirty: true };
+  return { world: new Float32Array(16), size: [0, 0, 0], color: [0, 0, 0], albedoId: 0, normalId: 0, albedo: undefined, normal: undefined, albedoLayer: 0, normalLayer: 0, vector: 0, opacity: 0, albedoMix: 0, normalFade: 0, upperFade: 0, lowerFade: 0, dirty: true };
 }
 
 interface Entry {
@@ -185,6 +192,13 @@ export class Decals {
   #packedCount = 0;
   #buffer: GPUBuffer | undefined;
   #atlas: GPUTexture | undefined;
+  /** 颜色贴图的矢量版拼成的缓冲（u32），贴图 id → 起点加 1；图集重建时跟着重建。 */
+  #vectors: GPUBuffer | undefined;
+  #vectorStarts = new Map<number, number>();
+  #emptyVectors: GPUBuffer | undefined;
+  #vectorsOn = true;
+  /** 开关变了：所有贴花重新打包（起点写 0 或真的起点）。 */
+  #repack = false;
   /** 还没有贴花时绑的：1x1x1 的空图集、一个贴花大小的空缓冲。 */
   #emptyAtlas: GPUTexture | undefined;
   #emptyBuffer: GPUBuffer | undefined;
@@ -246,6 +260,22 @@ export class Decals {
     return this.#buffer ?? (this.#emptyBuffer ??= this.#device.createBuffer({ label: 'Decals empty', size: DECAL_FLOATS * 4, usage: GPUBufferUsage.STORAGE }));
   }
 
+  /** 近处用不用颜色贴图的矢量版（和材质的矢量贴图一起开关，调试命令 vector：比清楚和开销）。 */
+  get vectorsOn(): boolean {
+    return this.#vectorsOn;
+  }
+
+  set vectorsOn(on: boolean) {
+    if (on === this.#vectorsOn) return;
+    this.#vectorsOn = on;
+    this.#repack = true;
+  }
+
+  /** 颜色贴图的矢量版拼成的缓冲（没有时是一个空的小缓冲）；图集重建时换，用它的绑定组要重建（看 vectors 变没变）。 */
+  get vectors(): GPUBuffer {
+    return this.#vectors ?? (this.#emptyVectors ??= this.#device.createBuffer({ label: 'Decals empty vectors', size: 64, usage: GPUBufferUsage.STORAGE }));
+  }
+
   /** 图集（2D 贴图数组，颜色的各页在前、法线的接在后面）；还没有贴花时是 1x1 的空图集。换了网格特性要重建绑定组。 */
   get atlas(): GPUTexture {
     return this.#atlas ?? (this.#emptyAtlas ??= this.#device.createTexture({ label: 'Decals empty atlas', size: [1, 1, 1], format: FORMAT, usage: GPUTextureUsage.TEXTURE_BINDING }));
@@ -274,7 +304,8 @@ export class Decals {
     }
     // 图集重建了：贴图的位置都可能变了，全部重新打包
     const atlasChanged = this.#ensureAtlas(entries);
-    let all = atlasChanged || count !== this.#packedCount;
+    let all = atlasChanged || count !== this.#packedCount || this.#repack;
+    this.#repack = false;
     if (count * DECAL_FLOATS > this.#data.length) {
       const capacity = 2 ** Math.ceil(Math.log2(count));
       this.#data = new Float32Array(capacity * DECAL_FLOATS);
@@ -294,6 +325,7 @@ export class Decals {
       decal.normal = normal?.rect;
       decal.albedoLayer = albedo?.layer ?? 0;
       decal.normalLayer = normal?.layer ?? 0;
+      decal.vector = this.#vectorsOn ? (this.#vectorStarts.get(decal.albedoId) ?? 0) : 0;
       packDecal(decal, this.#data, i * DECAL_FLOATS);
       writeDecalBounds(decal.world, decal.size, this.bounds, i * 4);
       first = Math.min(first, i);
@@ -306,7 +338,7 @@ export class Decals {
   }
 
   destroy(): void {
-    for (const resource of [this.#buffer, this.#atlas, this.#emptyAtlas, this.#emptyBuffer]) resource?.destroy();
+    for (const resource of [this.#buffer, this.#atlas, this.#emptyAtlas, this.#emptyBuffer, this.#vectors, this.#emptyVectors]) resource?.destroy();
   }
 
   /** 图集里放着这些贴图；集合变了才重建（重新装箱、画进去、生成 mip），返回重建了没有。 */
@@ -315,6 +347,7 @@ export class Decals {
     if (key === this.#atlasKey && (this.#atlas || entries.length === 0)) return false;
     this.#atlasKey = key;
     this.#places.clear();
+    this.#buildVectors(entries);
     if (entries.length === 0) return true;
     const sizes = entries.map((e) => tileSize(e.texture.data.width, e.texture.data.height));
     // 两层各自装箱；一页装得下时取装得下的最小边长，到 MAX_ATLAS 还装不下就分页
@@ -345,6 +378,31 @@ export class Decals {
     }
     this.#draw(entries, placed.map((at, i) => (at && layerOf(i) < layers ? { at, layer: layerOf(i) } : undefined)), size, layers);
     return true;
+  }
+
+  /** 颜色贴图的矢量版拼成一个缓冲，记下每张的起点（加 1）；都没有时不建。 */
+  #buildVectors(entries: readonly Entry[]): void {
+    this.#vectorStarts.clear();
+    this.#vectors?.destroy();
+    this.#vectors = undefined;
+    const parts: Uint32Array[] = [];
+    let length = 0;
+    for (const entry of entries) {
+      const vector = entry.layer === 0 ? entry.texture.vectorAtlas : undefined;
+      if (!vector) continue;
+      this.#vectorStarts.set(entry.texture.id, length + 1);
+      parts.push(vector);
+      length += vector.length;
+    }
+    if (length === 0) return;
+    const data = new Uint32Array(length);
+    let at = 0;
+    for (const part of parts) {
+      data.set(part, at);
+      at += part.length;
+    }
+    this.#vectors = this.#device.createBuffer({ label: 'Decals vectors', size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    this.#device.queue.writeBuffer(this.#vectors, 0, data);
   }
 
   /** 每张贴图画进它那一层的那块（连同留边：边缘的颜色往外延），再逐级生成 mip。 */

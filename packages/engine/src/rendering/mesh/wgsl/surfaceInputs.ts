@@ -79,8 +79,22 @@ fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface, cluster: i32) -> Decaled
     var albedo = d.color.rgb;
     if (d.albedo.z > 0.0) {
       let texel = textureSampleGrad(decalAtlas, linearClamp, d.albedo.xy + uv * d.albedo.zw, i32(d.pad.x), duvx * d.albedo.zw, duvy * d.albedo.zw);
-      albedo *= decodeSrgb(texel.rgb);
-      alpha *= texel.a;
+      var color = vec4f(decodeSrgb(texel.rgb), texel.a);
+      // 颜色贴图有矢量版（SVG 的地贴，pad.z 是起点加 1）：一个屏幕像素不到 1.5 个图集像素（位图开始糊）时按曲线算，同材质的矢量贴图
+      if (d.pad.z > 0.0) {
+        let span = max(abs(duvx), abs(duvy));
+        let footprint = span * d.albedo.zw * vec2f(textureDimensions(decalAtlas).xy);
+        let sharp = saturate((1.5 - max(footprint.x, footprint.y)) / 0.75);
+        if (sharp > 0.0) {
+          decalVectorBase = u32(d.pad.z) - 1u;
+          let perUnit = span * decalVectorAtlasSize();
+          let vector = decalVectorColor(uv, vec2f(max(perUnit.x, perUnit.y)));
+          let straight = select(vec3f(0.0), vector.rgb / vector.a, vector.a > 1e-4);
+          color = mix(color, vec4f(straight, vector.a), sharp);
+        }
+      }
+      albedo *= color.rgb;
+      alpha *= color.a;
     }
     r.surface.albedo = mix(r.surface.albedo, albedo, alpha * d.fade.x);
     if (d.normal.z > 0.0) {

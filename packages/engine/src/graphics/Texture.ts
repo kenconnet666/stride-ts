@@ -37,12 +37,29 @@ export class Texture {
   readonly id: TextureId;
   readonly name: string;
   readonly data: TextureData;
+  readonly #vector: (() => Uint32Array | undefined) | undefined;
+  #vectorBuilt = false;
+  #vectorAtlas: Uint32Array | undefined;
 
-  constructor(name: string, data: TextureData) {
+  /** vector：这张贴图的矢量版（SVG 贴图才有，rendering/mesh/vectorAtlas.ts），第一次用到时才建。 */
+  constructor(name: string, data: TextureData, { vector }: { readonly vector?: () => Uint32Array | undefined } = {}) {
     if (data.levels.length === 0 && !data.renderTarget && !data.video && !data.generate) throw new RangeError(`texture '${name}' has no mip levels`);
     this.name = name;
     this.data = data;
+    this.#vector = vector;
     this.id = textures.add(this) as TextureId;
+  }
+
+  /**
+   * 矢量版（近处按曲线画，走多近都清楚）：SVG 贴图里拆得出、不近似的才有；第一次读时建、之后缓存。材质、贴花在近处用它代替
+   * 位图。
+   */
+  get vectorAtlas(): Uint32Array | undefined {
+    if (!this.#vectorBuilt) {
+      this.#vectorBuilt = true;
+      this.#vectorAtlas = this.#vector?.();
+    }
+    return this.#vectorAtlas;
   }
 
   /** 渲染目标贴图（Stride 的 RenderTexture）：一级，可以画进去，也可以采样。 */

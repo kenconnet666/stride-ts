@@ -24,19 +24,27 @@ fn slugRootCode(y1: f32, y2: f32, y3: f32) -> u32 {
   return (0x2E74u >> shift) & 0x0101u;
 }
 
+// a t² - 2b t + c = 0 的两个根 (b - d) / a、(b + d) / a（d 是判别式的根）。直线的 a 理论上是 0，坐标大（图集像素）时舍入成很小的
+// 非零数，直接按这个式子算两数相减就丢光精度：每个根各取不相消的写法（(b - d) / a = c / (b + d)，(b + d) / a = c / (b - d)，
+// 按 b 的符号挑），a 小到当直线时另一个根取一次方程的根
+fn slugRoots(a: f32, b: f32, c: f32, d: f32) -> vec2f {
+  let linear = c * 0.5 / b;
+  let curved = abs(a) >= 1.0 / 65536.0;
+  if (b >= 0.0) {
+    let t1 = select(linear, c / (b + d), b + d != 0.0);
+    return vec2f(t1, select(linear, (b + d) / a, curved));
+  }
+  let t2 = c / (b - d);
+  return vec2f(select(linear, (b - d) / a, curved), t2);
+}
+
 // 曲线 C(t) = (1-t)^2 p1 + 2t(1-t) p2 + t^2 p3 穿过 y = 0 的两个 x（判别式小于 0 时取极小值处的重根）
 fn slugSolveHorizontal(p12: vec4f, p3: vec2f) -> vec2f {
   let a = p12.xy - p12.zw * 2.0 + p3;
   let b = p12.xy - p12.zw;
   let d = sqrt(max(b.y * b.y - a.y * p12.y, 0.0));
-  var t1 = p12.y * 0.5 / b.y;
-  var t2 = t1;
-  // 接近直线时解一次方程 -2b t + c = 0
-  if (abs(a.y) >= 1.0 / 65536.0) {
-    t1 = (b.y - d) / a.y;
-    t2 = (b.y + d) / a.y;
-  }
-  return vec2f((a.x * t1 - b.x * 2.0) * t1 + p12.x, (a.x * t2 - b.x * 2.0) * t2 + p12.x);
+  let t = slugRoots(a.y, b.y, p12.y, d);
+  return vec2f((a.x * t.x - b.x * 2.0) * t.x + p12.x, (a.x * t.y - b.x * 2.0) * t.y + p12.x);
 }
 
 // 穿过 x = 0 的两个 y
@@ -44,13 +52,8 @@ fn slugSolveVertical(p12: vec4f, p3: vec2f) -> vec2f {
   let a = p12.xy - p12.zw * 2.0 + p3;
   let b = p12.xy - p12.zw;
   let d = sqrt(max(b.x * b.x - a.x * p12.x, 0.0));
-  var t1 = p12.x * 0.5 / b.x;
-  var t2 = t1;
-  if (abs(a.x) >= 1.0 / 65536.0) {
-    t1 = (b.x - d) / a.x;
-    t2 = (b.x + d) / a.x;
-  }
-  return vec2f((a.y * t1 - b.y * 2.0) * t1 + p12.y, (a.y * t2 - b.y * 2.0) * t2 + p12.y);
+  let t = slugRoots(a.x, b.x, p12.x, d);
+  return vec2f((a.y * t.x - b.y * 2.0) * t.x + p12.y, (a.y * t.y - b.y * 2.0) * t.y + p12.y);
 }
 `;
 

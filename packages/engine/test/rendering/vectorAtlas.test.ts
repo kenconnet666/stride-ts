@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { svgShapes } from '../../src/modeling/svgShapes';
+import { exactWinding, shapeCoverage } from './vectorRaster';
 import { buildVectorAtlas, readVectorAtlas, VECTOR_MAGIC, VECTOR_SHAPE_WORDS } from '../../src/rendering/mesh/vectorAtlas';
 
 /** 照着色器读数据：形状 s 的横带里、过点 (x, y) 的那条带的曲线，向 +X 数带符号的穿越次数。 */
@@ -63,5 +64,28 @@ describe('矢量贴图的数据', () => {
     expect(cell(1, 1)).toEqual([1, 0]);
     expect(cell(3, 3)).toEqual([2, 0]);
     expect(cell(0, 3)).toEqual([0]);
+  });
+
+  test('照着色器的画法逐像素算（CPU 版）和精确的绕数一致：大坐标里的斜描边、转过角的细长擦除形状（直线的根不相消）', () => {
+    // 坐标到几百上千（图集像素、毫米）：直线的二次项舍入成很小的非零数，以前求根相消，画出细横线和竖条纹
+    const svg = '<svg viewBox="0 0 600 1000"><mask id="m"><rect width="600" height="1000" fill="#fff"/><g fill="#000">'
+      + '<rect x="373.6" y="646.7" width="156.9" height="4.4" transform="rotate(-17.3 452.1 646.7)"/><rect x="245.1" y="163.5" width="126.2" height="3.9" transform="rotate(-15.5 308.2 163.5)"/></g></mask>'
+      + '<g mask="url(#m)"><path d="M300 12L588 420H420V988H180V420H12Z" fill="#2e9e44" stroke="#fff" stroke-width="24" stroke-linejoin="round"/></g></svg>';
+    const image = svgShapes(svg);
+    const atlas = buildVectorAtlas(image);
+    const ppu = 1;
+    image.shapes.forEach((shape, s) => {
+      let wrong = 0;
+      for (let y = 0.5; y < 1000; y += 3) {
+        for (let x = 0.5; x < 600; x += 3) {
+          // 只看离边远于一个像素的点（边上是抗锯齿）
+          const inside = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => exactWinding(shape.curves, x + dx!, y + dy!) !== 0);
+          if (inside.some((v) => v !== inside[0])) continue;
+          const coverage = shapeCoverage(atlas, s, x, y, ppu);
+          if (inside[0] ? coverage < 0.5 : coverage > 0.5) wrong++;
+        }
+      }
+      expect(wrong, `shape ${s}`).toBe(0);
+    });
   });
 });

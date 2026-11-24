@@ -19,7 +19,8 @@ import { Model, ModelPart, Skinned } from '../rendering/components';
 import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
 import { Morphed } from '../animation/morphs';
 import { Material, type MaterialShaderLayer, type MaterialShaderTrees } from '../rendering/mesh/Material';
-import { readVectorAtlas } from '../rendering/mesh/vectorAtlas';
+import { buildVectorAtlas, readVectorAtlas } from '../rendering/mesh/vectorAtlas';
+import { svgShapes } from '../modeling/svgShapes';
 import { preload, textureRefs } from './loading';
 import { expandPrefabInstances, loadPrefabs } from './prefabInstances';
 import { Prefab, type PrefabShape } from './Prefab';
@@ -431,6 +432,8 @@ export class ContentManager {
         file.glossinessTexture && slot(file.glossinessTexture, false),
         file.vector && this.#once(`${file.vector}.vector`, async (vectorUrl) => readVectorAtlas(new Uint8Array(await this.#read(vectorUrl)), vectorUrl.href)),
       ]);
+      // 合并的批次有烘好的矢量版（几千个形状，不在加载时拆）；别的 SVG 贴图用贴图自己的
+      const vector = vectorAtlas || baseColorTexture?.texture.vectorAtlas;
       return new Material(file.name, {
         baseColor: file.baseColor,
         ...(baseColorTexture ? { baseColorTexture } : {}),
@@ -447,7 +450,7 @@ export class ContentManager {
         ...(file.sheen ? { sheen: file.sheen } : {}),
         ...(file.wind ? { wind: file.wind } : {}),
         ...(file.interior ? { interior: file.interior } : {}),
-        ...(vectorAtlas ? { vectorAtlas } : {}),
+        ...(vector ? { vectorAtlas: vector } : {}),
         ...(file.anisotropy ? { anisotropy: file.anisotropy } : {}),
         ...(file.iridescence ? { iridescence: file.iridescence } : {}),
         ...(file.diffuseTransmission ? { diffuseTransmission: file.diffuseTransmission } : {}),
@@ -671,7 +674,8 @@ export class ContentManager {
         return new Texture(path, await this.textureDecoder(bytes));
       }
       if (!this.imageDecoder) throw new Error(`loading ${url.href}: no imageDecoder (Game sets one when it starts)`);
-      return new Texture(path, await this.imageDecoder(bytes, { encoding, srgb, ...(size ? { size } : {}) }));
+      const data = await this.imageDecoder(bytes, { encoding, srgb, ...(size ? { size } : {}) });
+      return new Texture(path, data, encoding === 'svg' ? { vector: () => svgVector(bytes, url.href) } : {});
     });
   }
 
@@ -1085,4 +1089,13 @@ function graphShaderLayer(outputs: ReadonlySet<MaterialGraphOutput>): MaterialSh
     ...(outputs.has('normal') ? { normal: { scaleAndBias: false, isXYNormal: false } } : {}),
     ...(outputs.has('occlusion') ? { occlusion: { directLighting: 1 } } : {}),
   };
+}
+
+/**
+ * SVG 贴图的矢量版（近处按曲线画，rendering/mesh/vectorAtlas.ts）：从同一张 SVG 建；拆的时候要近似的（filter、不认的元素这些，
+ * svgShapes 的 approximations）不建，照旧只用位图。
+ */
+function svgVector(bytes: Uint8Array, where: string): Uint32Array | undefined {
+  const image = svgShapes(new TextDecoder().decode(bytes), where);
+  return image.approximations.length === 0 && image.shapes.length > 0 ? buildVectorAtlas(image) : undefined;
 }

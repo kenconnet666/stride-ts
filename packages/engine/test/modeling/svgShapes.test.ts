@@ -58,13 +58,20 @@ describe('SVG 拆成填充形状', () => {
     const { shapes } = svgShapes('<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="30" fill="none" stroke="#000" stroke-width="4"/><path d="M10 90L90 90" stroke="#000" stroke-width="6" stroke-linecap="round"/></svg>');
     expect(shapes.length).toBe(2);
     const [ring, line] = shapes as [VectorShape, VectorShape];
-    expect(covers(ring, 50, 50)).toBe(false);
-    expect(covers(ring, 80, 50)).toBe(true);
+    // 测点避开轮廓的端点所在的水平线（数穿越次数的射线正好过端点时会重复计数）
+    expect(covers(ring, 50, 50.3)).toBe(false);
+    expect(covers(ring, 80, 50.3)).toBe(true);
     expect(covers(ring, 50, 21)).toBe(true);
     expect(covers(ring, 50, 15)).toBe(false);
     expect(covers(line, 50, 90)).toBe(true);
     expect(covers(line, 8, 90)).toBe(true);
     expect(covers(line, 5, 90)).toBe(false);
+    // 曲线的描边贴着圆：外缘离圆心 32、内缘 28，斜 30° 方向上也是（不是折线）
+    const at = (r: number) => [50 + r * Math.cos(Math.PI / 6), 50 + r * Math.sin(Math.PI / 6)] as const;
+    expect(covers(ring, ...at(31.8))).toBe(true);
+    expect(covers(ring, ...at(32.2))).toBe(false);
+    expect(covers(ring, ...at(28.2))).toBe(true);
+    expect(covers(ring, ...at(27.8))).toBe(false);
   });
 
   test('路径：相对命令、三次曲线、弧；evenodd 的洞', () => {
@@ -90,9 +97,55 @@ describe('SVG 拆成填充形状', () => {
     expect(covers(turned, 5, 45)).toBe(false);
   });
 
-  test('渐变取色标的平均色', () => {
-    const { shapes } = svgShapes('<svg viewBox="0 0 10 10"><defs><linearGradient id="g"><stop offset="0" stop-color="#000000"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>');
-    expect(shapes[0]!.color.map((v) => Math.round(v * 100) / 100)).toEqual([0.5, 0.5, 0.5, 0.5]);
+  test('渐变：线性的按外框（objectBoundingBox）、径向的圆心和半径、gradientTransform；参数在图集坐标里算', () => {
+    const svg = '<svg viewBox="0 0 100 100"><defs><linearGradient id="g"><stop offset="0" stop-color="#000000"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>'
+      + '<radialGradient id="r" href="#g" cx="50%" cy="50%" r="50%"/><linearGradient id="v" x1="0" y1="1" x2="0" y2="0" gradientTransform="scale(1 0.5)"><stop offset="0" stop-color="#f00"/><stop offset="1" stop-color="#00f"/></linearGradient></defs>'
+      + '<rect x="10" y="20" width="40" height="10" fill="url(#g)"/><ellipse cx="70" cy="70" rx="20" ry="10" fill="url(#r)"/><rect x="0" y="80" width="10" height="20" fill="url(#v)"/></svg>';
+    const { shapes, approximations } = svgShapes(svg);
+    expect(approximations).toEqual([]);
+    const param = (shape: VectorShape, x: number, y: number) => {
+      const [a, b, c, d, e, f] = shape.gradient!.matrix;
+      const u = [a * x + c * y + e, b * x + d * y + f] as const;
+      return shape.gradient!.radial ? Math.hypot(u[0], u[1]) : u[0];
+    };
+    const [linear, radial, vertical] = shapes as [VectorShape, VectorShape, VectorShape];
+    // 线性：外框从 x = 10 到 50
+    expect(param(linear, 10, 25)).toBeCloseTo(0);
+    expect(param(linear, 30, 22)).toBeCloseTo(0.5);
+    expect(param(linear, 50, 28)).toBeCloseTo(1);
+    expect(linear.gradient!.stops).toEqual([[0, 0, 0, 0, 1], [1, 1, 1, 1, 0]]);
+    // 径向：色标从 href 继承，外框（紧的，不算控制点）是 50..90 × 60..80，圆心 0、边上 1
+    expect(radial.gradient!.radial).toBe(true);
+    expect(param(radial, 70, 70)).toBeCloseTo(0);
+    expect(param(radial, 90, 70)).toBeCloseTo(1, 2);
+    expect(param(radial, 70, 80)).toBeCloseTo(1, 2);
+    // gradientTransform 把渐变空间压成一半高：外框 80..100 里 (0, 1) 在 y = 90、(0, 0) 在 y = 80，往上从 0 到 1
+    expect(param(vertical, 5, 90)).toBeCloseTo(0);
+    expect(param(vertical, 5, 85)).toBeCloseTo(0.5);
+    expect(param(vertical, 5, 80)).toBeCloseTo(1);
+  });
+
+  test('pad 以外的延伸、焦点不在圆心的径向渐变记成近似', () => {
+    expect(svgShapes('<svg viewBox="0 0 10 10"><linearGradient id="g" spreadMethod="repeat"><stop offset="0" stop-color="#000"/></linearGradient><rect width="10" height="10" fill="url(#g)"/></svg>').approximations).toEqual(['spreadMethod']);
+    expect(svgShapes('<svg viewBox="0 0 10 10"><radialGradient id="g" fx="0.2"><stop offset="0" stop-color="#000"/></radialGradient><rect width="10" height="10" fill="url(#g)"/></svg>').approximations).toEqual(['focal']);
+  });
+
+  test('近似的记下来：filter、不认的元素、viewBox 不从原点起；只有认得的形状时是空的', () => {
+    expect(svgShapes('<svg viewBox="0 0 10 10"><title>t</title><rect width="4" height="4" fill="#f00"/><line x1="0" y1="0" x2="9" y2="9" stroke="#000"/></svg>').approximations).toEqual([]);
+    expect(svgShapes('<svg viewBox="0 0 10 10"><rect width="4" height="4" fill="#f00" filter="url(#b)"/><text>x</text></svg>').approximations).toEqual(['filter=', '<text>']);
+    expect(svgShapes('<svg viewBox="5 5 10 10"><rect width="4" height="4"/></svg>').approximations).toEqual(['viewBox origin']);
+  });
+
+  test('白底上画深色的遮罩：深色形状换成擦除形状，叠在被遮的形状上面；别的遮罩记成近似', () => {
+    const svg = '<svg viewBox="0 0 10 10"><mask id="m"><rect width="10" height="10" fill="#fff"/><rect x="2" y="2" width="2" height="2" fill="#000"/><circle cx="7" cy="7" r="1" fill="#808080" opacity="0.5"/></mask><g mask="url(#m)"><rect width="10" height="10" fill="#0f0"/></g></svg>';
+    const { shapes, approximations } = svgShapes(svg);
+    expect(approximations).toEqual([]);
+    expect(shapes.map((shape) => shape.erase ?? false)).toEqual([false, true, true]);
+    expect(shapes[1]!.color[3]).toBe(1);
+    // 50% 灰、半透明：擦掉 (1 - 亮度) × 0.5
+    expect(shapes[2]!.color[3]).toBeGreaterThan(0.2);
+    expect(shapes[2]!.color[3]).toBeLessThan(0.35);
+    expect(svgShapes('<svg viewBox="0 0 10 10"><mask id="m"><circle cx="5" cy="5" r="3" fill="#fff"/></mask><rect width="10" height="10" mask="url(#m)"/></svg>').approximations).toEqual(['mask=']);
   });
 
   test('真的货架图集整张能拆开：每个形状都有曲线，几百上千个形状', () => {

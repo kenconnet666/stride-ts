@@ -302,7 +302,8 @@ export class MeshGpu {
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        ...(planar.supported ? [26, 27].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: {} })) : []),
+        ...(planar.supported ? [26, 27, 28].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: {} })) : []),
+        ...(planar.supported ? [{ binding: 31, visibility: GPUShaderStage.FRAGMENT, sampler: {} }] : []),
         { binding: 29, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 30, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
@@ -802,12 +803,14 @@ export class MeshGpu {
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
    * contact 是接触阴影，没有时都用白图；screen 是第 26 个绑定（平面反射图或者折射拷的画面），没有时用 1x1 的空图。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture, moments?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.openOcclusion;
     const shadow = contact ?? this.#resources.white;
     const reflection = screen ?? this.#planar.empty;
-    const key = [atlas, ao, shadow, reflection].map((texture) => this.#textureId(texture)).join(',');
+    // 局部光阴影的矩图（ShadowMoments）；没有时绑白图，着色器只在有局部光的阴影时读
+    const shadowMoments = moments ?? this.#resources.white;
+    const key = [atlas, ao, shadow, reflection, shadowMoments].map((texture) => this.#textureId(texture)).join(',');
     let group = this.#viewBindGroups.get(key);
     if (!group) {
       group = this.device.createBindGroup({
@@ -843,6 +846,8 @@ export class MeshGpu {
           ...(this.#planar.supported ? [
             { binding: 26, resource: reflection.createView() },
             { binding: 27, resource: this.#weather.irradianceVolumes.atlas.createView() },
+            { binding: 28, resource: shadowMoments.createView() },
+            { binding: 31, resource: this.#resources.anisotropicClamp },
           ] : []),
           { binding: 29, resource: { buffer: this.#instanceParams ??= this.#createStorage('MeshRenderFeature instance params', 16) } },
         ],

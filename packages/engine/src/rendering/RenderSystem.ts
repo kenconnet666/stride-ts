@@ -488,6 +488,8 @@ export interface Lighting {
   shadow: ShadowReceiver | undefined;
   /** 这一帧的阴影图集（方向光、点光、聚光共用一张）；没有任何阴影时是 undefined。 */
   shadowAtlas: GPUTexture | undefined;
+  /** 局部光阴影的矩图（lighting/ShadowMoments.ts，面光源的宽半影用）；没有局部光的阴影时是 undefined。 */
+  shadowMoments: GPUTexture | undefined;
   /** 环境光：线性空间的颜色乘强度。 */
   readonly ambient: Color4;
   /** 没有天空盒光时是 undefined。 */
@@ -515,6 +517,7 @@ export class RenderSystem {
     directionalShadow: undefined,
     shadow: undefined,
     shadowAtlas: undefined,
+    shadowMoments: undefined,
     ambient: new Color4(),
     skybox: undefined,
     locals: [],
@@ -530,6 +533,7 @@ export class RenderSystem {
     directionalShadow: undefined,
     shadow: undefined,
     shadowAtlas: undefined,
+    shadowMoments: undefined,
     ambient: new Color4(0.15, 0.15, 0.18, 1),
     skybox: undefined,
     locals: [],

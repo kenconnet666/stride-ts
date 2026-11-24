@@ -23,6 +23,7 @@ import { boxTouchesSphere, type ShadowCasters } from '../mesh/ShadowCasters';
 import { DirectionalShadowCascades } from './DirectionalShadowCascades';
 import { ShadowAtlasAllocator, type PackedRectangle } from './ShadowAtlasAllocator';
 import { ShadowAtlasBlit } from './ShadowAtlasBlit';
+import { ShadowMoments, type MomentTile } from './ShadowMoments';
 import { LocalShadowViews, screenCoverage, singleShadowView } from './LocalShadowViews';
 
 const REFERENCE_SHADOW_SIZE = 1024;
@@ -149,6 +150,9 @@ export class ShadowMapRenderer {
   readonly #final: ShadowAtlas;
   readonly #static: ShadowAtlas;
   readonly #blit: ShadowAtlasBlit;
+  /** 局部光阴影的矩图（面光源的宽半影），这一帧要重算的块。 */
+  readonly #moments: ShadowMoments;
+  readonly #momentTiles: MomentTile[] = [];
   /** 每个接收阴影的视图一套级联（按 collect 给的顺序：主视图在前）和它们的块。 */
   readonly #cascades: DirectionalShadowCascades[] = [];
   readonly #receivers: ShadowReceiver[] = [];
@@ -179,11 +183,12 @@ export class ShadowMapRenderer {
     this.#final = new ShadowAtlas(graphicsDevice.device, 'Shadow map atlas');
     this.#static = new ShadowAtlas(graphicsDevice.device, 'Shadow map static atlas');
     this.#blit = new ShadowAtlasBlit(graphicsDevice.device);
+    this.#moments = new ShadowMoments(graphicsDevice.device);
   }
 
   /** 在后台编清空、拷贝图块的管线。 */
   warm(): Promise<void> {
-    return this.#blit.warm();
+    return Promise.all([this.#blit.warm(), this.#moments.warm()]).then(() => undefined);
   }
 
   /**
@@ -197,8 +202,10 @@ export class ShadowMapRenderer {
     this.#frame++;
     lighting.shadow = undefined;
     lighting.shadowAtlas = undefined;
+    lighting.shadowMoments = undefined;
     lighting.localShadowCount = 0;
     this.#stages.clear();
+    this.#momentTiles.length = 0;
     this.#staticViews.length = this.#clears.length = this.#copies.length = this.#finalViews.length = 0;
     Object.assign(this.stats, { staticFaces: 0, copies: 0, dynamicFaces: 0, cachedLights: 0, unplaced: 0, atlas: this.#final.size, staticAtlas: this.#static.size });
     for (const view of [main, ...others]) view.shadow = undefined;
@@ -213,6 +220,7 @@ export class ShadowMapRenderer {
     if (casters) this.#collectLocals(main, lighting, casters);
     this.#evict();
     if (lighting.shadow || lighting.localShadowCount > 0) lighting.shadowAtlas = this.#final.texture;
+    if (lighting.localShadowCount > 0) lighting.shadowMoments = this.#moments.texture(this.#final.size);
     return [...this.#staticViews, ...this.#finalViews];
   }
 
@@ -314,6 +322,8 @@ export class ShadowMapRenderer {
       if (redrawStatic || dynamic || entry.hadDynamic) {
         entry.final.forEach((to, face) => this.#copies.push([to, entry.statics[face]!]));
         this.stats.copies += entry.faces;
+        // 块变了：矩图跟着重算
+        for (const to of entry.final) this.#momentTiles.push({ x: to.x, y: to.y, size: to.width, depthA: receiver.depthA });
       }
       if (dynamic) {
         for (const view of finalViews) {
@@ -428,6 +438,7 @@ export class ShadowMapRenderer {
     this.#blit.copy(pass, this.#static.texture, this.#copies);
     this.#drawViews(context, pass, renderSystem, this.#finalViews);
     pass.end();
+    this.#moments.record(encoder, this.#final.texture, this.#momentTiles);
   }
 
   #drawViews(context: RenderContext, pass: GPURenderPassEncoder, renderSystem: RenderSystem, views: readonly RenderView[]): void {
@@ -447,6 +458,7 @@ export class ShadowMapRenderer {
     this.#final.destroy();
     this.#static.destroy();
     this.#blit.destroy();
+    this.#moments.destroy();
     this.#locals.clear();
     this.#cascadeTiles.length = 0;
     this.#receivers.length = 0;

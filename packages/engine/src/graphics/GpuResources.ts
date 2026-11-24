@@ -12,6 +12,8 @@ export class GpuResources {
   readonly device: GPUDevice;
   /** 1x1 的白图：没有贴图的材质绑它，着色器不用分支。 */
   readonly white: GPUTexture;
+  /** 三线性、16 倍各向异性、夹在边上（阴影的矩图按发光面的椭圆取平均）。 */
+  readonly anisotropicClamp: GPUSampler;
   /** 1x1 的 rg8：没有屏幕空间遮蔽时绑它，遮蔽 1（没遮住）、曲率 0.5（平的），同 GTAO 的结果（AmbientOcclusion.ts）。 */
   readonly openOcclusion: GPUTexture;
   /** 1x1 的黑色立方体贴图：没有天空盒时绑它。 */
@@ -40,6 +42,7 @@ export class GpuResources {
     this.blackCube = device.createTexture({ label: 'black cube', size: [1, 1, 6], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     device.queue.writeTexture({ texture: this.blackCube }, new Uint16Array(6 * 4), { bytesPerRow: 8, rowsPerImage: 1 }, [1, 1, 6]);
     this.linearClamp = device.createSampler({ label: 'linear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+    this.anisotropicClamp = device.createSampler({ label: 'anisotropic clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', maxAnisotropy: 16 });
     this.linearRepeat = device.createSampler({ label: 'linear repeat', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat', addressModeW: 'repeat' });
     this.emptyShadowAtlas = device.createTexture({ label: 'empty shadow atlas', size: [1, 1], format: 'depth32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
     clearDepth(device, this.emptyShadowAtlas);

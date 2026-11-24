@@ -646,7 +646,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     const screen = stage.transparent
       ? (view === refraction.receiver ? refraction.texture : undefined)
       : (screenSpace && planar.active && view === planar.receiver ? planar.texture : undefined);
-    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, screen), [view.index * VIEW_STRIDE]);
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, screen, stage.shadowCasters ? undefined : this.system.lighting.shadowMoments), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
       const b = runs ? runs[i * 3]! : i;

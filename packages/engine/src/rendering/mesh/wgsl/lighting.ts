@@ -1,4 +1,5 @@
 /** 网格着色器的光照函数：着色用的法线、反射探针、天空盒的球谐、方向光和局部光的阴影（PCF、PCSS、级联）、透射、微表面的各项（GGX、Beckmann、光泽、各向异性）、薄玻璃。 */
+import { EVSM_EXPONENT } from '../../lighting/ShadowMoments';
 import { GRADIENT_NOISE, HASH3, RAIN_RIPPLES } from '../../wgsl';
 
 export const MESH_LIGHTING = /* wgsl */ `
@@ -269,6 +270,33 @@ const AREA_BLOCKER_TAPS = 8u;
 const AREA_FILTER_TAPS = 24u;
 /** 搜遮挡物时假定它们离灯不近于接收点距离的这个比例（搜的范围是发光面的 1 / 比例 − 1 倍）。 */
 const AREA_SEARCH_NEAR = 0.4;
+/** 矩图的可见度里减掉的漏光（Lauritzen 的 light bleeding reduction）：可见度低于它的当全挡住，其余拉回 0..1。 */
+const EVSM_BLEEDING = 0.25;
+/** 矩图的最小方差（单位是变换后的深度；接收面自己不挡自己、平的地方不出噪声）。 */
+const EVSM_MIN_VARIANCE = 1e-4;
+
+/** 切比雪夫不等式：均值 m.x、二次矩 m.y 的分布里不比 x 近（照得到）的比例的上界。 */
+fn chebyshevVisibility(m: vec2f, x: f32) -> f32 {
+  if (x <= m.x) {
+    return 1.0;
+  }
+  let variance = max(m.y - m.x * m.x, EVSM_MIN_VARIANCE);
+  let d = x - m.x;
+  return saturate((variance / (variance + d * d) - EVSM_BLEEDING) / (1.0 - EVSM_BLEEDING));
+}
+
+/**
+ * 指数方差阴影图（EVSM）的可见度：depth 是要比的阴影图深度（A + B / 距离，a 是这盏光的 A），换成线性的 t、两种指数变换，
+ * 各按切比雪夫取上界，取小的那个（同 ShadowMoments 的存法）。
+ */
+fn evsmVisibility(moments: vec4f, depth: f32, a: f32) -> f32 {
+  let t = saturate((1.0 - a) / min(depth - a, -1e-6));
+  let x = t * 2.0 - 1.0;
+  let positive = exp(${EVSM_EXPONENT}.0 * x);
+  let negative = -exp(-${EVSM_EXPONENT}.0 * x);
+  return min(chebyshevVisibility(moments.xy, positive), chebyshevVisibility(moments.zw, negative));
+}
+
 /** 面光源的软阴影比深度时距离缩的比例（接收面自己不挡自己）。 */
 const AREA_RELATIVE_BIAS = 0.01;
 const CUBE_AXES = array<vec3f, 6>(vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, -1.0), vec3f(1.0, 0.0, 0.0), vec3f(-1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, -1.0, 0.0));
@@ -342,6 +370,15 @@ fn computeAreaShadow(index: u32, position: vec3f, normal: vec3f, light: LocalLig
   }
   let zb = blockerDistance / blockers;
   let k = max(distance - zb, 0.0) / max(zb, 1e-3);
+  if (SHADOW_MOMENTS) {
+    // 矩图取一次：半影的椭圆是发光面的两条半轴乘 k 投到图上（直径，至少 1.5 个像素）
+    let e1 = areaShadowUv(q, d1, d2, vec2f(k, 0.0)) - base;
+    let e2 = areaShadowUv(q, d1, d2, vec2f(0.0, k)) - base;
+    let least = 1.5 * texel;
+    let g1 = select(e1 * 2.0, vec2f(least, 0.0), length(e1) * 2.0 < least);
+    let g2 = select(e2 * 2.0, vec2f(0.0, least), length(e2) * 2.0 < least);
+    return evsmVisibility(sampleShadowMoments(clamp(base, lo, hi), g1, g2), areaCompareDepth(receiverInverse, params), params.z);
+  }
   var lit = 0.0;
   for (var i = 0u; i < AREA_FILTER_TAPS; i++) {
     let o = vogelDisk(i, AREA_FILTER_TAPS, 0.0);

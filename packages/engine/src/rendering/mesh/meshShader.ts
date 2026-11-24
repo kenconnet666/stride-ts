@@ -254,6 +254,11 @@ export function screenTextureCode(supported: boolean): string {
     ? /* wgsl */ `
 @group(0) @binding(26) var screenTexture: texture_2d<f32>;
 @group(0) @binding(27) var irradianceAtlas: texture_2d<f32>;
+@group(0) @binding(28) var shadowMoments: texture_2d<f32>;
+@group(0) @binding(31) var anisotropicClamp: sampler;
+const SHADOW_MOMENTS = true;
+/** 局部光阴影的矩图（ShadowMoments）在 uv 处按 ddx、ddy 张成的椭圆取的平均（硬件的各向异性过滤）。 */
+fn sampleShadowMoments(uv: vec2f, ddx: vec2f, ddy: vec2f) -> vec4f { return textureSampleGrad(shadowMoments, anisotropicClamp, uv, ddx, ddy); }
 fn planarColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
 fn sceneColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
 ${IRRADIANCE_VOLUME_WGSL}
@@ -268,5 +273,7 @@ fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f {
 fn planarColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
 fn sceneColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
 fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f { return vec4f(0.0); }
+const SHADOW_MOMENTS = false;
+fn sampleShadowMoments(uv: vec2f, ddx: vec2f, ddy: vec2f) -> vec4f { return vec4f(0.0); }
 `;
 }

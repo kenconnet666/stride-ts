@@ -903,8 +903,9 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   var rest = first;
   var firstWeight = 0.0;
   var secondWeight = 0.0;
-  var brightLight = localLight(0u);
-  var secondLight = brightLight;
+  // 记灯的下标不记整盏灯（两盏灯 32 个数在整个循环里占寄存器；RGA 看过，着色器用到 233 个 VGPR），循环完再读
+  var brightIndex = 0u;
+  var secondIndex = 0u;
   for (var k = 0u; k < localCount; k++) {
     let index = select(k, clusters[firstLight + k], clustered);
     // 够不着的先跳过（只读一个 vec4）
@@ -922,24 +923,24 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
       rest = addLit(rest, second, 1.0);
       second = first;
       secondWeight = firstWeight;
-      secondLight = brightLight;
+      secondIndex = brightIndex;
       first = lit;
       firstWeight = weight;
-      brightLight = light;
+      brightIndex = index;
     } else if (weight > secondWeight) {
       rest = addLit(rest, second, 1.0);
       second = lit;
       secondWeight = weight;
-      secondLight = light;
+      secondIndex = index;
     } else {
       rest = addLit(rest, lit, 1.0);
     }
   }
   if (firstWeight > 0.0) {
-    let firstShadow = localLightShadow(brightLight, in.world, n);
+    let firstShadow = localLightShadow(localLight(brightIndex), in.world, n);
     var secondShadow = 1.0;
     if (secondWeight > 0.0) {
-      secondShadow = localLightShadow(secondLight, in.world, n);
+      secondShadow = localLightShadow(localLight(secondIndex), in.world, n);
     }
     direct = addLit(direct, first, firstShadow);
     direct = addLit(direct, second, secondShadow);

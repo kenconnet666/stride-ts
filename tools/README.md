@@ -46,6 +46,7 @@
 
 | 测试 | 作用 | 怎么跑 |
 |---|---|---|
+| `dev/shader-stats.ts` | 着色器的寄存器和暂存区：从 `stride open --headless --gpu-debug` 的 Chrome 日志里取出 Dawn 生成的 HLSL，用 AMD 的 Radeon GPU Analyzer 按这台机器的显卡（gfx1201）编，报每个着色器的 VGPR、SGPR、暂存区（scratch）和机器码大小；着色器慢、怀疑占用率低时看 | 先 `pnpm exec stride open "<页面>" --headless --gpu-debug`，再 `node tools/dev/shader-stats.ts [--top 5] [--kind pixel\|compute\|all]`；RGA 解压在 `C:\code	oolsga`（别处用 `STRIDE_RGA`） |
 | `packages/editor/experiments/generator-latency.ts` | 生成模型的资源（货架、商品、堆放、SDF……）从改参数到烘出文件要多久：所有样例里的每个生成资源按编辑器后端的烘焙表烘一遍（不写文件），按种类报中位数、最慢的 | `node packages/editor/experiments/generator-latency.ts [apps/<工程> ...]` |
 | `dev/streaming-bench.ts` | 加载与流式：启动各阶段、按路线飞行的帧间隔、下载量、同步建管线数、飞行前后显存和内存的增长；`--check` 比 `streaming-budgets.json`（Valley 无格子，Town 飞过 172 个格子） | `node tools/dev/streaming-bench.ts --world Worlds/Town --seconds 40 --speed 100 --check`；要在验证没跑的时候量（冒烟会关掉共用的无头 Chrome） |
 | `dev/loading-timeline.ts` | 页面外壳、骨架、第一帧的时间线 | 见文件头 |

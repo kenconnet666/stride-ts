@@ -341,7 +341,15 @@ fn chebyshevBound(m: vec2f, x: f32) -> f32 {
 
 /** 面光源的软阴影比深度时距离缩的比例（接收面自己不挡自己）。 */
 const AREA_RELATIVE_BIAS = 0.01;
-const CUBE_AXES = array<vec3f, 6>(vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, -1.0), vec3f(1.0, 0.0, 0.0), vec3f(-1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, -1.0, 0.0));
+/**
+ * 立方体第 face 面的轴（+Z、-Z、+X、-X、+Y、-Y，同 localShadowFace）。按位算，不用常量数组：动态下标取数组时 DXC 把它放进
+ * 显存里的暂存区（scratch），每次读写都走显存。
+ */
+fn cubeAxis(face: u32) -> vec3f {
+  let sign = select(1.0, -1.0, (face & 1u) != 0u);
+  let along = face >> 1u;
+  return vec3f(select(0.0, sign, along == 1u), select(0.0, sign, along == 2u), select(0.0, sign, along == 0u));
+}
 
 /** 接收点 q（投影过、没除 w）沿发光面的两条半轴各挪 o.x、o.y 倍（d1、d2 是两条半轴投影过的）在图集上的位置。 */
 fn areaShadowUv(q: vec4f, d1: vec4f, d2: vec4f, o: vec2f) -> vec2f {
@@ -370,7 +378,7 @@ fn computeAreaShadow(index: u32, position: vec3f, normal: vec3f, light: LocalLig
   if (localShadowOptions(start).y > 0.5) {
     let face = localShadowFace(position - lightPosition);
     m = localShadowMatrix(start, face.x);
-    axis = CUBE_AXES[face.x];
+    axis = cubeAxis(face.x);
   }
   let distance = dot(position - lightPosition, axis);
   let receiverInverse = 1.0 / distance;

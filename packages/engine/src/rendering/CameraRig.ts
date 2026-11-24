@@ -16,8 +16,10 @@ import { Transform } from '../engine/transform';
 export const CameraRig = component('CameraRig', {
   /** 跟着它走；-1 是不跟（位置不动，除了晃动）。 */
   follow: prop.entity().default(-1 as EntityId),
-  /** 跟随时相机在目标的哪里（世界空间，相对目标的位置）。 */
+  /** 跟随时相机在目标的哪里（相对目标的位置，followFrame 的空间）。 */
   offset: prop.vec3().default([0, 2, 6]),
+  /** offset 的空间：world 是世界空间；target 跟着目标绕竖直轴转（追车、追人的镜头：+Z 是目标的背后），上下不跟着倾斜。 */
+  followFrame: prop.enum(['world', 'target']).default('world'),
   followDamping: prop.f32().default(0.2).min(0).unit('s'),
   /** 看着它；-1 是不转（朝向不动，除了晃动）。 */
   lookAt: prop.entity().default(-1 as EntityId),
@@ -71,7 +73,14 @@ export function cameraRigSystem(entities: EntityManager, editing: () => boolean)
 
         if (following) {
           worldPosition(entities, follow, target);
-          desired.set(target.x + rig.offset[row * 3]!, target.y + rig.offset[row * 3 + 1]!, target.z + rig.offset[row * 3 + 2]!);
+          let ox = rig.offset[row * 3]!, oz = rig.offset[row * 3 + 2]!;
+          const world = rig.followFrame[row] === 'target' ? entities.entity(follow).get(Transform)?.world : undefined;
+          if (world) {
+            // 目标的本地 +Z 在水平面上的方向是 (sin yaw, cos yaw)：偏移绕竖直轴转同样的角度
+            const yaw = Math.atan2(world[8]!, world[10]!), c = Math.cos(yaw), s = Math.sin(yaw);
+            [ox, oz] = [ox * c + oz * s, -ox * s + oz * c];
+          }
+          desired.set(target.x + ox, target.y + rig.offset[row * 3 + 1]!, target.z + oz);
           if (!state.started) state.position.copy(desired);
           else state.position.lerp(desired, smoothing(rig.followDamping[row]!, dt));
           position.copy(state.position);

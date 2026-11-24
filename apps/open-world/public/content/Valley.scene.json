@@ -1304,9 +1304,9 @@
    ],
    "rotation": [
     0,
-    0.0,
     0,
-    1.0
+    0,
+    1
    ],
    "scale": [
     1,
@@ -1331,9 +1331,9 @@
    ],
    "rotation": [
     0,
-    0.0,
     0,
-    1.0
+    0,
+    1
    ],
    "scale": [
     1,
@@ -1358,9 +1358,9 @@
    ],
    "rotation": [
     0,
-    0.0,
     0,
-    1.0
+    0,
+    1
    ],
    "scale": [
     1,
@@ -1385,9 +1385,9 @@
    ],
    "rotation": [
     0,
-    0.0,
     0,
-    1.0
+    0,
+    1
    ],
    "scale": [
     1,
@@ -1412,9 +1412,9 @@
    ],
    "rotation": [
     0,
-    0.0,
     0,
-    1.0
+    0,
+    1
    ],
    "scale": [
     1,
@@ -1439,9 +1439,9 @@
    ],
    "rotation": [
     0,
-    0.0,
     0,
-    1.0
+    0,
+    1
    ],
    "scale": [
     1,
@@ -2194,6 +2194,514 @@
       }
      }
     ]
+   }
+  },
+  {
+   "id": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "name": "TownLife",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {}
+  },
+  {
+   "id": "b6ef3790-3e1b-1cf2-333a-2bd4e306810d",
+   "name": "PlayerCar",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    470.55,
+    4.55,
+    -47.65
+   ],
+   "rotation": [
+    0,
+    -0.8040764768976458,
+    0,
+    0.5945258777377732
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Car",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "ac02ddab-cfa7-3e39-ea88-300012dbc6f7",
+   "name": "Bench 0",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    494.38,
+    3.69,
+    -49.8
+   ],
+   "rotation": [
+    0,
+    -0.1591722973157415,
+    0,
+    0.9872508190765046
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Bench",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "842e61b4-9ab7-a4be-cf94-39a12a1ec05a",
+   "name": "Bench 1",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    513.62,
+    3.64,
+    -42.87
+   ],
+   "rotation": [
+    0,
+    -0.18976154903700307,
+    0,
+    0.9818302065566515
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Bench",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "ba4729fd-56d3-f6a3-7e70-46a68d31a237",
+   "name": "Bench 2",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    500.82,
+    3.73,
+    -31.73
+   ],
+   "rotation": [
+    0,
+    0.9850141381788026,
+    0,
+    0.17247361417872287
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Bench",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "f01094f9-587d-09bd-532e-638d14f47c01",
+   "name": "Pedestrian 0",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    502.58,
+    3.75,
+    -30.75
+   ],
+   "rotation": [
+    0,
+    0.45481015042429856,
+    0,
+    -0.8905884162007874
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "ec49035a-1ffa-ab45-c4d5-78aeddcd8456",
+   "name": "Pedestrian 1",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    506.13,
+    3.65,
+    -29.58
+   ],
+   "rotation": [
+    0,
+    0.535065204331995,
+    0,
+    -0.8448107640845732
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "97eed848-68dc-6e47-1aab-74236c03cd76",
+   "name": "Pedestrian 2",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    482.01,
+    3.79,
+    -37.72
+   ],
+   "rotation": [
+    0,
+    0.9351198939937478,
+    0,
+    0.3543314604394051
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "452c5ecd-3e5a-d10e-e1c4-7e22b4691895",
+   "name": "Pedestrian 3",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    505.32,
+    3.68,
+    -47.15
+   ],
+   "rotation": [
+    0,
+    0.07976345024186617,
+    0,
+    0.9968138201316801
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "4fb978d8-8702-a739-490c-0ac1ae9efc27",
+   "name": "Pedestrian 4",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    497.84,
+    3.75,
+    -32.23
+   ],
+   "rotation": [
+    0,
+    0.23869713398469763,
+    0,
+    0.9710940625024392
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "e56c30bb-1efc-47aa-9d38-17512cbc79e6",
+   "name": "Pedestrian 5",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    490.34,
+    3.78,
+    -50.42
+   ],
+   "rotation": [
+    0,
+    0.478140441353921,
+    0,
+    -0.8782833929557575
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "a645a2c0-300e-047e-d469-0fc7ae909d10",
+   "name": "Pedestrian 6",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    502.12,
+    3.79,
+    -47.46
+   ],
+   "rotation": [
+    0,
+    0.9999629226660236,
+    0,
+    0.008611230645160593
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "d56ca1a7-f2a5-f4a8-516c-c440d1965b74",
+   "name": "Pedestrian 7",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    483.94,
+    3.77,
+    -37.2
+   ],
+   "rotation": [
+    0,
+    0.9966375688541962,
+    0,
+    -0.08193629445122255
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "dc909bab-5f39-bf7b-576a-a59973290a54",
+   "name": "Pedestrian 8",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    497.72,
+    3.75,
+    -31.88
+   ],
+   "rotation": [
+    0,
+    0.751005372191029,
+    0,
+    0.6602960933855463
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "55eefbe5-e8c3-df3c-474c-099e9a6cfbf7",
+   "name": "Pedestrian 9",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    519.49,
+    3.73,
+    -40.75
+   ],
+   "rotation": [
+    0,
+    0.9999800920796459,
+    0,
+    -0.006309948049140935
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "4d7acd64-921f-baff-b37c-f9c6de41d0ba",
+   "name": "Pedestrian 10",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    495.55,
+    3.72,
+    -50.17
+   ],
+   "rotation": [
+    0,
+    0.7412759856085188,
+    0,
+    -0.6712003524731784
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "e8e426a1-6027-50e0-e34b-92a7944d6c1b",
+   "name": "Pedestrian 11",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    529.18,
+    3.66,
+    -34.63
+   ],
+   "rotation": [
+    0,
+    0.2756721189403988,
+    0,
+    0.9612517270928103
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "5f8b894c-2b38-a43a-4196-f148984f1f7c",
+   "name": "Pedestrian 12",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    518.5,
+    3.73,
+    -40.96
+   ],
+   "rotation": [
+    0,
+    0.8992698531847055,
+    0,
+    -0.4373942513947322
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
+   }
+  },
+  {
+   "id": "6aea6d34-44f0-a02d-f73c-7f345dc7c0b5",
+   "name": "Pedestrian 13",
+   "parent": "3cd2a094-3fbd-030c-86a0-2c6627a7e975",
+   "position": [
+    505.64,
+    3.65,
+    -31.06
+   ],
+   "rotation": [
+    0,
+    0.14121793518546724,
+    0,
+    0.9899785324854036
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Pedestrian",
+    "set": [],
+    "removed": []
    }
   }
  ]

@@ -1,0 +1,102 @@
+{
+ "name": "Pedestrian",
+ "entities": [
+  {
+   "id": "8b68158e-ba0c-638e-f303-fb44bfcd406e",
+   "name": "Pedestrian",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shared/Characters/Mannequin",
+     "materials": []
+    },
+    "animation": {
+     "animations": []
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "capsule",
+       "radius": 0.3,
+       "length": 1.2,
+       "position": [
+        0,
+        0.9,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": true,
+     "gravity": false,
+     "sleepThreshold": -1,
+     "interpolated": false
+    },
+    "simulationLod": {},
+    "scripts": [
+     {
+      "type": "CrowdAgent",
+      "props": {
+       "radius": 0.3,
+       "maxSpeed": 1.3
+      }
+     },
+     {
+      "type": "Animator",
+      "props": {
+       "graph": {
+        "$asset": "Animations/Pedestrian",
+        "kind": "animationGraph"
+       },
+       "speedParameter": "speed"
+      }
+     },
+     {
+      "type": "StateTreeRunner",
+      "props": {
+       "tree": {
+        "$asset": "AI/Pedestrian",
+        "kind": "stateTree"
+       }
+      }
+     },
+     {
+      "type": "Ragdoll",
+      "props": {}
+     },
+     {
+      "type": "Knockdown",
+      "props": {
+       "minSpeed": 3,
+       "downTime": 5
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

@@ -276,6 +276,7 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     type: object(fields<NonNullable<Components['cameraRig']>>({
       follow: { type: entity, optional: true, description: 'entity to follow; unset keeps the position' },
       offset: optional(vector(3, 'm'), [0, 2, 6]),
+      followFrame: { type: oneOf('world', 'target'), optional: true, default: 'world', description: 'space of the offset: world, or turning with the target around the vertical (a chase camera; +Z is behind the target)' },
       followDamping: { type: number({ min: 0, unit: 's' }), optional: true, default: 0.2, description: 'half-life of the smoothing; 0 snaps' },
       lookAt: { type: entity, optional: true, description: 'entity to look at; unset keeps the rotation' },
       lookOffset: optional(vector(3, 'm'), [0, 1, 0]),

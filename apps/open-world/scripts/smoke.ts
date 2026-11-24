@@ -47,4 +47,62 @@ const records = stride('call', 'save') as { records: Record<string, { transform?
 const boxY = stride('eval', `(${persistentBox})?.require(strideEngine.Transform).position.y ?? null`) as number | null;
 check('挪回来：格子重新读了，持久的方块还在抬高的地方（存档的记录里有它）', back.loaded.includes('props/0_0') && boxY !== null && Math.abs(boxY - lifted) < 1e-3 && records.records['Worlds/Test/props/0_0#box-0_0-0']?.transform?.position[1] === lifted, { boxY, lifted, records: Object.keys(records.records) });
 
+// ---- 小镇（世界模拟底座的验收，scripts/build-town-life.ts 用 MCP 搭的）：Valley 东路边的车、长椅、行人，开车、撞人、被撞倒再爬起来、
+// 坐长椅、按日程回家 ----
+stride('eval', `location.search = '?world=Worlds/Valley&drive'`);
+stride('wait');
+stride('wait', '--game', '4');
+const E = 'strideEngine';
+const people = `[...Array(14).keys()].map((i) => entity('Pedestrian ' + i))`;
+const town = stride('eval', `({ people: ${people}.filter((e) => e.get(${E}.CrowdAgent)).length, car: !!entity('PlayerCar').get(${E}.VehicleDriver) })`) as { people: number; car: boolean };
+const objects = stride('call', 'smartobjects') as { objects: number; slots: number; claimed: number };
+check('小镇：14 个行人（人群、状态树）、能开的车、3 张长椅（6 个座位）都在', town.people === 14 && town.car && objects.objects === 3 && objects.slots === 6, { town, objects });
+
+const positions = () => stride('eval', `${people}.map((e) => [...e.get(${E}.Transform).world.slice(12, 15)])`) as number[][];
+const before = positions();
+stride('wait', '--game', '8');
+const after = positions();
+const walked = before.reduce((sum, p, i) => sum + Math.hypot(after[i]![0]! - p[0]!, after[i]![2]! - p[2]!), 0) / before.length;
+check('白天（10 点）行人在逛：8 秒里平均挪了 1 米以上', walked > 1, { walked });
+
+const carPosition = () => stride('eval', `[...entity('PlayerCar').get(${E}.Transform).world.slice(12, 15)]`) as number[];
+const parked = carPosition();
+stride('key', 'KeyW', '--hold', '3000');
+const driven = carPosition();
+const drove = Math.hypot(driven[0]! - parked[0]!, driven[2]! - parked[2]!);
+check('按住 W 3 秒，车开出去 8 米以上', drove > 8, { drove });
+
+// 撞人：Pedestrian 0 挪到车头前 14 米（先停下它的状态树和人群，挪完重新进人群），再踩油门撞过去
+stride('wait', '--game', '3');
+stride('eval', `{ const w = entity('PlayerCar').get(${E}.Transform).world; const p = entity('Pedestrian 0'); p.require(${E}.StateTreeRunner).enabled = false;
+  const agent = p.require(${E}.CrowdAgent); agent.enabled = false; const x = w[12] - w[8] * 14, z = w[14] - w[10] * 14;
+  p.require(${E}.Transform).position = [x, game.terrain.heightAt(x, z), z]; agent.stop(); agent.enabled = true; }`);
+stride('wait', '--game', '1');
+stride('key', 'KeyW', '--hold', '3500');
+const hit = stride('eval', `{ const k = entity('Pedestrian 0').require(${E}.Knockdown); ({ down: k.down, knockdowns: k.knockdowns }) }`) as { down: boolean; knockdowns: number };
+check('车撞到人：人倒下了（布娃娃）', hit.knockdowns >= 1, hit);
+stride('wait', '--game', '7');
+const up = stride('eval', `{ const p = entity('Pedestrian 0'); ({ down: p.require(${E}.Knockdown).down, crowd: p.require(${E}.CrowdAgent).enabled }) }`) as { down: boolean; crowd: boolean };
+check('倒地 5 秒以后爬起来、回到人群里', !up.down && up.crowd, up);
+stride('eval', `entity('Pedestrian 0').require(${E}.StateTreeRunner).enabled = true`);
+
+// 坐长椅：状态树里 4 成的机会找 25 米内空着的长椅坐一会儿；等到有人占了座位（最多 60 个游戏秒）
+let claimed = 0;
+for (let i = 0; i < 30 && claimed === 0; i++) {
+  stride('wait', '--game', '2');
+  claimed = (stride('call', 'smartobjects') as { claimed: number }).claimed;
+}
+check('有人去坐长椅（占了座位）', claimed > 0, { claimed });
+
+// 日程：拨到晚上 9 点，行人的状态树都换到 Night（回家）
+stride('eval', `game.clock.set({ hours: 21 })`);
+stride('wait', '--game', '2');
+const trees = stride('call', 'statetree') as { trees: { entity: string; path: string[] }[] };
+const night = trees.trees.filter((tree) => tree.entity.startsWith('Pedestrian ') && tree.path[0] === 'Night').length;
+check('晚上 9 点：行人的状态树换到 Night（走回家）', night >= 13, { night, paths: trees.trees.map((tree) => tree.path.join('/')) });
+
+// 预算的基线是测试世界的：回到默认的地址再收尾
+stride('eval', `location.search = ''`);
+stride('wait');
+stride('wait', '--game', '3');
 finish();

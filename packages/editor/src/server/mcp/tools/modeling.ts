@@ -1,7 +1,8 @@
-/** 编辑器 MCP 服务的工具：建模：雕刻地形、编辑多边形网格、白盒导出成多边形网格。 */
+/** 编辑器 MCP 服务的工具：建模：雕刻地形、查地面的高度、编辑多边形网格、白盒导出成多边形网格。 */
 import type { McpServer } from '@modelcontextprotocol/server';
-import { applyPolyOperation, edgeLoop, faceLoop, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
-import type { PolyMeshFile, TerrainFeatureFile, TerrainFile, TerrainStrokeFile } from '@stride-ts/engine/content-format';
+import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { applyPolyOperation, edgeLoop, faceLoop, POLY_OPERATIONS, terrainDescription, terrainPaths, type PolyOperation } from '@stride-ts/engine/modeling';
+import type { PolyMeshFile, SplineFile, TerrainFeatureFile, TerrainFile, TerrainStrokeFile } from '@stride-ts/engine/content-format';
 import * as z from 'zod';
 import { assetPath, json, type McpProjects } from '../shared.ts';
 
@@ -34,6 +35,24 @@ export function registerModelingTools(server: McpServer, projects: McpProjects):
     const next: TerrainFile = { ...file, strokes: [...kept, ...(strokes as TerrainStrokeFile[])], features: [...(file.features ?? []), ...(features as TerrainFeatureFile[])] };
     await projects.current.saveAsset('terrain', path, next);
     return json({ strokes: next.strokes!.length, features: next.features!.length });
+  });
+
+  server.registerTool('terrain_height', {
+    description: [
+      'Ground heights of a vector terrain asset (kind terrain, .terrain.json) at points, evaluated the way the game does (noise, features, strokes and the',
+      'splines the terrain follows) without the game page: to put people, cars and props on the ground. Points and heights are the terrain\'s local',
+      'meters (x, z; add the terrain entity\'s position for world coordinates). Returns one height per point, in order.',
+    ].join(' '),
+    inputSchema: z.object({ path: assetPath, points: z.array(z.tuple([z.number(), z.number()])).min(1).max(100_000) }),
+  }, async ({ path, points }) => {
+    const file = await projects.current.readAsset('terrain', path) as TerrainFile;
+    const paths = await Promise.all((file.splines ?? []).map(async (entry) => terrainPaths(entry, await projects.current.readAsset('spline', entry.spline) as SplineFile)));
+    const evaluator = (await runtimeNative()).createTerrain(terrainDescription(file, paths.flat()));
+    try {
+      return json(points.map(([x, z]) => +evaluator.height(x, z).toFixed(4)));
+    } finally {
+      evaluator.destroy();
+    }
   });
 
   server.registerTool('edit_poly', {
@@ -108,4 +127,11 @@ export function registerModelingTools(server: McpServer, projects: McpProjects):
     ].join(' '),
     inputSchema: z.object({ path: assetPath, target: assetPath.optional() }),
   }, async ({ path, target }) => json(await projects.current.exportBrushToPoly(path, target)));
+}
+
+let native: Promise<StrideNative> | undefined;
+
+/** 地形求值用的运行时原生模块（这个进程里第一次用到时建）。 */
+function runtimeNative(): Promise<StrideNative> {
+  return (native ??= createStrideNative());
 }

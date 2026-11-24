@@ -1,0 +1,11 @@
+{
+ "name": "BenchWood",
+ "baseColor": [
+  0.3,
+  0.16,
+  0.07,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.7
+}

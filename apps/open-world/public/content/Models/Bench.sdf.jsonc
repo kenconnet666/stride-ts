@@ -1,0 +1,266 @@
+{
+ "name": "Bench",
+ "materials": [
+  "Materials/BenchWood",
+  "Materials/Steel"
+ ],
+ "resolution": 0.015,
+ "shapes": [
+  {
+   "name": "Seat 0",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.45,
+    -0.17
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "size": [
+    1.8,
+    0.035,
+    0.09
+   ],
+   "cornerRadius": 0.012
+  },
+  {
+   "name": "Seat 1",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.45,
+    -0.06000000000000001
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "size": [
+    1.8,
+    0.035,
+    0.09
+   ],
+   "cornerRadius": 0.012
+  },
+  {
+   "name": "Seat 2",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.45,
+    0.04999999999999999
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "size": [
+    1.8,
+    0.035,
+    0.09
+   ],
+   "cornerRadius": 0.012
+  },
+  {
+   "name": "Seat 3",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.45,
+    0.16
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "size": [
+    1.8,
+    0.035,
+    0.09
+   ],
+   "cornerRadius": 0.012
+  },
+  {
+   "name": "Back 0",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.6,
+    -0.27
+   ],
+   "rotation": [
+    -0.12467473338522769,
+    0,
+    0,
+    0.992197667229329
+   ],
+   "size": [
+    1.8,
+    0.035,
+    0.09
+   ],
+   "cornerRadius": 0.012
+  },
+  {
+   "name": "Back 1",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.71,
+    -0.27
+   ],
+   "rotation": [
+    -0.12467473338522769,
+    0,
+    0,
+    0.992197667229329
+   ],
+   "size": [
+    1.8,
+    0.035,
+    0.09
+   ],
+   "cornerRadius": 0.012
+  },
+  {
+   "name": "Back 2",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.82,
+    -0.27
+   ],
+   "rotation": [
+    -0.12467473338522769,
+    0,
+    0,
+    0.992197667229329
+   ],
+   "size": [
+    1.8,
+    0.035,
+    0.09
+   ],
+   "cornerRadius": 0.012
+  },
+  {
+   "name": "Leg 0 front",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -0.8,
+    0.22,
+    0.17
+   ],
+   "size": [
+    0.05,
+    0.44,
+    0.05
+   ],
+   "cornerRadius": 0.01,
+   "material": 1
+  },
+  {
+   "name": "Leg 0 back",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -0.8,
+    0.42,
+    -0.22
+   ],
+   "size": [
+    0.05,
+    0.84,
+    0.05
+   ],
+   "cornerRadius": 0.01,
+   "material": 1
+  },
+  {
+   "name": "Leg 0 rail",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -0.8,
+    0.42,
+    -0.02
+   ],
+   "size": [
+    0.05,
+    0.04,
+    0.46
+   ],
+   "cornerRadius": 0.01,
+   "material": 1
+  },
+  {
+   "name": "Leg 1 front",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.8,
+    0.22,
+    0.17
+   ],
+   "size": [
+    0.05,
+    0.44,
+    0.05
+   ],
+   "cornerRadius": 0.01,
+   "material": 1
+  },
+  {
+   "name": "Leg 1 back",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.8,
+    0.42,
+    -0.22
+   ],
+   "size": [
+    0.05,
+    0.84,
+    0.05
+   ],
+   "cornerRadius": 0.01,
+   "material": 1
+  },
+  {
+   "name": "Leg 1 rail",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.8,
+    0.42,
+    -0.02
+   ],
+   "size": [
+    0.05,
+    0.04,
+    0.46
+   ],
+   "cornerRadius": 0.01,
+   "material": 1
+  }
+ ]
+}

@@ -6,6 +6,7 @@ export * from './polyUv.ts';
 export * from './trianglesToPolygons.ts';
 export * from './textOutline.ts';
 export * from './spline.ts';
+export * from './terrainPaths.ts';
 export * from './roadLanes.ts';
 export * from './tree.ts';
 export * from './building.ts';

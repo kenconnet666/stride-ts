@@ -8,9 +8,10 @@ import { prop } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
 import type { Branded } from '../data/prop';
 import type { Material } from '../rendering/mesh/Material';
-import { TERRAIN_NOISE_DEFAULTS, type TerrainFile, type TerrainSplineFile } from '../content/formats/terrainFormat';
-import type { SplineFile } from '../content/formats/splineFormat';
-import { splineCenterlines, splineCorridorWidth } from '../modeling/spline';
+import type { TerrainFile } from '../content/formats/terrainFormat';
+import { terrainDescription, type TerrainPath } from '../modeling/terrainPaths';
+
+export { terrainPaths, type TerrainPath } from '../modeling/terrainPaths';
 
 export type TerrainAssetId = Branded<number, 'TerrainAssetId'>;
 
@@ -31,39 +32,6 @@ export const Terrain = component('Terrain', {
 export const TerrainTile = tag('TerrainTile');
 
 const assets = new ResourceTable<TerrainAsset>();
-
-/**
- * 地形贴着的一条样条，解析好的：路径上的点（地形本地的 x、y、z，样条按弧长采样过），压平的宽度、偏移、过渡、强度、模式
- * （同 TerrainSplineFile，默认值已经填上）。
- */
-export interface TerrainPath {
-  readonly points: readonly (readonly [number, number, number])[];
-  readonly width: number;
-  readonly offset: number;
-  readonly falloff: number;
-  readonly strength: number;
-  readonly mode: 'conform' | 'carve' | 'fill';
-}
-
-/** 地形贴样条时取样的间距（米）：比样条自己的分辨率粗也够（压平按线段插值高度）。 */
-const PATH_STEP = 4;
-/** 路口的路缘比路多压的深度（米）：路缘的端头盖到往外斜下去的路上，不压深一点地会冒到路面上。 */
-const CURB_DEPTH = 0.2;
-
-/**
- * 解析地形贴着的一个样条：每条中心线一条（splineCenterlines：路网去掉路口剩下的各段加路口的辐条，别的横截面是每条路径），
- * 按弧长每 PATH_STEP 米取一个点（加上 position），宽度不写时按横截面定（道路是路面加两侧路肩，铁轨是轨距加 3 米的道床，
- * 别的 2 米）。连着的几条在原生侧一起算（路面上的那条说了算）；路口的路缘压得深 CURB_DEPTH。
- */
-export function terrainPaths(entry: TerrainSplineFile, spline: SplineFile): TerrainPath[] {
-  const [dx, dy, dz] = entry.position ?? [0, 0, 0];
-  const profile = spline.profile;
-  const width = entry.width ?? splineCorridorWidth(profile);
-  return splineCenterlines(spline, Math.min(PATH_STEP, spline.resolution ?? PATH_STEP)).map(({ points, curb }) => ({
-    points: points.map(([x, y, z]) => [x + dx, y + dy, z + dz] as const),
-    width, offset: (entry.offset ?? -0.1) - (curb ? CURB_DEPTH : 0), falloff: entry.falloff ?? 10, strength: entry.strength ?? 1, mode: entry.mode ?? 'conform',
-  }));
-}
 
 /**
  * 加载好的地形资源：文件、它的材质、解析好的样条路径（文件的 splines，ContentManager 加载时读样条文件采样）；原生的求值器
@@ -92,12 +60,7 @@ export class TerrainAsset {
 
   /** 原生的求值器（同样的描述在任何机器上求出逐位相同的高度）。 */
   evaluator(native: StrideNative): TerrainEvaluator {
-    if (this.#evaluator?.native !== native) {
-      const { noise, features = [], strokes = [] } = this.file;
-      // 样条的路径在多边形的地物之后：路压在广场上面
-      const paths = this.paths.map((path) => ({ type: 'path' as const, ...path }));
-      this.#evaluator = { native, evaluator: native.createTerrain({ noise: { ...TERRAIN_NOISE_DEFAULTS, ...noise }, features: [...features, ...paths], strokes }) };
-    }
+    if (this.#evaluator?.native !== native) this.#evaluator = { native, evaluator: native.createTerrain(terrainDescription(this.file, this.paths)) };
     return this.#evaluator.evaluator;
   }
 

@@ -642,6 +642,8 @@ export interface SceneEntityFile {
     readonly cameraRig?: {
       readonly follow?: string;
       readonly offset?: Vec3Tuple;
+      /** offset 的空间：world（默认）或跟着目标绕竖直轴转的 target（追车的镜头）。 */
+      readonly followFrame?: 'world' | 'target';
       readonly followDamping?: number;
       readonly lookAt?: string;
       readonly lookOffset?: Vec3Tuple;

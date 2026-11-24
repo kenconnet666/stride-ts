@@ -1,0 +1,106 @@
+{
+ "name": "Bench",
+ "entities": [
+  {
+   "id": "93749777-585e-fa7f-3efc-93398327049f",
+   "name": "Bench",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Bench",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1.8,
+        0.45,
+        0.5
+       ],
+       "position": [
+        0,
+        0.225,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      },
+      {
+       "type": "box",
+       "size": [
+        1.8,
+        0.4,
+        0.08
+       ],
+       "position": [
+        0,
+        0.75,
+        -0.25
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "trigger": false
+    },
+    "scripts": [
+     {
+      "type": "SmartObject",
+      "props": {
+       "slots": [
+        {
+         "position": [
+          -0.45,
+          0,
+          0.45
+         ],
+         "yaw": 0,
+         "activity": "sit"
+        },
+        {
+         "position": [
+          0.45,
+          0,
+          0.45
+         ],
+         "yaw": 0,
+         "activity": "sit"
+        }
+       ]
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

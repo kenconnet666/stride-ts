@@ -1,0 +1,249 @@
+{
+ "name": "Car",
+ "entities": [
+  {
+   "id": "25d3734a-d5fe-c636-3dc9-501768244031",
+   "name": "Car",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Car",
+     "materials": []
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1.8,
+        1,
+        4.2
+       ],
+       "position": [
+        0,
+        0.75,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1200
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "scripts": [
+     {
+      "type": "Vehicle",
+      "props": {
+       "drive": "front",
+       "wheels": [
+        {
+         "position": [
+          0.78,
+          0.45,
+          -1.3
+         ],
+         "radius": 0.33,
+         "width": 0.22,
+         "steerAngle": 32,
+         "handBrakeTorque": 0,
+         "model": {
+          "$entity": "08445fb9-5e48-b8be-905a-7d057de109d1"
+         }
+        },
+        {
+         "position": [
+          -0.78,
+          0.45,
+          -1.3
+         ],
+         "radius": 0.33,
+         "width": 0.22,
+         "steerAngle": 32,
+         "handBrakeTorque": 0,
+         "model": {
+          "$entity": "b9de68ad-5641-10aa-675d-0c1c2e916d53"
+         }
+        },
+        {
+         "position": [
+          0.78,
+          0.45,
+          1.3
+         ],
+         "radius": 0.33,
+         "width": 0.22,
+         "steerAngle": 0,
+         "handBrakeTorque": 4000,
+         "model": {
+          "$entity": "536d6b50-0e04-1018-205c-46a95bebe4c8"
+         }
+        },
+        {
+         "position": [
+          -0.78,
+          0.45,
+          1.3
+         ],
+         "radius": 0.33,
+         "width": 0.22,
+         "steerAngle": 0,
+         "handBrakeTorque": 4000,
+         "model": {
+          "$entity": "301133ab-b140-0dda-49fb-54a0449b46ca"
+         }
+        }
+       ]
+      }
+     },
+     {
+      "type": "Deformable",
+      "props": {}
+     },
+     {
+      "type": "VehicleDriver",
+      "props": {
+       "controls": {
+        "$asset": "Input/Driving",
+        "kind": "input"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "08445fb9-5e48-b8be-905a-7d057de109d1",
+   "name": "Car wheel 0",
+   "parent": "25d3734a-d5fe-c636-3dc9-501768244031",
+   "position": [
+    0.78,
+    0.45,
+    -1.3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Wheel",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "b9de68ad-5641-10aa-675d-0c1c2e916d53",
+   "name": "Car wheel 1",
+   "parent": "25d3734a-d5fe-c636-3dc9-501768244031",
+   "position": [
+    -0.78,
+    0.45,
+    -1.3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Wheel",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "536d6b50-0e04-1018-205c-46a95bebe4c8",
+   "name": "Car wheel 2",
+   "parent": "25d3734a-d5fe-c636-3dc9-501768244031",
+   "position": [
+    0.78,
+    0.45,
+    1.3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Wheel",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "301133ab-b140-0dda-49fb-54a0449b46ca",
+   "name": "Car wheel 3",
+   "parent": "25d3734a-d5fe-c636-3dc9-501768244031",
+   "position": [
+    -0.78,
+    0.45,
+    1.3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Wheel",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

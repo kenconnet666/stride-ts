@@ -1456,6 +1456,43 @@
                         "type": "number",
                         "minimum": 0,
                         "description": "unit: m"
+                      },
+                      "shadow": {
+                        "type": "object",
+                        "properties": {
+                          "size": {
+                            "enum": [
+                              "xsmall",
+                              "small",
+                              "medium",
+                              "large",
+                              "xlarge"
+                            ]
+                          },
+                          "filter": {
+                            "enum": [
+                              "none",
+                              "pcf3x3",
+                              "pcf5x5",
+                              "pcf7x7",
+                              "pcss"
+                            ]
+                          },
+                          "depthBias": {
+                            "type": "number"
+                          },
+                          "normalOffsetScale": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "size",
+                          "filter",
+                          "depthBias",
+                          "normalOffsetScale"
+                        ],
+                        "additionalProperties": false,
+                        "description": "soft shadows sized by the emitting surface (sharp at contact, softer farther away); filter is not used"
                       }
                     },
                     "required": [
@@ -1499,6 +1536,43 @@
                         "type": "number",
                         "minimum": 0,
                         "description": "unit: m"
+                      },
+                      "shadow": {
+                        "type": "object",
+                        "properties": {
+                          "size": {
+                            "enum": [
+                              "xsmall",
+                              "small",
+                              "medium",
+                              "large",
+                              "xlarge"
+                            ]
+                          },
+                          "filter": {
+                            "enum": [
+                              "none",
+                              "pcf3x3",
+                              "pcf5x5",
+                              "pcf7x7",
+                              "pcss"
+                            ]
+                          },
+                          "depthBias": {
+                            "type": "number"
+                          },
+                          "normalOffsetScale": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "size",
+                          "filter",
+                          "depthBias",
+                          "normalOffsetScale"
+                        ],
+                        "additionalProperties": false,
+                        "description": "soft shadows sized by the emitting surface (sharp at contact, softer farther away); filter is not used"
                       }
                     },
                     "required": [
@@ -1541,6 +1615,43 @@
                         "type": "number",
                         "minimum": 0,
                         "description": "unit: m"
+                      },
+                      "shadow": {
+                        "type": "object",
+                        "properties": {
+                          "size": {
+                            "enum": [
+                              "xsmall",
+                              "small",
+                              "medium",
+                              "large",
+                              "xlarge"
+                            ]
+                          },
+                          "filter": {
+                            "enum": [
+                              "none",
+                              "pcf3x3",
+                              "pcf5x5",
+                              "pcf7x7",
+                              "pcss"
+                            ]
+                          },
+                          "depthBias": {
+                            "type": "number"
+                          },
+                          "normalOffsetScale": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "size",
+                          "filter",
+                          "depthBias",
+                          "normalOffsetScale"
+                        ],
+                        "additionalProperties": false,
+                        "description": "soft shadows sized by the emitting surface (sharp at contact, softer farther away); filter is not used"
                       }
                     },
                     "required": [

@@ -31,8 +31,7 @@
     "localShadows": 0.3
    }
   },
-  "transparent": true,
-  "rayTracedShadows": true
+  "transparent": true
  },
  "entities": [
   {
@@ -1422,7 +1421,13 @@
      "intensity": 18,
      "width": 0.12,
      "height": 1.4,
-     "range": 7
+     "range": 7,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -1457,7 +1462,13 @@
      "intensity": 18,
      "width": 0.12,
      "height": 1.4,
-     "range": 7
+     "range": 7,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2357,7 +2368,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2392,7 +2409,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2427,7 +2450,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2462,7 +2491,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2497,7 +2532,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2532,7 +2573,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2567,7 +2614,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2602,7 +2655,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2637,7 +2696,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2672,7 +2737,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2707,7 +2778,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2742,7 +2819,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2777,7 +2860,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2812,7 +2901,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2847,7 +2942,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2882,7 +2983,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2917,7 +3024,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2952,7 +3065,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -2987,7 +3106,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3022,7 +3147,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3057,7 +3188,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3092,7 +3229,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3127,7 +3270,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3162,7 +3311,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3197,7 +3352,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3232,7 +3393,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3267,7 +3434,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3302,7 +3475,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3337,7 +3516,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3372,7 +3557,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3407,7 +3598,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3442,7 +3639,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3477,7 +3680,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3512,7 +3721,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3547,7 +3762,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   },
@@ -3582,7 +3803,13 @@
      "intensity": 24,
      "width": 0.12,
      "height": 1.4,
-     "range": 9
+     "range": 9,
+     "shadow": {
+      "size": "medium",
+      "filter": "none",
+      "depthBias": 0.01,
+      "normalOffsetScale": 10
+     }
     }
    }
   }

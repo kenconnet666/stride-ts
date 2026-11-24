@@ -426,6 +426,8 @@ export interface LocalShadowReceiver {
   normalOffsetScale: number;
   /** 0：单次比较采样；3、5、7：PCF 的核大小。 */
   filterSize: number;
+  /** 一块（立方体的一面、聚光那一块）的半边长，图集 UV：面光源的软阴影采样不出这一块。 */
+  tileHalfSize: number;
 }
 
 /** 最多几个方向光（Stride 的 LightDirectionalGroupRenderer 默认也是一组最多 8 个；4 个足够常见的场景）。 */

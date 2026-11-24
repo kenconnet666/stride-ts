@@ -59,6 +59,7 @@ export class LocalShadowViews {
     receiver.depthA = far / (far - near);
     receiver.depthB = (near * far) / (near - far);
     const views: RenderView[] = [];
+    receiver.tileHalfSize = (rectangles[0]?.width ?? 0) / atlasSize / 2;
     rectangles.forEach((rectangle, face) => {
       const view = (this.#views[this.#used++] ??= Object.assign(new RenderView(), { reversedDepth: false }));
       const size = rectangle.width;

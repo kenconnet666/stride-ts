@@ -264,6 +264,76 @@ fn computeLocalShadow(index: u32, position: vec3f, normal: vec3f, nDotL: f32, li
   return filterShadow(coord.xy, coord.z, u32(localShadowOptions(start).x));
 }
 
+/** 面光源的软阴影：搜遮挡物、滤波各几个采样点。 */
+const AREA_BLOCKER_TAPS = 8u;
+const AREA_FILTER_TAPS = 24u;
+/** 搜遮挡物时假定它们离灯不近于接收点距离的这个比例（搜的范围是发光面的 1 / 比例 − 1 倍）。 */
+const AREA_SEARCH_NEAR = 0.4;
+const CUBE_AXES = array<vec3f, 6>(vec3f(0.0, 0.0, 1.0), vec3f(0.0, 0.0, -1.0), vec3f(1.0, 0.0, 0.0), vec3f(-1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), vec3f(0.0, -1.0, 0.0));
+
+/** 接收点 q（投影过、没除 w）沿发光面的两条半轴各挪 o.x、o.y 倍（d1、d2 是两条半轴投影过的）在图集上的位置。 */
+fn areaShadowUv(q: vec4f, d1: vec4f, d2: vec4f, o: vec2f) -> vec2f {
+  let p = q + d1 * o.x + d2 * o.y;
+  return p.xy / p.w;
+}
+
+/**
+ * 面光源（矩形、圆盘、管子）的软阴影：阴影图是光源中心的立方体（同点光，缓存着），半影按发光面的大小算（PCSS，Fernando 2005）。
+ * 发光面上的点 a（两条半轴的组合）被离灯 zb 远的遮挡物挡住时，遮挡物在图上的位置相当于接收点沿 a 挪 (zr − zb) / zb 倍——
+ * 采样点铺在发光面的形状上（长条灯管的半影沿管子长），经这一面的矩阵准确投到图上（各面、透视都对）。
+ * 1. 搜遮挡物：遮挡物不近于接收距离的 AREA_SEARCH_NEAR 倍，范围是发光面的 1 / 比例 − 1 倍；比这里离灯近的取平均距离；
+ * 2. 按平均距离的倍数铺采样点做比较采样，至少 1.5 个图集像素（接触处不出锯齿）。
+ * 采样点固定、不随帧转（确定的着色，不靠降噪，docs/realtime.md），都限在这一面的块里。
+ */
+fn computeAreaShadow(index: u32, position: vec3f, normal: vec3f, light: LocalLight, kind: u32) -> f32 {
+  let start = localShadowStart(index);
+  let params = localShadowParams(start);
+  let lightPosition = light.position.xyz;
+  let nDotL = max(dot(normal, normalize(lightPosition - position)), 0.0001);
+  let p = position + 2.0 * SHADOW_OFFSET_TEXEL * params.y * saturate(1.0 - nDotL) * normal;
+  let face = localShadowFace(position - lightPosition);
+  let receiverDepth = params.z + params.w / (face.y - params.x);
+  if (receiverDepth < 0.0 || receiverDepth > 1.0) {
+    return 1.0;
+  }
+  let m = localShadowMatrix(start, face.x);
+  // 发光面的两条半轴：矩形的半宽、半高，圆盘两条都是半径，管子只有半长
+  let a1 = light.angle.xyz;
+  let a2 = select(normalize(cross(light.direction.xyz, a1)) * light.angle.w, vec3f(0.0), kind == 4u);
+  let q = m * vec4f(p, 1.0);
+  let d1 = m * vec4f(a1, 0.0);
+  let d2 = m * vec4f(a2, 0.0);
+  let texel = view.shadowAtlas.x;
+  // 这一面的块：中心是光源沿这一面的轴的投影，半边长在选项里
+  let c = m * vec4f(lightPosition + CUBE_AXES[face.x], 1.0);
+  let half = vec2f(localShadowOptions(start).z - texel);
+  let lo = c.xy / c.w - half;
+  let hi = c.xy / c.w + half;
+  let last = vec2i(i32(view.shadowAtlas.y) - 1);
+  var blockers = 0.0;
+  var blockerDistance = 0.0;
+  for (var i = 0u; i < AREA_BLOCKER_TAPS; i++) {
+    let uv = clamp(areaShadowUv(q, d1, d2, vogelDisk(i, AREA_BLOCKER_TAPS, 0.0) * (1.0 / AREA_SEARCH_NEAR - 1.0)), lo, hi);
+    let d = textureLoad(shadowAtlas, clamp(vec2i(uv * view.shadowAtlas.y), vec2i(0), last), 0);
+    if (d < receiverDepth) {
+      blockers += 1.0;
+      blockerDistance += params.w / max(d - params.z, 1e-6);
+    }
+  }
+  if (blockers == 0.0) {
+    return 1.0;
+  }
+  let zb = blockerDistance / blockers;
+  let k = max(face.y - zb, 0.0) / max(zb, 1e-3);
+  var lit = 0.0;
+  for (var i = 0u; i < AREA_FILTER_TAPS; i++) {
+    let o = vogelDisk(i, AREA_FILTER_TAPS, 0.0);
+    let uv = clamp(areaShadowUv(q, d1, d2, o * k) + o * (1.5 * texel), lo, hi);
+    lit += textureSampleCompareLevel(shadowAtlas, shadowComparison, uv, receiverDepth);
+  }
+  return lit / f32(AREA_FILTER_TAPS);
+}
+
 const CASCADE_INDICES = vec4u(0u, 1u, 2u, 3u);
 
 /**

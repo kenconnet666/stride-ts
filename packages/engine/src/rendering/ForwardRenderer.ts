@@ -504,7 +504,10 @@ export class ForwardRenderer {
       sky.watch(context.game.meshes.batches, context.game.transforms, context.game.frames);
       renderSystem.cull(context, views);
       // 画进渲染目标贴图的相机也接收阴影：各自一套方向光的级联（同 Stride：每个相机的前向渲染器各算各的）
-      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows), context.game.meshes.shadowCasterChanges(context));
+      // 投影者的变化只在有投阴影的局部光时跟（没有时缓存里也没有东西要失效；后来有了光，它们本来就从头画）
+      const lighting = renderSystem.lighting;
+      const localShadows = lighting.locals.some((light, i) => i < lighting.localCount && light.castsShadow);
+      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows), localShadows ? context.game.meshes.shadowCasterChanges(context) : undefined);
       renderSystem.addViews(shadowViews);
       renderSystem.cull(context, shadowViews);
       // 点光、聚光的阴影下标在阴影收集时才定，之后上传（网格、雾都读）
@@ -878,9 +881,8 @@ export class ForwardRenderer {
       // 管子是 π · 强度 / 长度；做大了是更柔和、不是更亮
       const size = Math.max(local.area === 'rect' ? 4 * half * local.halfHeight : local.area === 'disc' ? 3 * half * half : 2 * half, 1e-6);
       local.color.set(local.color.r * Math.PI / size, local.color.g * Math.PI / size, local.color.b * Math.PI / size, 1);
-      local.castsShadow = false;
-      return;
     }
+    // 面光源的阴影同点光（光源中心的立方体），着色时按发光面的大小出软影子（computeAreaShadow）
     local.castsShadow = this.drawShadows && this.quality.shadows && light.shadow[i] !== 0;
     if (local.castsShadow) {
       local.shadow.size = limitShadowSize(light.shadowSize[i]!, this.quality);

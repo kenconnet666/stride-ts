@@ -408,11 +408,11 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
         const { range, angleInner, angleOuter } = light;
         entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter, ...(light.shadow ? localShadowColumns(light.shadow) : {}), ...profileColumn(light.profile, assets) }));
       } else if (light.type === 'rect') {
-        entity.add(Light.with({ type: 'rect', color: [...light.color, 1], intensity: light.intensity, width: light.width, height: light.height, range: light.range }));
+        entity.add(Light.with({ type: 'rect', color: [...light.color, 1], intensity: light.intensity, width: light.width, height: light.height, range: light.range, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
       } else if (light.type === 'disc') {
-        entity.add(Light.with({ type: 'disc', color: [...light.color, 1], intensity: light.intensity, width: light.diameter, range: light.range }));
+        entity.add(Light.with({ type: 'disc', color: [...light.color, 1], intensity: light.intensity, width: light.diameter, range: light.range, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
       } else if (light.type === 'tube') {
-        entity.add(Light.with({ type: 'tube', color: [...light.color, 1], intensity: light.intensity, width: light.length, range: light.range }));
+        entity.add(Light.with({ type: 'tube', color: [...light.color, 1], intensity: light.intensity, width: light.length, range: light.range, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
       } else entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     },
     remove: drop(Light),

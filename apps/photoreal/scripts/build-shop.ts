@@ -9,6 +9,8 @@ import { ceilingLights } from '@stride-ts/engine/modeling';
 import { McpProcess } from '@stride-ts/editor/mcp-client';
 
 const project = path.resolve(import.meta.dirname, '..');
+/** 条形灯（面光源）投的软影子：货架脚下、码垛之间、托盘底下（缓存的阴影图，半影按灯管的长宽）。 */
+const TUBE_SHADOW = { size: 'medium', filter: 'none', depthBias: 0.01, normalOffsetScale: 10 } as const;
 const mcp = new McpProcess(project);
 await mcp.start();
 
@@ -358,7 +360,7 @@ const shelfEntities = [
   entity(sid(0x36), 'Entrance fence', [0, 0, 0], { model: { model: 'Shop/Splines/EntranceFence', materials: [] } }),
   entity(sid(0x37), 'Vestibule', [0, 0, 0], { model: { model: 'Shop/Models/Vestibule', materials: [] } }),
   ...[-3, 3].map((x, i) => entity(sid(0x38 + i), `Vestibule light ${i}`, [x, 3.28, 7.75], {
-    light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 18, width: 0.12, height: 1.4, range: 7 },
+    light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 18, width: 0.12, height: 1.4, range: 7, shadow: TUBE_SHADOW },
   }, euler(0, -90))),
   ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [5.7, 0, 0.25 + i * 0.9], -90)),
   // 四条过道上方的招牌
@@ -404,7 +406,7 @@ const ceilingAt: Vec3 = [0, 0, -4];
 const ceilingEntity = (id: string) => entity(id, 'Ceiling', ceilingAt, { model: { model: 'Shop/Ceilings/Market', materials: [] } }, euler(90));
 // 转 90°：天花板本地的 (x, z) 到世界是 (z, -x)
 const lights = ceilingLights(ceiling).map((light, i) => entity(sid(0x40 + i), `Light ${i}`, [ceilingAt[0] + light.center[2], light.center[1] - 0.015, ceilingAt[2] - light.center[0]], {
-  light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: light.length, range: 9 },
+  light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: light.length, range: 9, shadow: TUBE_SHADOW },
 }, euler(0, -90)));
 await write('scene', 'Supermarket', {
   name: 'Supermarket',
@@ -413,8 +415,6 @@ await write('scene', 'Supermarket', {
     postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true, antialiasingMode: 'temporal', ambientOcclusion: { radius: 0.2 },
       localReflections: { maxRoughness: 0.4, edgeFade: 0.1 }, colorGrading: { operator: 'agx', temperature: 6000 }, exposure: { metering: 'histogram', localShadows: 0.3 } },
     transparent: true,
-    // 条形灯（面光源）的影子用光追（ReSTIR 的比值）：货架脚下、码垛之间、托盘底下有软影子；4K 整帧 20 毫秒，在 30 Hz 的预算里
-    rayTracedShadows: true,
   },
   entities: [
     entity(sid(1), 'Camera', entranceEye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 200 } }, lookAt(entranceEye, [0, 1.0, -6])),

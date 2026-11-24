@@ -610,13 +610,14 @@ export interface SceneEntityFile {
       }
       /**
        * 矩形光（Stride 没有；同虚幻的 Rect Light、Unity HDRP 的矩形面光源）：width × height 的发光矩形（沿本地 X、Y），朝本地 -Z 照，
-       * range 以外照不到；intensity 同点光的（正前方同样远处同样亮，面板越大越柔和），不投阴影。
+       * range 以外照不到；intensity 同点光的（正前方同样远处同样亮，面板越大越柔和）。shadow 写了投阴影：半影按发光面的长宽
+       * 算（接触处硬、离得远软，长条灯管沿管子的方向更软），filter 不用。
        */
-      | { readonly type: 'rect'; readonly color: Vec3Tuple; readonly intensity: number; readonly width: number; readonly height: number; readonly range: number }
+      | { readonly type: 'rect'; readonly color: Vec3Tuple; readonly intensity: number; readonly width: number; readonly height: number; readonly range: number; readonly shadow?: SceneLocalLightShadow }
       /** 圆盘光（同 HDRP 的 Disc Light）：直径 diameter 的发光圆盘，朝本地 -Z 照；其余同矩形光。 */
-      | { readonly type: 'disc'; readonly color: Vec3Tuple; readonly intensity: number; readonly diameter: number; readonly range: number }
+      | { readonly type: 'disc'; readonly color: Vec3Tuple; readonly intensity: number; readonly diameter: number; readonly range: number; readonly shadow?: SceneLocalLightShadow }
       /** 管状光（同 HDRP 的 Tube Light）：沿本地 X、长 length 的发光线段，往四周照（灯管、霓虹灯条）；其余同矩形光。 */
-      | { readonly type: 'tube'; readonly color: Vec3Tuple; readonly intensity: number; readonly length: number; readonly range: number };
+      | { readonly type: 'tube'; readonly color: Vec3Tuple; readonly intensity: number; readonly length: number; readonly range: number; readonly shadow?: SceneLocalLightShadow };
     readonly background?: SceneBackground;
     readonly reflectionProbe?: SceneReflectionProbe;
     readonly planarReflection?: ScenePlanarReflection;

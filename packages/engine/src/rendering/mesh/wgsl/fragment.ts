@@ -173,8 +173,11 @@ const AREA_FAR = 8.0;
  * 货架上只有倒影附近的几盏要积分，镜面那部分 4K 下从 3.2 毫秒降到约 1 毫秒）；倒影附近的照旧积分。矩形按 4 个角单独积分
  * （ltcRect，四个角在本地坐标里只建一次，漫反射、镜面共用），不走 12 个角的数组。
  */
-/** 一盏点光、聚光或面光源照到这个像素的漫反射和镜面（乘过直射光的遮蔽 occlusion）；面光源的每像素部分 area 先算好。 */
-fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, coatArea: AreaShading, world: vec3f, n: vec3f, occlusion: f32) -> Lit {
+/**
+ * 一盏点光、聚光或面光源照到这个像素的漫反射和镜面，不带阴影（乘过直射光的遮蔽 occlusion）；面光源的每像素部分 area 先算好。
+ * 阴影另算（localLightShadow），按亮度挑灯（见着色的光源循环）。
+ */
+fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, coatArea: AreaShading, world: vec3f, occlusion: f32) -> Lit {
   let kind = localLightKind(light);
   if (kind >= 2u) {
     let lit = areaLight(surface, area, light, world, kind);
@@ -186,16 +189,27 @@ fn localLightLit(light: LocalLight, surface: Surface, area: AreaShading, coatAre
     return Lit(lit.diffuse * occlusion, lit.specular * occlusion, coat * occlusion);
   }
   let at = localLightAt(light, world);
-  let l = at.xyz;
-  let attenuation = at.w;
-  // 这个视图用不用阴影看图集的尺寸（不用时是 0）
-  var shadow = 1.0;
-  // 局部光的阴影来自光追时（不透明阶段）不查图集，整体乘可见比例
-  let rayTraced = view.decal.z > 0.5 && !TRANSPARENT_STAGE;
-  if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0 && !rayTraced) {
-    shadow = computeLocalShadow(u32(light.direction.w), world, n, max(dot(n, l), 0.0001), light.position.xyz);
+  return shadeLight(surface, at.xyz, light.color.rgb, at.w, occlusion);
+}
+
+/** 这盏光在这个像素的阴影（1 是照得到）：点光、聚光按 PCF，面光源按发光面大小的软阴影。 */
+fn localLightShadow(light: LocalLight, world: vec3f, n: vec3f) -> f32 {
+  let kind = localLightKind(light);
+  let index = u32(light.direction.w);
+  if (kind >= 2u) {
+    return computeAreaShadow(index, world, n, light, kind);
   }
-  return shadeLight(surface, l, light.color.rgb, attenuation, shadow * occlusion);
+  let l = normalize(light.position.xyz - world);
+  return computeLocalShadow(index, world, n, max(dot(n, l), 0.0001), light.position.xyz);
+}
+
+/** 这盏光在这个像素有多亮（挑哪几盏真算阴影）：漫反射和镜面的亮度。 */
+fn litWeight(lit: Lit) -> f32 {
+  return dot(lit.diffuse + lit.specular + lit.coat, vec3f(0.2126, 0.7152, 0.0722));
+}
+
+fn addLit(a: Lit, b: Lit, scale: f32) -> Lit {
+  return Lit(a.diffuse + b.diffuse * scale, a.specular + b.specular * scale, a.coat + b.coat * scale);
 }
 
 fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, kind: u32) -> Lit {
@@ -867,12 +881,53 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
     }
   }
   // 局部光的阴影来自光追时（不透明阶段）：所有局部光的和乘这个像素的可见比例（RayTracedLocalLights）
-  let localVisibility = select(1.0, screenLocalVisibility(in.position), view.decal.z > 0.5 && !TRANSPARENT_STAGE);
+  let rayTracedLocal = view.decal.z > 0.5 && !TRANSPARENT_STAGE;
+  let localVisibility = select(1.0, screenLocalVisibility(in.position), rayTracedLocal);
+  // 投阴影的局部光：这个像素上最亮的两盏真算阴影（面光源的软阴影要几十次采样，一个像素被十几盏灯照到时全算太贵），
+  // 其余的乘这两盏的平均可见比例（带阴影的亮度和 ÷ 不带的）——弱的灯离得远、影子本来就淡而散，按比例近似看不出来；
+  // 确定的，不随机挑、不用降噪（docs/realtime.md）
+  let shadows = view.shadowAtlas.y > 0.0 && !rayTracedLocal;
+  var first = Lit(vec3f(0.0), vec3f(0.0), vec3f(0.0));
+  var second = first;
+  var rest = first;
+  var firstWeight = 0.0;
+  var secondWeight = 0.0;
+  var brightLight = localLight(0u);
+  var secondLight = brightLight;
   for (var k = 0u; k < localCount; k++) {
-    let lit = localLightLit(localLight(select(k, clusters[firstLight + k], clustered)), surface, area, coatArea, in.world, n, directOcclusion);
-    direct.diffuse += lit.diffuse * localVisibility;
-    direct.specular += lit.specular * localVisibility;
-    direct.coat += lit.coat * localVisibility;
+    let light = localLight(select(k, clusters[firstLight + k], clustered));
+    let lit = localLightLit(light, surface, area, coatArea, in.world, directOcclusion);
+    let weight = litWeight(lit);
+    if (!shadows || light.direction.w < 0.0 || weight <= 0.0) {
+      direct = addLit(direct, lit, localVisibility);
+      continue;
+    }
+    if (weight > firstWeight) {
+      rest = addLit(rest, second, 1.0);
+      second = first;
+      secondWeight = firstWeight;
+      secondLight = brightLight;
+      first = lit;
+      firstWeight = weight;
+      brightLight = light;
+    } else if (weight > secondWeight) {
+      rest = addLit(rest, second, 1.0);
+      second = lit;
+      secondWeight = weight;
+      secondLight = light;
+    } else {
+      rest = addLit(rest, lit, 1.0);
+    }
+  }
+  if (firstWeight > 0.0) {
+    let firstShadow = localLightShadow(brightLight, in.world, n);
+    var secondShadow = 1.0;
+    if (secondWeight > 0.0) {
+      secondShadow = localLightShadow(secondLight, in.world, n);
+    }
+    direct = addLit(direct, first, firstShadow);
+    direct = addLit(direct, second, secondShadow);
+    direct = addLit(direct, rest, (firstWeight * firstShadow + secondWeight * secondShadow) / (firstWeight + secondWeight));
   }
   // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致。
   // scattered 是所有漫反射光（次表面散射模糊的就是它），镜面反射和自发光另加

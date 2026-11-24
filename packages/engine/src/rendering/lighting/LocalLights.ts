@@ -59,7 +59,7 @@ fn localShadowParams(start: u32) -> vec4f {
   return localLightData[start + 24u];
 }
 
-/** x：PCF 核大小（0 是一次比较采样），y：1 是点光。 */
+/** x：PCF 核大小（0 是一次比较采样），y：1 是点光，z：一块的半边长（图集 UV）。 */
 fn localShadowOptions(start: u32) -> vec4f {
   return localLightData[start + 25u];
 }
@@ -76,8 +76,19 @@ fn localShadowCoord(start: u32, position: vec3f, unbiased: vec3f, lightPosition:
     s.z -= params.x;
     return vec4f(s.xyz / s.w, 1.0);
   }
-  // 点光：到光源的方向里最长的那个轴定面（+Z、-Z、+X、-X、+Y、-Y），深度按沿这个轴的距离算
-  let delta = unbiased - lightPosition;
+  let face = localShadowFace(unbiased - lightPosition);
+  let projected = localShadowMatrix(start, face.x) * vec4f(position, 1.0);
+  let depth = params.z + params.w / (face.y - params.x);
+  return vec4f(projected.xy / projected.w, depth, select(0.0, 1.0, depth >= 0.0 && depth <= 1.0));
+}
+
+/**
+ * 点光的立方体选哪一面：从光源到这里的 delta 里最长的那个轴（+Z、-Z、+X、-X、+Y、-Y），返回面的序号和沿这个轴的距离
+ * （bitcast 在 y 里不方便，距离单独用 f32：x 是面、y 是距离）。
+ */
+struct ShadowFace { x: u32, y: f32 };
+
+fn localShadowFace(delta: vec3f) -> ShadowFace {
   let size = abs(delta);
   var face = 0u;
   var axis = delta.z;
@@ -91,9 +102,7 @@ fn localShadowCoord(start: u32, position: vec3f, unbiased: vec3f, lightPosition:
   if (axis < 0.0) {
     face += 1u;
   }
-  let projected = localShadowMatrix(start, face) * vec4f(position, 1.0);
-  let depth = params.z + params.w / (abs(axis) - params.x);
-  return vec4f(projected.xy / projected.w, depth, select(0.0, 1.0, depth >= 0.0 && depth <= 1.0));
+  return ShadowFace(face, abs(axis));
 }
 
 /** 光的种类（color.w）：0 点光，1 聚光，2 矩形光，3 圆盘光，4 管状光。 */
@@ -419,7 +428,7 @@ export class LocalLightBuffer {
       const shadow = lighting.localShadows[i]!, o = 4 * (shadowStart + i * SHADOW_VEC4S);
       data.set(shadow.worldToShadow, o);
       data[o + 96] = shadow.depthBias; data[o + 97] = shadow.normalOffsetScale; data[o + 98] = shadow.depthA; data[o + 99] = shadow.depthB;
-      data[o + 100] = shadow.filterSize; data[o + 101] = shadow.point ? 1 : 0;
+      data[o + 100] = shadow.filterSize; data[o + 101] = shadow.point ? 1 : 0; data[o + 102] = shadow.tileHalfSize;
     }
     this.#device.queue.writeBuffer(this.buffer, 0, data, 0, floats);
   }

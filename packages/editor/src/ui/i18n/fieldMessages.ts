@@ -350,6 +350,7 @@ const zhCN: FieldMessages = {
     'like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter': '同点光：正前方同样远处同样亮；面板做大了是更柔和，不是更亮',
     'the disc lies in the local XY plane and shines toward local -Z': '圆盘在本地 XY 平面上，朝本地 -Z 照',
     'IES light profile: how strongly the fixture shines in each direction; 0° points along local -Z': '配光曲线（IES 文件）：灯具往各个方向照多亮；0° 对着本地 -Z',
+    'soft shadows sized by the emitting surface (sharp at contact, softer farther away); filter is not used': '软影子，半影按发光面的大小（接触处硬、离得远软）；不用滤波的设置',
     'along the local X axis; the tube shines all around': '沿本地 X 轴，往四周照',
     'splat asset (.splat, imported from a 3D Gaussian Splatting .ply, .spz or .sog)': '泼溅资源（.splat，从 3DGS 的 .ply、.spz 或 .sog 导入）',
     'vector terrain asset (.terrain.json): noise base, flatten features and sculpt strokes, evaluated at run time': '矢量地形资源（.terrain.json）：噪声的底、压平的地物和雕刻的笔画，运行时求值',

@@ -265,29 +265,50 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.drawnInstances = this.drawCalls = 0;
   }
 
-  /** 槽位 → 最后一次动（世界矩阵变了、分配、释放）是第几次更新；#motionUpdate 是记到哪一次。 */
+  /**
+   * 槽位 → 最后一次动（世界矩阵变了、分配、释放）是第几次更新，上一次提取到它是第几次更新；#motionUpdate 是记到哪一次，
+   * #origin 是那时的渲染原点。
+   */
   #lastMoved = new Float64Array(0);
+  #seenAt = new Float64Array(0);
   #motionUpdate = Number.NaN;
+  readonly #origin = [Number.NaN, Number.NaN, Number.NaN];
   readonly #shadowCasters = new ShadowCasters();
 
-  /** 记下这次更新里动了的槽位（每次更新一次；和上次记的不是相邻的两次更新时，不知道中间谁动过，全部算刚动过）。 */
+  /**
+   * 记下这次更新里动了的槽位（每次更新一次）。渲染原点换了的那次不记：所有槽位的渲染空间坐标都变了，但东西没动（缓存的阴影图
+   * 在渲染空间里，光的位置变了，本来就全部重画）；和上次记的不是相邻的两次更新时，不知道中间谁动过，全部算刚动过。
+   */
   #trackMotion(context: RenderContext): void {
     const update = context.game.updateTime.frameCount;
     if (update === this.#motionUpdate) return;
     const transforms = context.game.transforms, limit = transforms.slotLimit + 1;
     if (this.#lastMoved.length < limit) {
-      const grown = new Float64Array(Math.max(limit, this.#lastMoved.length * 2)).fill(update);
-      grown.set(this.#lastMoved);
-      this.#lastMoved = grown;
+      const size = Math.max(limit, this.#lastMoved.length * 2);
+      const moved = new Float64Array(size).fill(-Infinity), seen = new Float64Array(size).fill(-Infinity);
+      moved.set(this.#lastMoved);
+      seen.set(this.#seenAt);
+      this.#lastMoved = moved;
+      this.#seenAt = seen;
     }
-    if (update !== this.#motionUpdate + 1) this.#lastMoved.fill(update);
-    else for (const slot of transforms.changedSlots()) this.#lastMoved[slot] = update;
+    const origin = context.game.renderOrigin;
+    const shifted = origin.some((value, i) => value !== this.#origin[i]);
+    for (let i = 0; i < 3; i++) this.#origin[i] = origin[i]!;
+    // 第一次没有历史：谁都不算在动
+    if (update !== this.#motionUpdate + 1 && !Number.isNaN(this.#motionUpdate)) this.#lastMoved.fill(update);
+    else if (!shifted) for (const slot of transforms.changedSlots()) this.#lastMoved[slot] = update;
     this.#motionUpdate = update;
   }
 
-  /** 槽位最近 SETTLE_UPDATES 次更新里动过。 */
+  /**
+   * 槽位最近 SETTLE_UPDATES 次更新里动过（提取时每个投影者调一次）。上一次更新没提取到的（刚生成的、流式加载进来的）不算动：
+   * 它是新加的，直接进静态批，静态层按"多出来的投影者"补上（不然一个格子加载进来先进动态批、十次更新后再整批换回来）。
+   */
   #moving(slot: number): boolean {
-    return !(this.#motionUpdate - (this.#lastMoved[slot] ?? this.#motionUpdate) >= SETTLE_UPDATES);
+    const update = this.#motionUpdate, seen = this.#seenAt[slot]!;
+    this.#seenAt[slot] = update;
+    if (!(seen >= update - 1)) return false;
+    return update - this.#lastMoved[slot]! < SETTLE_UPDATES;
   }
 
   /**

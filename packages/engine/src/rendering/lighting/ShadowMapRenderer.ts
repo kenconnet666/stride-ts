@@ -17,7 +17,7 @@
  */
 import type { GraphicsDevice } from '../../graphics/GraphicsDevice';
 import {
-  RenderStage, type Lighting, type LocalLight, type LocalShadowReceiver, type RenderContext, type RenderSystem, type RenderView, type ShadowMapFilter, type ShadowMapSize, type ShadowReceiver,
+  createLocalLight, RenderStage, type Lighting, type LocalLight, type LocalShadowReceiver, type RenderContext, type RenderSystem, type RenderView, type ShadowMapFilter, type ShadowMapSize, type ShadowReceiver,
 } from '../RenderSystem';
 import { boxTouchesSphere, type ShadowCasters } from '../mesh/ShadowCasters';
 import { DirectionalShadowCascades } from './DirectionalShadowCascades';
@@ -33,6 +33,8 @@ const MAX_ATLAS_SIZE = REFERENCE_SHADOW_SIZE * 2 ** (SIZE_INDEX.xlarge - 3) * 2;
 const MIN_ATLAS_SIZE = 1024;
 /** 最大的图集放不下时一盏光的块最多缩几次（每次边长减半）。 */
 const MAX_DOWNSCALE = 3;
+/** 点光聚光的块加起来最多占图集剩下面积的这么多（伙伴分配有碎片：六块一组的立方体占 1.5 个大一级的块）。 */
+const ATLAS_FILL = 0.85;
 /** 光源在画面上的大小连着这么多帧都要换档才换（相机来回挪一点不反复重画）。 */
 const SIZE_FRAMES = 30;
 /** 这么多帧没用到的光（不在画面附近了）还回它的块。 */
@@ -169,8 +171,8 @@ export class ShadowMapRenderer {
   /** 这一帧每个阴影视图用哪个阶段画。 */
   readonly #stages = new Map<RenderView, RenderStage>();
 
-  /** 这一帧重画了几块静态层、拷了几块、画了几个动态层和级联的视图（调试、统计）。 */
-  readonly stats = { staticFaces: 0, copies: 0, dynamicFaces: 0, cachedLights: 0 };
+  /** 这一帧重画了几块静态层、拷了几块、画了几块动态层、几盏光有阴影、几盏没分到块，两张图集的边长（调试、统计）。 */
+  readonly stats = { staticFaces: 0, copies: 0, dynamicFaces: 0, cachedLights: 0, unplaced: 0, atlas: 0, staticAtlas: 0 };
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.#graphicsDevice = graphicsDevice;
@@ -187,17 +189,18 @@ export class ShadowMapRenderer {
   /**
    * 按剔除过的视图算出这一帧要画的阴影视图：主视图和 others（别的接收阴影的视图，比如画进渲染目标贴图的相机）各一套方向光的
    * 级联（设进各自的 view.shadow，主视图的也设进 lighting.shadow，体积雾用），点光、聚光的阴影共用（lighting.localShadows 和
-   * 各盏光的 shadowIndex，按主视图上盖住的大小定分辨率），casters 是这一帧投影者的变化（MeshRenderFeature.shadowCasterChanges）。
+   * 各盏光的 shadowIndex，按主视图上盖住的大小定分辨率），casters 是这一帧投影者的变化（MeshRenderFeature.shadowCasterChanges；
+   * 没有投阴影的局部光时不用给）。
    * 返回这一帧要画（要剔除）的视图；缓存着没变的光不在里面。
    */
-  collect(main: RenderView, lighting: Lighting, others: readonly RenderView[], casters: ShadowCasters): readonly RenderView[] {
+  collect(main: RenderView, lighting: Lighting, others: readonly RenderView[], casters: ShadowCasters | undefined): readonly RenderView[] {
     this.#frame++;
     lighting.shadow = undefined;
     lighting.shadowAtlas = undefined;
     lighting.localShadowCount = 0;
     this.#stages.clear();
     this.#staticViews.length = this.#clears.length = this.#copies.length = this.#finalViews.length = 0;
-    Object.assign(this.stats, { staticFaces: 0, copies: 0, dynamicFaces: 0, cachedLights: 0 });
+    Object.assign(this.stats, { staticFaces: 0, copies: 0, dynamicFaces: 0, cachedLights: 0, unplaced: 0, atlas: this.#final.size, staticAtlas: this.#static.size });
     for (const view of [main, ...others]) view.shadow = undefined;
     if (Math.abs(main.minimumDistance - main.maximumDistance) < ZERO_TOLERANCE) main.maximumDistance = main.minimumDistance + ZERO_TOLERANCE;
     if (!Number.isFinite(main.minimumDistance) || !Number.isFinite(main.maximumDistance)) return [];
@@ -207,7 +210,7 @@ export class ShadowMapRenderer {
     const receivers = [main, ...others.filter((view) => Number.isFinite(view.minimumDistance) && Number.isFinite(view.maximumDistance))];
     receivers.forEach((view, i) => this.#collectDirectional(view, i, lighting));
     lighting.shadow = main.shadow;
-    this.#collectLocals(main, lighting, casters);
+    if (casters) this.#collectLocals(main, lighting, casters);
     this.#evict();
     if (lighting.shadow || lighting.localShadowCount > 0) lighting.shadowAtlas = this.#final.texture;
     return [...this.#staticViews, ...this.#finalViews];
@@ -247,6 +250,11 @@ export class ShadowMapRenderer {
     this.#clears.push(...tiles.rectangles.slice(0, receiver.cascadeCount));
   }
 
+  /** 这一帧级联占的面积（图集像素）。 */
+  #cascadeArea(): number {
+    return this.#cascadeTiles.reduce((sum, tiles) => sum + (tiles ? tiles.size * tiles.size * tiles.count : 0), 0);
+  }
+
   /** 第 index 套级联的块：大小、个数变了（或图集翻倍了）重分；放不下时缩小，还放不下返回 undefined。 */
   #cascadeTileFor(index: number, wanted: number, count: number): { size: number; rectangles: PackedRectangle[] } | undefined {
     const tiles = this.#cascadeTiles[index];
@@ -270,12 +278,16 @@ export class ShadowMapRenderer {
     // 画面上大的先来：图集紧张时它们先分到块、先轮上重画
     const order: LocalLight[] = [];
     for (let i = 0; i < lighting.localCount; i++) if (lighting.locals[i]!.castsShadow) order.push(lighting.locals[i]!);
-    const coverage = new Map(order.map((light) => [light, screenCoverage(main, light)]));
+    const coverage = new Map(order.map((light) => [light, shadowCoverage(main, light)]));
     order.sort((a, b) => coverage.get(b)! - coverage.get(a)!);
+    const wanted = fitShadowSizes(order, coverage, (MAX_ATLAS_SIZE * MAX_ATLAS_SIZE - this.#cascadeArea()) * ATLAS_FILL);
     this.#localViews.reset();
     for (const light of order) {
-      const entry = this.#entryFor(light, shadowMapSize(light.shadow.size, coverage.get(light)!));
-      if (!entry) continue;
+      const entry = this.#entryFor(light, wanted.get(light)!);
+      if (!entry) {
+        this.stats.unplaced++;
+        continue;
+      }
       entry.lastUsed = this.#frame;
       // 光自己变了、或者静态的投影者在它的范围里变了：静态层作废
       if (this.#signatureChanged(light, entry)) entry.staticValid = false;
@@ -442,6 +454,39 @@ export class ShadowMapRenderer {
   }
 }
 
+/** 按光源附近这么大的球在画面上盖住多大分阴影图的档（影子的细节在光源附近；射程很大的灯按射程算，相机几乎总在球里）。 */
+const SHADOW_DETAIL_RADIUS = 2;
+const detailLight = createLocalLight();
+
+/** 光源附近 SHADOW_DETAIL_RADIUS 的球（聚光是光锥里那一段）在画面上盖住多大（像素）：近处的灯分大块，远处的分小块。 */
+function shadowCoverage(view: RenderView, light: LocalLight): number {
+  return screenCoverage(view, Object.assign(detailLight, light, { radius: Math.min(light.radius, SHADOW_DETAIL_RADIUS) }));
+}
+
+/**
+ * 各盏光的块的边长：从各自要的（档位和画面上盖住多大）开始，加起来放不下 room（图集像素）时每次把"图上的像素相对画面上盖住的
+ * 最富余"的那盏缩一半（远处的灯先缩，近处的保持清楚；不让先来的占满、后来的没有），最小 16。
+ */
+export function fitShadowSizes(lights: readonly LocalLight[], coverage: ReadonlyMap<LocalLight, number>, room: number): Map<LocalLight, number> {
+  const sizes = new Map(lights.map((light) => [light, shadowMapSize(light.shadow.size, coverage.get(light)!)]));
+  const faces = (light: LocalLight) => (light.spot ? 1 : 6);
+  let area = lights.reduce((sum, light) => sum + sizes.get(light)! ** 2 * faces(light), 0);
+  while (area > room) {
+    let richest: LocalLight | undefined, ratio = 0;
+    for (const light of lights) {
+      const size = sizes.get(light)!;
+      if (size <= 16) continue;
+      const r = size / Math.max(coverage.get(light)!, 1);
+      if (r > ratio) [richest, ratio] = [light, r];
+    }
+    if (!richest) break;
+    const size = sizes.get(richest)!;
+    sizes.set(richest, size / 2);
+    area -= (size * size * 3 / 4) * faces(richest);
+  }
+  return sizes;
+}
+
 /** 画静态层的视图时用的接收者：矩阵按静态层的图集算，着色器不用，丢掉。 */
 const scratchReceiver = createLocalShadowReceiver();
 
@@ -452,7 +497,7 @@ function shadowMapSize(size: ShadowMapSize, coverage: number): number {
 }
 
 function createLocalShadowReceiver(): LocalShadowReceiver {
-  return { point: true, worldToShadow: new Float32Array(96), depthA: 0, depthB: 0, depthBias: 0, normalOffsetScale: 0, filterSize: 0 };
+  return { point: true, worldToShadow: new Float32Array(96), depthA: 0, depthB: 0, depthBias: 0, normalOffsetScale: 0, filterSize: 0, tileHalfSize: 0 };
 }
 
 /** 不小于 size 的 2 的幂（Stride 的 MathUtil.NextPowerOfTwo）。 */

@@ -4,7 +4,7 @@ import { createLocalLight, RenderView, type LocalShadowReceiver } from '../../sr
 import { LocalShadowViews, screenCoverage } from '../../src/rendering/lighting/LocalShadowViews';
 
 const ATLAS = 4096, SIZE = 256;
-const receiver = (): LocalShadowReceiver => ({ point: false, worldToShadow: new Float32Array(96), depthA: 0, depthB: 0, depthBias: 0, normalOffsetScale: 0, filterSize: 0 });
+const receiver = (): LocalShadowReceiver => ({ point: false, worldToShadow: new Float32Array(96), depthA: 0, depthB: 0, depthBias: 0, normalOffsetScale: 0, filterSize: 0, tileHalfSize: 0 });
 /** 图集里第 i 块（一排排下去）。 */
 const rectangle = (i: number) => ({ x: 512 + i * SIZE, y: 1024, width: SIZE, height: SIZE });
 

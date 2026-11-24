@@ -6,10 +6,6 @@ packages:
 # package.json 里照常写版本号，IDE 和工具就按普通的 npm 包对待；换新版本时改这里的地址，发布到 npm 后删掉这一条。
 # 不用 file: 指向本地的 tgz：pnpm 给它建的目录名带 `..`，JetBrains 的 IDE 就解析不出这个包的类型。
 overrides:
-  # vue-tsx-pro：临时发行版（node tools/vue-tsx-pro.ts dev；正式版发了以后 npm <版本> 换回）
-  '@zerodep-dev/vue-tsx-pro-tsx': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev/zerodep-dev-vue-tsx-pro-tsx-0.39.0-53a32ba2fe.tgz
-  '@zerodep-dev/vue-tsx-pro-ui': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev/zerodep-dev-vue-tsx-pro-ui-0.39.0-53a32ba2fe.tgz
-  # vue-tsx-pro 临时发行版结束
   # 整个工作区只用一个 TypeScript（根 package.json 定的 7.1 每日版，和 vue-tsx-pro 同一个）：Vue 的可选 peer 不再自己挑最新的正式版
   typescript: 7.1.0-dev.20261104.1
   # 共用资源的包（单独的仓库 kenconnet666/world-engine-assets，node tools/assets.ts dev | release <版本> 换地址）

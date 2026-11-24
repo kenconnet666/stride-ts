@@ -27,8 +27,8 @@
     "@stride-ts/engine": "workspace:*",
     "@stride-ts/native": "^0.29.0",
     "@stride-ts/pipeline": "workspace:*",
-    "@zerodep-dev/vue-tsx-pro-tsx": "^0.37.1",
-    "@zerodep-dev/vue-tsx-pro-ui": "^0.37.1",
+    "@zerodep-dev/vue-tsx-pro-tsx": "^0.40.0",
+    "@zerodep-dev/vue-tsx-pro-ui": "^0.40.0",
     "vue": "^3.5.45",
     "zod": "^4.6.7"
   }

@@ -1,0 +1,7 @@
+// 公园的环境声：一直吹的风（环境声区放，不空间化）
+{
+  "name": "Park",
+  "variants": [{ "sound": "Audio/Wind" }],
+  "loop": true,
+  "volume": 0.6
+}

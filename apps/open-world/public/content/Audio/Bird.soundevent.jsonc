@@ -1,0 +1,10 @@
+// 鸟叫：两种里随机挑、不连着一样，音高随机变一点；在树上叫，30 米外听不见，隔着东西变闷；同时最多 16 只
+{
+  "name": "Bird",
+  "variants": [{ "sound": "Audio/Chirp1" }, { "sound": "Audio/Chirp2" }],
+  "pitchRandom": 2,
+  "volumeRandom": 3,
+  "spatial": { "minDistance": 2, "maxDistance": 30 },
+  "maxInstances": 16,
+  "priority": 30
+}

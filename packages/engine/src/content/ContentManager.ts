@@ -64,6 +64,8 @@ import { ANIMATION_GRAPH, checkAnimationGraph } from './formats/animationGraphFo
 import type { AnimationGraph } from '../animation/AnimationGraph';
 import { STATE_TREE, checkStateTree } from './formats/stateTreeFormat';
 import type { StateTree } from '../ai/StateTree';
+import { SOUND_EVENT, checkSoundEvent } from './formats/soundEventFormat';
+import type { SoundEvent } from '../audio/SoundEvents';
 import { checkTable } from './formats/tableFormat';
 import { DataTable } from './DataTable';
 import { checkSpline } from '../modeling/spline';
@@ -88,6 +90,7 @@ declare module '../data/prop' {
     table: DataTable;
     animationGraph: AnimationGraph;
     stateTree: StateTree;
+    soundEvent: SoundEvent;
   }
 }
 
@@ -299,6 +302,7 @@ export class ContentManager {
     table: (path) => this.loadTable(path),
     animationGraph: (path) => this.loadAnimationGraph(path),
     stateTree: (path) => this.loadStateTree(path),
+    soundEvent: (path) => this.loadSoundEvent(path),
   };
 
   constructor({ root = 'content/', read, readRange, manifest, shaderClass = () => undefined }: ContentOptions = {}) {
@@ -781,6 +785,16 @@ export class ContentManager {
       const paths = [...new Set(file.tracks.flatMap((track) => (track.type === 'sound' ? track.clips.map((clip) => clip.sound) : [])))];
       const sounds = new Map(await Promise.all(paths.map(async (sound) => [sound, await this.loadSound(sound)] as const)));
       return new Timeline(file, sounds);
+    });
+  }
+
+  /** 声音事件（.soundevent.json）：检查过名字、变体用到的声音都加载好；见 audio/SoundEvents.ts。 */
+  loadSoundEvent(path: string): Promise<SoundEvent> {
+    return this.#once(path + EXTENSIONS.soundEvent, async (url) => {
+      const data = checkSoundEvent(SOUND_EVENT.parse(this.#json<unknown>(await this.#read(url)), url.href), url.href);
+      const paths = [...new Set(data.variants.map((variant) => variant.sound))];
+      const sounds = new Map(await Promise.all(paths.map(async (sound) => [sound, await this.loadSound(sound)] as const)));
+      return { path, data, sounds };
     });
   }
 

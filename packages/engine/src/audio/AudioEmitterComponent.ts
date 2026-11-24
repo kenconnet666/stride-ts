@@ -23,28 +23,20 @@ import type { PlayState, Sound, SoundInstance } from './Sound';
 
 type AudioVector = readonly [AudioParam, AudioParam, AudioParam];
 
-function setVector(target: AudioVector, x: number, y: number, z: number, time: number): void {
-  target[0].setValueAtTime(x, time);
-  target[1].setValueAtTime(y, time);
-  target[2].setValueAtTime(z, time);
+/**
+ * 每帧的位置、朝向直接写 value：setValueAtTime 每次往参数的时间线上加一个事件，AudioContext 挂起时（用户还没点过页面）时间不走、
+ * 事件一直堆着，几百个声音时一帧要十几毫秒。
+ */
+function setVector(target: AudioVector, x: number, y: number, z: number): void {
+  target[0].value = x;
+  target[1].value = y;
+  target[2].value = z;
 }
 
 export class AudioListenerComponent extends SyncScript.props('AudioListenerComponent', {}) {
   override update(): void {
     const transform = this.entity.get(Transform);
-    if (!transform) return;
-    const m = transform.world;
-    const { listener, currentTime } = this.game.audio.context;
-    if ('positionX' in listener) {
-      setVector([listener.positionX, listener.positionY, listener.positionZ], m[12]!, m[13]!, m[14]!, currentTime);
-      setVector([listener.forwardX, listener.forwardY, listener.forwardZ], -m[8]!, -m[9]!, -m[10]!, currentTime);
-      setVector([listener.upX, listener.upY, listener.upZ], m[4]!, m[5]!, m[6]!, currentTime);
-    } else {
-      // 老的接口（Firefox）
-      const legacy = listener as AudioListener & { setPosition(x: number, y: number, z: number): void; setOrientation(...values: number[]): void };
-      legacy.setPosition(m[12]!, m[13]!, m[14]!);
-      legacy.setOrientation(-m[8]!, -m[9]!, -m[10]!, m[4]!, m[5]!, m[6]!);
-    }
+    if (transform) this.game.audio.placeListener(transform.world, this.game.frames);
   }
 }
 
@@ -139,9 +131,8 @@ export class AudioEmitterComponent extends SyncScript.props('AudioEmitterCompone
   #place(panner: PannerNode): void {
     const m = this.entity.get(Transform)?.world;
     if (!m) return;
-    const time = this.game.audio.context.currentTime;
-    setVector([panner.positionX, panner.positionY, panner.positionZ], m[12]!, m[13]!, m[14]!, time);
-    setVector([panner.orientationX, panner.orientationY, panner.orientationZ], m[8]!, m[9]!, m[10]!, time);
+    setVector([panner.positionX, panner.positionY, panner.positionZ], m[12]!, m[13]!, m[14]!);
+    setVector([panner.orientationX, panner.orientationY, panner.orientationZ], m[8]!, m[9]!, m[10]!);
   }
 }
 

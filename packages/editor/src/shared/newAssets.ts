@@ -2,7 +2,7 @@
  * 编辑器"新建"出来的资源的初始内容（前端的资源浏览器用；只有数据，没有 Node 的依赖）。都是最小的合法文件，建出来以后在
  * 编辑器里接着改：场景是空的、材质是浅灰的、基本形状是 JSON 写的模型（content/modelFile.ts）、UI 页面是一块全屏的 Canvas。
  */
-import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type WaterFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type ProductFile, type ShelfFile, type PileFile, type DebrisFile, type FractureFile, type SplatEditFile, type SignFile, type CeilingFile, type FixtureFile, type TextModelFile, type TimelineFile, type InputMapFile, type TableFile, type AnimationGraphFile, type StateTreeFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
+import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type WaterFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type ProductFile, type ShelfFile, type PileFile, type DebrisFile, type FractureFile, type SplatEditFile, type SignFile, type CeilingFile, type FixtureFile, type TextModelFile, type TimelineFile, type InputMapFile, type TableFile, type AnimationGraphFile, type StateTreeFile, type SoundEventFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
 import { SOUND_PRESETS, seededRandom } from '@stride-ts/engine/audio-synth';
 import { polyCube } from '@stride-ts/engine/modeling';
 import type { AssetKind } from './protocol.ts';
@@ -12,7 +12,7 @@ export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
 /** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'debris' | 'fracture' | 'splatEdit' | 'sign' | 'ceiling' | 'fixture' | 'spline' | 'input' | 'table' | 'animationGraph' | 'stateTree' | `model:${ProceduralShapeType}` | `extension:${string}`;
+  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'debris' | 'fracture' | 'splatEdit' | 'sign' | 'ceiling' | 'fixture' | 'spline' | 'input' | 'table' | 'animationGraph' | 'stateTree' | 'soundEvent' | `model:${ProceduralShapeType}` | `extension:${string}`;
   readonly kind: AssetKind;
   /** 基本形状的模型是哪种形状。 */
   readonly shape?: ProceduralShapeType;
@@ -56,6 +56,14 @@ export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
       { name: 'Stroll', parent: 'Calm', tasks: [{ type: 'wander', radius: 15 }], transitions: [{ to: 'Idle' }] },
       { name: 'Panic', tasks: [{ type: 'wander', radius: 40 }], transitions: [{ to: '$root' }] },
     ],
+  }) },
+  // 声音事件：工程里第一个声音当唯一的变体，空间化，每次放音量、音高随机变一点（属性面板里加参数、变体、层）
+  { id: 'soundEvent', kind: 'soundEvent', name: 'NewSoundEvent', content: (name, existing): SoundEventFile => ({
+    name,
+    variants: [{ sound: existing.find((asset) => asset.kind === 'sound')?.path ?? '' }],
+    volumeRandom: 2,
+    pitchRandom: 1,
+    spatial: { minDistance: 1, maxDistance: 40 },
   }) },
   { id: 'animationGraph', kind: 'animationGraph', name: 'NewAnimationGraph', content: (name, existing): AnimationGraphFile => {
     const clip = existing.find((asset) => asset.kind === 'animation')?.path ?? '';

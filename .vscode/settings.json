@@ -212,6 +212,13 @@
     },
     {
       "fileMatch": [
+        "*.soundevent.json",
+        "*.soundevent.jsonc"
+      ],
+      "url": "./schemas/soundEvent.schema.json"
+    },
+    {
+      "fileMatch": [
         "*.game.json",
         "*.game.jsonc"
       ],

@@ -42,6 +42,7 @@ import { Animator } from '../animation/Animator';
 import { StateTreeRunner } from '../ai/StateTreeRunner';
 import { PerceptionSystem } from '../ai/Perception';
 import { SmartObject, SmartObjectSystem } from '../ai/SmartObjects';
+import { AmbientSound } from '../audio/AmbientSound';
 import { SimulationLodSystem } from '../ai/SimulationLod';
 import { FootIk } from '../animation/FootIk';
 import { LookAt } from '../animation/LookAt';
@@ -398,6 +399,7 @@ export class Game {
       this.registry.register(Animator);
       this.registry.register(StateTreeRunner);
       this.registry.register(SmartObject);
+      this.registry.register(AmbientSound);
       this.registry.register(FootIk);
       this.registry.register(LookAt);
       this.registry.register(SoftBody);
@@ -785,6 +787,35 @@ export class Game {
       this.simulation!.update(t);
       this.navigation?.update(t);
     } : undefined);
+    if (!this.editing) this.#updateSoundEvents(time);
+  }
+
+  /** 声音事件：听者是这一帧更新过的 AudioListenerComponent，没有时用主相机；遮挡按物理的射线。 */
+  #updateSoundEvents(time: GameTime): void {
+    const audio = this.audio;
+    if (audio.listenerFrame !== this.frames) {
+      // 没有听者组件：主画面上一帧的相机（视图矩阵的逆，加回渲染原点）
+      const view = this.graphicsCompositor.mainView;
+      if (view && Matrix.invert(LISTENER_WORLD, view.view)) {
+        const origin = this.renderOrigin;
+        LISTENER_WORLD[12]! += origin[0];
+        LISTENER_WORLD[13]! += origin[1];
+        LISTENER_WORLD[14]! += origin[2];
+        audio.placeListener(LISTENER_WORLD, this.frames);
+      }
+    }
+    const simulation = this.simulation;
+    if (simulation && !audio.events.occlusionTest) {
+      audio.events.occlusionTest = (from, to, emitter) => {
+        const dx = to[0]! - from[0]!, dy = to[1]! - from[1]!, dz = to[2]! - from[2]!;
+        const length = Math.hypot(dx, dy, dz);
+        if (length < 1e-3) return false;
+        // 发声的实体（和它的子实体）自己的碰撞体不算；射线停在声源前一点
+        return simulation.rayCastPenetrating([from[0]!, from[1]!, from[2]!], [dx / length, dy / length, dz / length], length - 0.2)
+          .some((hit) => hit.entity === undefined || !belongsTo(this.entities, hit.entity, emitter));
+      };
+    }
+    audio.events.update(audio.listenerPosition, time.elapsed);
   }
 
   /** 画一帧：世界矩阵这时已经算好。默认交给图形合成器。 */
@@ -1011,4 +1042,16 @@ export class Game {
  */
 async function scriptContinuations(rounds = 16): Promise<void> {
   for (let i = 0; i < rounds; i++) await Promise.resolve();
+}
+
+/** 没有听者组件时，听者放在主相机上（Game.#updateSoundEvents）。 */
+const LISTENER_WORLD = new Float64Array(16);
+
+/** entity 是 owner 自己或者它的子孙（owner 没有时都不是）。 */
+function belongsTo(entities: EntityManager, entity: Entity['id'], owner: Entity | undefined): boolean {
+  if (!owner) return false;
+  for (let current = entities.isAlive(entity) ? entities.entity(entity) : undefined; current; current = current.get(Transform)?.parent) {
+    if (current.id === owner.id) return true;
+  }
+  return false;
 }

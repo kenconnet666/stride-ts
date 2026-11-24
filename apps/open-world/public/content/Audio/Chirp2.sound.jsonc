@@ -1,0 +1,8 @@
+// 鸟叫（合成：带颤音的短正弦）
+{
+  "name": "Chirp2",
+  "encoding": "synth",
+  "streamFromDisk": false,
+  "spatialized": true,
+  "synth": { "wave": "sine", "attack": 0, "sustain": 0.08, "decay": 0.1, "frequency": 0.75, "vibratoDepth": 0.3, "vibratoSpeed": 0.6, "volume": 0.4, "seed": 9 }
+}

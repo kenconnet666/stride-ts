@@ -6,6 +6,7 @@ import { textureRef } from './shared.ts';
 import { INPUT_MAP } from '../../../content/formats/inputFormat.ts';
 import { ANIMATION_GRAPH } from '../../../content/formats/animationGraphFormat.ts';
 import { STATE_TREE } from '../../../content/formats/stateTreeFormat.ts';
+import { SOUND_EVENT } from '../../../content/formats/soundEventFormat.ts';
 import { TABLE } from '../../../content/formats/tableFormat.ts';
 import { schemaFields } from '../../../content/schema/schema.ts';
 
@@ -129,3 +130,4 @@ export const SOUND_FIELDS = fields<SoundFile>({
 
 /** 状态树（StateTreeFile）：参数、平铺的状态（parent 连成树）、任务、过渡。 */
 export const STATE_TREE_FIELDS = schemaFields(STATE_TREE);
+export const SOUND_EVENT_FIELDS = schemaFields(SOUND_EVENT);

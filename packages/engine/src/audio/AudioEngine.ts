@@ -6,6 +6,7 @@
  * 和 Stride 不同（浏览器的限制）：桌面版一启动就有声音。
  */
 import type { AudioRecorder } from './AudioRecorder';
+import { SoundEventSystem } from './SoundEvents';
 
 /** 建 AudioContext（测试里换成假的）。 */
 export type AudioContextFactory = () => AudioContext;
@@ -15,6 +16,14 @@ const GESTURES = ['pointerdown', 'keydown', 'touchend'] as const;
 export class AudioEngine {
   /** 离线渲染时设上：放的声音记到这里（见 AudioRecorder）。 */
   recorder: AudioRecorder | undefined;
+  /** 声音事件和发声管理（见 SoundEvents.ts）。 */
+  readonly events = new SoundEventSystem(this);
+  /** 听者的世界位置：AudioListenerComponent 每帧写（listenerFrame 记哪一帧写的）；没有听者时 Game 写主相机的。 */
+  readonly listenerPosition: [number, number, number] = [0, 0, 0];
+  listenerFrame = -1;
+  /** 听者的世界矩阵（还没建 AudioContext 时先记着，建好时补上）。 */
+  readonly #listenerWorld = new Float64Array(16);
+  #hasListener = false;
   readonly #createContext: AudioContextFactory;
   #context: AudioContext | undefined;
   #master: GainNode | undefined;
@@ -33,6 +42,7 @@ export class AudioEngine {
       this.#master = this.#context.createGain();
       this.#master.gain.value = this.#masterVolume;
       this.#master.connect(this.#context.destination);
+      if (this.#hasListener) this.#applyListener(this.#context);
       this.#context.addEventListener('statechange', () => {
         if (this.#context?.state !== 'running') return;
         for (const callback of [...this.#resumed]) callback();
@@ -100,7 +110,49 @@ export class AudioEngine {
     return buffer;
   }
 
+  /**
+   * 听者放在这个世界矩阵上（位置；朝 -Z，上方 +Y）：Web Audio 的听者和 listenerPosition 一起改。frame 是游戏的第几帧
+   * （同一帧里后写的算数）。
+   */
+  placeListener(world: ArrayLike<number>, frame: number): void {
+    this.listenerPosition[0] = world[12]!;
+    this.listenerPosition[1] = world[13]!;
+    this.listenerPosition[2] = world[14]!;
+    this.listenerFrame = frame;
+    // 相机不动时不重写（AudioParam 的 value 写一次要过一次浏览器内部的边界）
+    let same = this.#hasListener;
+    for (let i = 0; i < 16 && same; i++) same = this.#listenerWorld[i] === world[i];
+    if (same) return;
+    for (let i = 0; i < 16; i++) this.#listenerWorld[i] = world[i]!;
+    this.#hasListener = true;
+    // 还没出过声（没建 AudioContext）时只记着：不为了放听者去建上下文，建的时候补上
+    if (this.#context) this.#applyListener(this.#context);
+  }
+
+  #applyListener(context: AudioContext): void {
+    const world = this.#listenerWorld;
+    // 直接写 value，不用 setValueAtTime（同 AudioEmitterComponent 的 setVector：挂起时事件会一直堆着）
+    const { listener } = context;
+    if ('positionX' in listener) {
+      listener.positionX.value = world[12]!;
+      listener.positionY.value = world[13]!;
+      listener.positionZ.value = world[14]!;
+      listener.forwardX.value = -world[8]!;
+      listener.forwardY.value = -world[9]!;
+      listener.forwardZ.value = -world[10]!;
+      listener.upX.value = world[4]!;
+      listener.upY.value = world[5]!;
+      listener.upZ.value = world[6]!;
+    } else {
+      // 老的接口（Firefox）
+      const legacy = listener as AudioListener & { setPosition(x: number, y: number, z: number): void; setOrientation(...values: number[]): void };
+      legacy.setPosition(world[12]!, world[13]!, world[14]!);
+      legacy.setOrientation(-world[8]!, -world[9]!, -world[10]!, world[4]!, world[5]!, world[6]!);
+    }
+  }
+
   destroy(): void {
+    this.events.stopAll();
     this.#detach?.();
     void this.#context?.close();
     this.#context = undefined;

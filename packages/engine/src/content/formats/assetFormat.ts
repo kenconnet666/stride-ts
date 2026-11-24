@@ -94,6 +94,8 @@ export const EXTENSIONS = {
   animationGraph: '.animgraph.json',
   /** 状态树（StateTreeFile，content/formats/stateTreeFormat.ts）：分层的状态、任务、过渡，StateTreeRunner 脚本按它跑行为。 */
   stateTree: '.statetree.json',
+  /** 声音事件（SoundEventFile，content/formats/soundEventFormat.ts）：参数、变体、层、发声的个数，`game.audio.events.play` 放。 */
+  soundEvent: '.soundevent.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/stages.md 的 D9）。 */

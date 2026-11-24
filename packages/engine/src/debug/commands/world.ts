@@ -63,6 +63,26 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
       ...(entity ? { perceives: perception.of(entity).map((item) => ({ entity: item.entity?.name, tag: item.tag, sense: item.sense, seeing: item.seeing, position: [item.position.x, item.position.y, item.position.z].map((v) => +v.toFixed(2)), age: +(game.updateTime.total - item.time).toFixed(2) })) } : {}),
     };
   });
+  debug.command('audio', 'Sound events (game.audio.events): how many play, how many have a real voice and how many are virtual (too far or over the voice limit), the listener position, and each instance (event, real/virtual, distance, gain, occluded). args: maxVoices (global voice limit), play ({ event: path, position: [x, y, z], parameters: {} } starts one), stopAll (true), limit (default 30).', async (args) => {
+    const audio = game.audio;
+    const events = audio.events;
+    if (typeof args['maxVoices'] === 'number') events.maxVoices = args['maxVoices'];
+    if (args['stopAll'] === true) events.stopAll();
+    const play = args['play'] as { event?: string; position?: number[]; parameters?: Record<string, number | string> } | undefined;
+    if (play?.event) {
+      const event = await game.content.loadSoundEvent(play.event);
+      const position = play.position ? { x: play.position[0]!, y: play.position[1]!, z: play.position[2]! } : undefined;
+      events.play(event, { ...(position ? { position } : {}), ...(play.parameters ? { parameters: play.parameters } : {}) });
+    }
+    const limit = typeof args['limit'] === 'number' ? args['limit'] : 30;
+    return {
+      running: audio.isRunning, maxVoices: events.maxVoices, listener: audio.listenerPosition.map((v) => +v.toFixed(2)), ...events.stats,
+      instances: events.instances.slice(0, limit).map((instance) => ({
+        event: instance.event.path, real: instance.real, distance: +instance.distance.toFixed(2), gain: +instance.chain.gain.gain.value.toFixed(3),
+        occluded: instance.occluded, entity: instance.entity?.name ?? null, sounds: instance.voices.map((voice) => voice.instance.sound.name),
+      })),
+    };
+  });
   debug.command('simlod', 'Simulation LOD of massive crowds (SimulationLod: by distance to the main camera, level 0 full / 1 path, no avoidance / 2 straight, frozen animation / 3 off, hidden): reports how many are at each level and how many stepped this frame, and the crowd split. args: show (true/false) draws a dot over each (green 0, yellow 1, orange 2, red 3); distances ([3 numbers] m), maxHigh, intervals ([4 numbers] s), hysteresis.', (args) => {
     const lod = game.simulationLod;
     if (typeof args['show'] === 'boolean') lod.show = args['show'];

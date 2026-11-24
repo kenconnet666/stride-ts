@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "soundEvent asset",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "parameters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "number",
+              "label"
+            ],
+            "description": "number: a value (speed, rpm); label: one of a set of words (surface: grass, concrete)",
+            "default": "number"
+          },
+          "default": {
+            "description": "value when the caller does not give one (0 or the first label when missing)"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "the labels a label parameter can take"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "description": "parameters the caller sets when playing (and can change while it plays)",
+      "default": []
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sound": {
+            "type": "string",
+            "description": "content path of a sound asset (no extension)"
+          },
+          "layer": {
+            "type": "string",
+            "description": "variants of one layer are alternatives (one is picked); layers play together",
+            "default": "main"
+          },
+          "when": {
+            "type": "object",
+            "description": "conditions on parameters: a label ({ \"surface\": \"grass\" }) or a number range ({ \"speed\": [0.5, 1] }); all must hold; values keyed by name; the keys and value kinds the file already has"
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "description": "relative chance among the variants that pass",
+            "default": 1
+          },
+          "volume": {
+            "type": "number",
+            "minimum": 0,
+            "default": 1
+          }
+        },
+        "required": [
+          "sound"
+        ],
+        "additionalProperties": false
+      },
+      "description": "the sounds it can play"
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "volume": {
+            "type": "object",
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "description": "number parameter that drives it"
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "description": "[parameter value, multiplier] pairs, sorted by the value; linear in between, flat outside"
+              }
+            },
+            "required": [
+              "parameter",
+              "points"
+            ],
+            "additionalProperties": false,
+            "description": "volume multiplier by a number parameter"
+          },
+          "pitch": {
+            "type": "object",
+            "properties": {
+              "parameter": {
+                "type": "string",
+                "description": "number parameter that drives it"
+              },
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "description": "[parameter value, multiplier] pairs, sorted by the value; linear in between, flat outside"
+              }
+            },
+            "required": [
+              "parameter",
+              "points"
+            ],
+            "additionalProperties": false,
+            "description": "playback rate multiplier by a number parameter"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "description": "per-layer curves (layers without an entry play at full volume)",
+      "default": []
+    },
+    "volume": {
+      "type": "number",
+      "minimum": 0,
+      "description": "linear gain",
+      "default": 1
+    },
+    "volumeRandom": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 24,
+      "description": "random volume change per play (plus or minus, decibels); unit: dB",
+      "default": 0
+    },
+    "pitchRandom": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 12,
+      "description": "random pitch change per play (plus or minus, semitones)",
+      "default": 0
+    },
+    "loop": {
+      "type": "boolean",
+      "description": "loops until stopped (engines, ambience)",
+      "default": false
+    },
+    "spatial": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "minDistance": {
+              "type": "number",
+              "minimum": 0.01,
+              "description": "full volume up to here; unit: m",
+              "default": 1
+            },
+            "maxDistance": {
+              "type": "number",
+              "minimum": 0.1,
+              "description": "silent from here on (the voice is virtual); unit: m",
+              "default": 50
+            },
+            "rolloff": {
+              "enum": [
+                "inverse",
+                "linear"
+              ],
+              "description": "inverse: natural 1/distance falloff (cut at maxDistance); linear: straight down to 0 at maxDistance",
+              "default": "inverse"
+            },
+            "occlusion": {
+              "type": "boolean",
+              "description": "walls between it and the listener muffle it (low-pass and quieter)",
+              "default": true
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "positional sound; null plays it flat (UI, music)",
+      "default": null
+    },
+    "maxInstances": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 256,
+      "description": "how many of this event can play at once (0: no limit)",
+      "default": 0
+    },
+    "steal": {
+      "enum": [
+        "oldest",
+        "farthest",
+        "none"
+      ],
+      "description": "when the limit is hit: stop the oldest or the farthest one, or do not start the new one",
+      "default": "oldest"
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "higher keeps its voice when too many sounds play at once",
+      "default": 50
+    }
+  },
+  "required": [
+    "name",
+    "variants"
+  ],
+  "additionalProperties": false
+}

@@ -310,6 +310,8 @@ export { AudioEngine } from './audio/AudioEngine';
 export { AudioEmitterComponent, AudioEmitterSoundController, AudioListenerComponent } from './audio/AudioEmitterComponent';
 export { Train, TrainDoor, trainSchedule, trainStateAt, type TrainSchedule, type TrainScheduleOptions, type TrainState, type TrainStop } from './world/Train';
 export { Sound, SoundInstance, type PlayState } from './audio/Sound';
+export { SoundEventInstance, SoundEventSystem, distanceGain, piecewiseLinear, type SoundEvent, type SoundEventPlayOptions } from './audio/SoundEvents';
+export { AmbientSound } from './audio/AmbientSound';
 export { ParticleSystem } from './particles/ParticleSystem';
 export { ParticleEmitter, type ParticleSimulation, type SimulationSpace, type RandomSeedMethod, type SortingPolicy } from './particles/ParticleEmitter';
 export { AUTO_GPU_CAPACITY, ParticleSystemComponent, ParticleSystems } from './particles/ParticleSystemComponent';

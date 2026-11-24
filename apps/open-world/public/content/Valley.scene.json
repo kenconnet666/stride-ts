@@ -2154,6 +2154,47 @@
      "water": "Waters/SouthBay"
     }
    }
+  },
+  {
+   "id": "a0d10a0d-0001-4000-8000-000000000001",
+   "name": "Park ambience",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    600
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "scripts": [
+     {
+      "type": "AmbientSound",
+      "props": {
+       "event": {
+        "$asset": "Audio/Park",
+        "kind": "soundEvent"
+       },
+       "shape": "box",
+       "size": [
+        300,
+        500,
+        300
+       ],
+       "fade": 40
+      }
+     }
+    ]
+   }
   }
  ]
 }

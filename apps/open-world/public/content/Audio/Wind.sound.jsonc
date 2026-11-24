@@ -1,0 +1,8 @@
+// 风声（合成：低通的噪声，长一点好循环），公园的环境声区用
+{
+  "name": "Wind",
+  "encoding": "synth",
+  "streamFromDisk": false,
+  "spatialized": false,
+  "synth": { "wave": "noise", "attack": 0.3, "sustain": 1.6, "decay": 0.3, "frequency": 0.2, "lowPassCutoff": 0.15, "volume": 0.35, "seed": 3 }
+}

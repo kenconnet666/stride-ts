@@ -1,0 +1,8 @@
+// 鸟叫（合成：往上滑的短正弦）
+{
+  "name": "Chirp1",
+  "encoding": "synth",
+  "streamFromDisk": false,
+  "spatialized": true,
+  "synth": { "wave": "sine", "attack": 0, "sustain": 0.05, "decay": 0.12, "frequency": 0.7, "slide": 0.3, "volume": 0.4, "seed": 5 }
+}

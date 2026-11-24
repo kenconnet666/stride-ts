@@ -25,7 +25,7 @@ export function strideEditor(): Plugin {
     name: 'stride-editor',
     apply: 'serve',
     async configureServer(server) {
-      const backend = await EditorBackend.open(server.config.root, server.config.publicDir);
+      const backend = await EditorBackend.open(server.config.root, server.config.publicDir, { backgroundRebake: true });
       server.middlewares.use((request, response, next) => backend.handle(request, response, next));
       for (const event of ['add', 'change', 'unlink'] as const) server.watcher.on(event, (file) => backend.fileChanged(file));
 

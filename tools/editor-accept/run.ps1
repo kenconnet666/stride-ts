@@ -18,6 +18,8 @@ if ($Apps.Count -eq 0) {
   } | ForEach-Object Name
 }
 $offset = [int]($env:STRIDE_PORT_OFFSET ?? 0)
+# 过期的生成模型烘完再开（默认在后台补烘，验收到一半页面会热重载）
+$env:STRIDE_BAKE_ON_OPEN = 'wait'
 New-Item -ItemType Directory -Force $Out | Out-Null
 
 $results = foreach ($app in $Apps) {

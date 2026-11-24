@@ -61,7 +61,7 @@ function stride(...args: string[]): unknown {
 async function ensureServer(app: string, port: number): Promise<void> {
   const reachable = () => fetch(`http://localhost:${port}/`).then(() => true, () => false);
   if (await reachable()) return;
-  spawn(`pnpm -F @stride-ts/${app} dev --strictPort --port ${port}`, { cwd: root, shell: true, detached: true, stdio: 'ignore' }).unref();
+  spawn(`pnpm -F @stride-ts/${app} dev --strictPort --port ${port}`, { cwd: root, shell: true, detached: true, stdio: 'ignore', env: { ...process.env, STRIDE_BAKE_ON_OPEN: 'wait' } }).unref();
   // 第一次开要补烘生成的模型，可能要一两分钟
   for (let i = 0; i < 240 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 1000));
   if (!(await reachable())) throw new Error(`the ${app} dev server did not start on port ${port}`);

@@ -38,6 +38,11 @@ const CHANGE_DELAY = 50;
 /** 有主文件的种类（贴图、音频、源模型这几种附属文件不会是）。 */
 type BakedKind = Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>;
 const isBakedKind = (kind: string): kind is BakedKind => isGenerated(kind) || kind === 'modelImport' || kind === 'imageImport';
+/** 打开工程时生成的文件在、但过期了的资源（打开以后在后台补烘）。 */
+interface StaleBake {
+  readonly kind: BakedKind;
+  readonly path: string;
+}
 
 
 export class EditorBackend {
@@ -69,27 +74,35 @@ export class EditorBackend {
     });
   }
 
-  /** 打开工程：读清单、同步依赖的资源包（assetPackages.ts）、扫内容目录、生成资源句柄。publicDir 是开发服务器的静态目录。 */
-  static async open(root: string, publicDir: string): Promise<EditorBackend> {
+  /**
+   * 打开工程：读清单、同步依赖的资源包（assetPackages.ts）、扫内容目录、补烘生成的资源、生成资源句柄。publicDir 是开发服务器的
+   * 静态目录。生成的文件在、只是过期了的资源默认烘完才返回；backgroundRebake 时返回以后在后台补烘（开发服务器、MCP 服务：
+   * 先用旧的画出来，烘好一个热重载一个），环境变量 STRIDE_BAKE_ON_OPEN=wait 时照旧等（回归、编辑器验收：免得测到一半页面热重载）。
+   */
+  static async open(root: string, publicDir: string, { backgroundRebake = false }: { backgroundRebake?: boolean } = {}): Promise<EditorBackend> {
     const project = await loadProject(root);
     await installProjectExtension(project);
     await syncAssetPackages(project.root, project.contentDir);
     const backend = new EditorBackend(project, publicDir);
     backend.#generatorVersion = await generatorVersion();
     await backend.database.scan();
-    await backend.#bakeStale();
+    const stale = await backend.#bakeMissing();
     await backend.#writeAssetTypes();
+    if (backgroundRebake && process.env['STRIDE_BAKE_ON_OPEN'] !== 'wait') void backend.#rebakeStale(stale);
+    else await backend.#rebakeStale(stale);
     return backend;
   }
 
   /**
    * 开着的时候没看到的改动（开发服务器停着时 agent 直接写了文件、git 切了分支）：生成模型的资源（白盒、SDF、多边形、3D 文字、
    * 样条、树）打开工程时和上次烘的内容比（按内容的哈希，记在工程的 node_modules/.cache 里；文件的修改时间在新检出的工作树里
-   * 靠不住），变了的、生成的模型不在的补烘。没记过的：模型不在才烘，在就当它是对的、记下来。导入（源模型、贴图）慢，照旧等文件改了再导入。
+   * 靠不住）。生成的文件不在的（包装、货架这类生成的大文件不进 git，新检出里没有）当场烘：页面要读。在、但源文件或生成代码变了的
+   * 返回，打开以后在后台补烘（#rebakeStale）：从零打开工程不等几百个文件重烘（超市换一版原生包要 80 秒），先用旧的画出来。
+   * 没记过的：模型不在才烘，在就当它是对的、记下来。导入（源模型、贴图）慢，照旧等文件改了再导入。
    */
-  async #bakeStale(): Promise<void> {
+  async #bakeMissing(): Promise<StaleBake[]> {
     this.#bakeHashes = await this.#readSharedBakeHashes();
-    const baked: string[] = [];
+    const baked: string[] = [], stale: StaleBake[] = [];
     for (const record of this.database.list()) {
       const kind = record.kind;
       if (!isBakedKind(kind) || kind === 'modelImport' || kind === 'imageImport') continue;
@@ -97,24 +110,48 @@ export class EditorBackend {
       try {
         const content = await this.#readJson(kind, record.path);
         const hash = this.#bakeHash(content), known = this.#bakeHashes[key];
-        // 生成的模型不在（包装、货架这类生成的大文件不进 git，新检出里没有）：源文件没变也要烘
         const exists = this.#generatedExists(kind, record.path);
         if (known === hash && exists) continue;
         if (known === undefined && exists) {
           this.#bakeHashes[key] = hash;
           continue;
         }
-        baked.push(...(await this.#bake(kind, record.path, content)).files);
+        if (exists) stale.push({ kind, path: record.path });
+        else baked.push(...(await this.#bake(kind, record.path, content)).files);
       } catch (error) {
         console.warn(`[stride-editor] ${kind} ${record.path}: ${(error as Error).message}; its model is left as it was`);
       }
     }
     if (baked.length > 0) {
-      console.info(`[stride-editor] baked ${baked.length} file(s) whose sources changed while the editor was closed or are missing`);
+      console.info(`[stride-editor] baked ${baked.length} missing generated file(s)`);
       await this.database.refresh(baked);
     }
     await this.#saveBakeHashes();
+    return stale;
   }
+
+  /**
+   * 补烘过期的生成资源：一个一个排进工作队列（中间插得进编辑的保存、别的修改），烘完刷新数据库，开着的页面热重载。排到时已经按
+   * 现在的内容烘过的（保存时烘了、别的进程烘了）跳过。
+   */
+  async #rebakeStale(stale: readonly StaleBake[]): Promise<void> {
+    if (stale.length === 0) return;
+    const start = performance.now();
+    let count = 0;
+    for (const { kind, path: assetPath } of stale) {
+      // 关了（MCP 换了工程）就不烘了
+      if (this.#closed) return;
+      await this.#enqueue(async () => {
+        const content = await this.#readJson(kind, assetPath);
+        if (this.#bakeHashes[`${kind}:${assetPath}`] === this.#bakeHash(content)) return;
+        await this.#refresh((await this.#bake(kind, assetPath, content)).files);
+        count++;
+      }).catch((error: unknown) => console.warn(`[stride-editor] ${kind} ${assetPath}: ${(error as Error).message}; its model is left as it was`));
+    }
+    console.info(`[stride-editor] rebaked ${count} generated asset(s) whose sources or generator changed while the editor was closed (${((performance.now() - start) / 1000).toFixed(1)} s)`);
+  }
+
+  #closed = false;
 
   /** 上次烘的内容的哈希（`种类:路径` → 哈希），存在 #bakeCacheFile。 */
   #bakeHashes: Record<string, string> = {};
@@ -383,6 +420,7 @@ export class EditorBackend {
 
   /** 关掉后端时调：放掉原生的导入工具（导入过模型、字体时才有）。 */
   async close(): Promise<void> {
+    this.#closed = true;
     (await this.#tools)?.shutdown();
     this.#tools = undefined;
   }

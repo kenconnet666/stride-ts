@@ -37,7 +37,7 @@ const url = `${base}${base.includes('?') ? '&' : '?'}world=${world}&debug`;
 let lastResult: unknown;
 const reachable = () => fetch(base).then(() => true, () => false);
 if (!(await reachable()) && !process.argv.includes('--url')) {
-  spawn(`pnpm -F @stride-ts/open-world dev --strictPort --port ${port}`, { cwd: path.resolve(import.meta.dirname, '..', '..'), shell: true, detached: true, stdio: 'ignore' }).unref();
+  spawn(`pnpm -F @stride-ts/open-world dev --strictPort --port ${port}`, { cwd: path.resolve(import.meta.dirname, '..', '..'), shell: true, detached: true, stdio: 'ignore', env: { ...process.env, STRIDE_BAKE_ON_OPEN: 'wait' } }).unref();
   for (let i = 0; i < 90 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 

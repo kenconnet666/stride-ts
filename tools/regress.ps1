@@ -33,6 +33,8 @@ Set-Location $root
 $stateRoot = $env:STRIDE_STATE_DIR ?? (Join-Path $HOME '.stride-ts' 'regress')
 $portOffset = [int]($env:STRIDE_PORT_OFFSET ?? 1000)
 $workerThreads = 4
+# 开发服务器打开工程时过期的生成模型烘完再开（默认在后台补烘、烘好一个热重载一个，测到一半页面会重载）
+$env:STRIDE_BAKE_ON_OPEN = 'wait'
 
 # 端口上有没有在监听（Test-NetConnection 只有 Windows 有）
 function Test-Port([int]$Port) {

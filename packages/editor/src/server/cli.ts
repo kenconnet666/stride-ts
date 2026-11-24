@@ -59,7 +59,7 @@ if (command === 'assets-types') {
 } else if (command === 'mcp') {
   // stdout 是 MCP 的通道：后端（打开工程时的补烘、监视）的提示改打到 stderr，不然客户端读到一行不是 JSON 的就断了
   console.log = console.info = console.debug = console.error;
-  await serveMcp(await backend());
+  await serveMcp(await EditorBackend.open(project.root, path.join(project.root, 'public'), { backgroundRebake: true }));
 } else {
   console.error(`usage: stride-editor new <apps/folder> [--port <port>]
        stride-editor <assets-types|assets> [project directory]
@@ -95,7 +95,7 @@ async function serveMcp(first: EditorBackend): Promise<void> {
       const relative = /[\\/]/.test(name) ? name : `apps/${name}`;
       const root = path.resolve(repoRoot, relative);
       if (!existsSync(path.join(root, 'public', 'content'))) throw new Error(`${relative} is not a stride-ts project (no public/content); projects: ${(await list()).join(', ')}`);
-      const next = await EditorBackend.open(root, path.join(root, 'public'));
+      const next = await EditorBackend.open(root, path.join(root, 'public'), { backgroundRebake: true });
       watcher.close();
       await current.close();
       current = next;

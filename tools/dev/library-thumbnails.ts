@@ -99,7 +99,7 @@ const capture = (scene: object, wait: number) => `(async () => {
 
 const portOpen = async () => fetch(URL_).then(() => true, () => false);
 if (!(await portOpen())) {
-  spawn('pnpm -F @stride-ts/greybox dev', { cwd: root, shell: true, detached: true, stdio: 'ignore' }).unref();
+  spawn('pnpm -F @stride-ts/greybox dev', { cwd: root, shell: true, detached: true, stdio: 'ignore', env: { ...process.env, STRIDE_BAKE_ON_OPEN: 'wait' } }).unref();
   for (let i = 0; i < 60 && !(await portOpen()); i++) await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 

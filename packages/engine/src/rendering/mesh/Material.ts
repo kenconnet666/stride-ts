@@ -204,6 +204,12 @@ export interface MaterialDesc {
   readonly transmission?: MaterialTransmission;
   /** 植被的风（树、草在风里摆），默认没有。 */
   readonly wind?: MaterialWind;
+  /**
+   * 细线（Stride 没有）：用这个材质的网格是半径约这么多（米）的细管子（吊杆、电线、栏杆）。远处不到一个像素宽时顶点着色器把管子
+   * 加粗到 1.5 个像素、按真实粗细的比例抖动着丢像素（TAA 平均成一条淡而连续的线，Humus 的 phone-wire AA），不再时有时无地闪；
+   * 走 Alpha 裁剪那条路，深度预通道和阴影一致（没写 alphaCutoff 时按 0.5）。
+   */
+  readonly wire?: number;
   /** 室内映射（楼的窗户后面的房间），默认没有。 */
   readonly interior?: MaterialInterior;
   /** 矢量贴图的数据（rendering/mesh/vectorAtlas.ts 的 buildVectorAtlas；材质文件的 vector）：近处代替基础色贴图。 */
@@ -364,6 +370,8 @@ export class Material {
   transmission: Required<MaterialTransmission> | undefined;
   /** 植被的风；改它用 setWind。 */
   wind: Required<MaterialWind> | undefined;
+  /** 细线的半径（见 MaterialDesc.wire）；不是细线时是 undefined。 */
+  readonly wire: number | undefined;
   /** 室内映射；没有时是 undefined。 */
   readonly interior: Required<MaterialInterior> | undefined;
   /** 矢量贴图；没有时是 undefined。 */
@@ -407,7 +415,8 @@ export class Material {
     };
     const transparency = desc.transparency;
     this.transparency = transparency && { alpha: transparency.alpha, specularAlpha: transparency.specularAlpha ?? transparency.alpha, tint: transparency.tint ?? [1, 1, 1], ditheredShadows: transparency.ditheredShadows ?? true };
-    this.alphaCutoff = desc.alphaCutoff;
+    this.wire = desc.wire && desc.wire > 0 ? desc.wire : undefined;
+    this.alphaCutoff = desc.alphaCutoff ?? (this.wire ? 0.5 : undefined);
     this.cavity = desc.cavity ?? { diffuse: 1, specular: 1 };
     const normalMap = desc.normalMap;
     this.normalMap = normalMap && {

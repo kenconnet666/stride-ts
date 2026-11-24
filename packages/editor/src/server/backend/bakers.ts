@@ -41,7 +41,7 @@ function modelOnly<F>(bake: (context: BakeContext, file: F, where: string) => Ui
 }
 
 /** 合成一个模型加图集、材质的（货架这一类）：模型、颜色和表面、自发光的图集，图集的材质、玻璃的材质和透光的商品的材质。 */
-const MERGED_OUTPUTS: Generator['outputs'] = [['model', ''], ['material', ''], ['image', ''], ['image', '.surface'], ['image', '.emissive'], ['material', '.glass'], ['material', '.clear']];
+const MERGED_OUTPUTS: Generator['outputs'] = [['model', ''], ['material', ''], ['image', ''], ['image', '.surface'], ['image', '.emissive'], ['material', '.glass'], ['material', '.clear'], ['material', '.wire']];
 
 function merged<F>(bake: (context: BakeContext, file: F, assetPath: string, where: string) => readonly BakedFile[] | Promise<readonly BakedFile[]>, outputs = MERGED_OUTPUTS): Generator {
   return { bake: async (context, content, assetPath, where) => bake(context, content as F, assetPath, where), outputs };

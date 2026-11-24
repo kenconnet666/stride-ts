@@ -62,7 +62,7 @@ export function ceilingModel(input: CeilingFile, where = input.name): MergedProd
   batch.box([-w / 2, H, -d / 2], [w / 2, H + 0.25, d / 2], SLAB);
   const lanes = (count: number, offset: number) => Array.from({ length: Math.max(0, Math.round(count)) }, (_, i) => -d / 2 + ((i + offset) * d) / Math.max(1, Math.round(count)));
   const hangers = (z: number, top: number, bottom: number) => {
-    for (let x = -w / 2 + 1.25; x < w / 2; x += 2.5) batch.tube([x, top, z], [x, bottom, z], 0.006, ROD, 6);
+    for (let x = -w / 2 + 1.25; x < w / 2; x += 2.5) batch.wire([x, top, z], [x, bottom, z], 0.006, ROD);
   };
   for (const z of lanes(file.ducts, 0.3)) {
     batch.box([-w / 2, H - 0.45, z - 0.3], [w / 2, H - 0.12, z + 0.3], DUCT);
@@ -80,14 +80,14 @@ export function ceilingModel(input: CeilingFile, where = input.name): MergedProd
     const y = H - 0.2;
     batch.tube([-w / 2, y, z], [w / 2, y, z], 0.025, PIPE, 10);
     // 每 3 米一个往下的喷头
-    for (let x = -w / 2 + 1.5; x < w / 2; x += 3) batch.tube([x, y, z], [x, y - 0.25, z], 0.01, PIPE, 6);
+    for (let x = -w / 2 + 1.5; x < w / 2; x += 3) batch.wire([x, y, z], [x, y - 0.25, z], 0.01, PIPE);
   }
   // 灯管：一盏两根吊杆
   for (const light of lights) {
     const [x, y, z] = light.center, half = light.length / 2;
     batch.box([x - half, y, z - 0.04], [x + half, y + 0.05, z + 0.04], ROD);
     batch.box([x - half + 0.01, y - 0.012, z - 0.03], [x + half - 0.01, y, z + 0.03], LAMP);
-    for (const end of [x - half + 0.1, x + half - 0.1]) batch.tube([end, y + 0.05, z], [end, H, z], 0.004, ROD, 6);
+    for (const end of [x - half + 0.1, x + half - 0.1]) batch.wire([end, y + 0.05, z], [end, H, z], 0.004, ROD);
   }
   return batch.finish();
 }

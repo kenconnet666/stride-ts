@@ -86,6 +86,7 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
     group: 'advanced',
     description: 'vegetation wind: the mesh sways and its leaves flutter in the global wind (WindZone, weather)',
   },
+  wire: { type: number({ min: 0, step: 0.001, unit: 'm' }), optional: true, group: 'advanced', description: 'thin tubes (hangers, cables, railings): their radius; far away they are widened to 1.5 pixels and dithered by their real width instead of flickering' },
   interior: {
     type: object(fields<NonNullable<MaterialFile['interior']>>({
       room: { type: vector(3, 'm'), description: 'room width, height (usually the floor height) and depth behind the glass' },

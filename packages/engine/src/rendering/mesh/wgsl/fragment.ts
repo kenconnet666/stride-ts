@@ -1,6 +1,8 @@
 /** 网格着色器的片元部分：各阶段的片元入口（点选、远处卡片和表面颜色的烘焙、线框、裁剪、抖动的阴影、玻璃透射、主着色、清漆、G 缓冲），面光源、平面反射、透射、室内映射，和把这些合起来的 shade。 */
 
 export const MESH_FRAGMENT = /* wgsl */ `
+/** 矢量贴图用到多远：一个屏幕像素在位图细的方向上跨这么多个位图像素以内（见 baseColor）。 */
+const VECTOR_FAR = 2.5;
 /** Alpha 裁剪的材质每往下一级 mip，贴图的 alpha 放大多少（Golus 用 0.25）。 */
 const ALPHA_MIP_SCALE = 0.25;
 
@@ -18,13 +20,15 @@ fn baseColor(in: Varyings) -> vec4f {
   if ((u32(material.flags.w) & 1u) != 0u) {
     let uv = in.uv * material.uvTransform.xy + material.uvTransform.zw;
     texel = textureSample(baseColorTexture, baseColorSampler, uv);
-    // 矢量贴图（vectorAtlas.ts）：一个屏幕像素不到 1.5 个位图像素（位图开始糊）时按曲线算颜色和透明度，到 0.75 以下全用它；
-    // 远处照旧用位图。矢量和位图画的是同一张 SVG（手写的贴图只有拆得出、不近似的才建矢量），透明度也换：叶子、地贴的边一样
-    // 清楚。导数在分支外面取（一致的控制流）
+    // 矢量贴图（vectorAtlas.ts）：按位图在屏幕上细的那个方向量——一个屏幕像素不到 VECTOR_FAR 个位图像素时按曲线算颜色和
+    // 透明度，到它的一半以下全用它；更远处照旧用位图。斜着看时长的方向一个像素跨好多位图像素（位图的各向异性过滤管它），短的
+    // 方向往往还不到一个：按长的方向判断时矢量早早就关了、字跟着糊（用户 11-24：不太远的字也看不清）。矢量和位图画的是同一张
+    // SVG（手写的贴图只有拆得出、不近似的才建矢量），透明度也换：叶子、地贴的边一样清楚。导数在分支外面取（一致的控制流）
     if ((u32(material.flags.w) & 512u) != 0u) {
-      let footprint = fwidth(uv * vec2f(textureDimensions(baseColorTexture)));
+      let texels = uv * vec2f(textureDimensions(baseColorTexture));
+      let minor = min(length(dpdx(texels)), length(dpdy(texels)));
       let perPixel = fwidth(uv * vectorAtlasSize());
-      let sharp = saturate((1.5 - max(footprint.x, footprint.y)) / 0.75);
+      let sharp = saturate((VECTOR_FAR - minor) / (VECTOR_FAR * 0.5));
       if (sharp > 0.0) {
         let vector = vectorColor(uv, perPixel);
         // 矢量是线性、预乘的：换回不预乘的再和位图混
@@ -32,12 +36,19 @@ fn baseColor(in: Varyings) -> vec4f {
         texel = mix(texel, vec4f(straight, vector.a), sharp);
       }
     }
-    if (material.flags.y >= 0.0) {
+    if (material.flags.y >= 0.0 && material.wind.w <= 0.0) {
       let texels = uv * vec2f(textureDimensions(baseColorTexture));
       let dx = dpdx(texels);
       let dy = dpdy(texels);
       let mip = max(0.5 * log2(max(dot(dx, dx), dot(dy, dy))), 0.0);
       texel.a *= 1.0 + mip * ALPHA_MIP_SCALE;
+    }
+  }
+  // 细线加粗了的：按真实粗细的比例抖动着丢像素（Alpha 裁剪），每帧换图案，TAA 平均成一条淡而连续的线
+  if (material.wind.w > 0.0 && in.wireFade > 0.0) {
+    let frame = fract(view.locals.y * vec2f(61.0, 37.0)) * 64.0;
+    if (gradientNoise(in.position.xy + frame) < in.wireFade) {
+      texel.a = 0.0;
     }
   }
   return select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);

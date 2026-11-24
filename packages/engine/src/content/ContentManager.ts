@@ -445,6 +445,7 @@ export class ContentManager {
         ...(file.subsurfaceScattering ? { subsurfaceScattering: file.subsurfaceScattering } : {}),
         ...(file.sheen ? { sheen: file.sheen } : {}),
         ...(file.wind ? { wind: file.wind } : {}),
+        ...(file.wire ? { wire: file.wire } : {}),
         ...(file.interior ? { interior: file.interior } : {}),
         ...(vector ? { vectorAtlas: vector } : {}),
         ...(file.anisotropy ? { anisotropy: file.anisotropy } : {}),

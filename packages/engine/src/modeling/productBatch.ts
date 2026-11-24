@@ -65,6 +65,8 @@ export interface MergedProducts {
   readonly atlasPixels: number;
   readonly glass: MeshArrays | undefined;
   readonly clear: MeshArrays | undefined;
+  /** 细管子（wire：吊杆、喷淋管的下垂段），用细线的材质（mergedWireMaterial：远处加粗、抖动着画，不闪）。 */
+  readonly wire: MeshArrays | undefined;
   /** 贴在玻璃外面的一层脏（hazeQuad）；有它时生成的一方给出贴图的 SVG 和像素大小（mergedHazeMaterial）。 */
   readonly haze: MeshArrays | undefined;
   readonly hazeSvg?: string;
@@ -109,6 +111,8 @@ export class ProductBatch {
   readonly #clearVertices: number[] = [];
   readonly #clearIndices: number[] = [];
   readonly #solidTextures = new Map<number, number>();
+  readonly #wireVertices: number[] = [];
+  readonly #wireIndices: number[] = [];
   readonly #hazeVertices: number[] = [];
   readonly #hazeIndices: number[] = [];
   /** 图集的边长（像素）。 */
@@ -201,6 +205,18 @@ export class ProductBatch {
    * （to 那头的半径，熟食柜的灯罩），法线按斜边。
    */
   tube(from: readonly number[], to: readonly number[], radius: number, solid: number, segments = 10, toRadius = radius): void {
+    this.#tube(this.#vertices, this.#indices, from, to, radius, solid, segments, toRadius);
+  }
+
+  /**
+   * 一根细管子（吊杆、电线；半径不过 WIRE_RADIUS 左右）：同 tube，但进细线的网格（mergedWireMaterial），远处不到一个像素宽时
+   * 加粗、抖动着画，不闪。
+   */
+  wire(from: readonly number[], to: readonly number[], radius: number, solid: number, segments = 6): void {
+    this.#tube(this.#wireVertices, this.#wireIndices, from, to, radius, solid, segments, radius);
+  }
+
+  #tube(vertices: number[], indices: number[], from: readonly number[], to: readonly number[], radius: number, solid: number, segments: number, toRadius: number): void {
     const [x, y, w, h] = this.#solidCells[solid]!, u = (x + w / 2) / this.#atlas, v = (y + h / 2) / this.#atlas;
     const axis = [to[0]! - from[0]!, to[1]! - from[1]!, to[2]! - from[2]!], length = Math.hypot(axis[0]!, axis[1]!, axis[2]!);
     if (length < 1e-9) return;
@@ -208,19 +224,19 @@ export class ProductBatch {
     // 和轴垂直的两个方向
     const helper = Math.abs(a[1]!) < 0.9 ? [0, 1, 0] : [1, 0, 0];
     const p = normalize3(cross3(a, helper)), q = cross3(a, p);
-    const base = this.#vertices.length / 8;
+    const base = vertices.length / 8;
     // 圆台的斜边：法线往轴的方向偏 (r0 − r1) / length
     const slope = (radius - toRadius) / length, scale = 1 / Math.hypot(1, slope);
     for (let k = 0; k <= segments; k++) {
       const angle = (k / segments) * 2 * Math.PI, c = Math.cos(angle), s = Math.sin(angle);
       const n = [p[0]! * c + q[0]! * s, p[1]! * c + q[1]! * s, p[2]! * c + q[2]! * s];
       const normal = [(n[0]! + a[0]! * slope) * scale, (n[1]! + a[1]! * slope) * scale, (n[2]! + a[2]! * slope) * scale];
-      for (const [end, r] of [[from, radius], [to, toRadius]] as const) this.#vertices.push(end[0]! + n[0]! * r, end[1]! + n[1]! * r, end[2]! + n[2]! * r, normal[0]!, normal[1]!, normal[2]!, u, v);
+      for (const [end, r] of [[from, radius], [to, toRadius]] as const) vertices.push(end[0]! + n[0]! * r, end[1]! + n[1]! * r, end[2]! + n[2]! * r, normal[0]!, normal[1]!, normal[2]!, u, v);
     }
     for (let k = 0; k < segments; k++) {
       const i = base + k * 2;
       // 从外面看逆时针：p→q 的方向绕着 a 转
-      this.#indices.push(i, i + 2, i + 1, i + 1, i + 2, i + 3);
+      indices.push(i, i + 2, i + 1, i + 1, i + 2, i + 3);
     }
   }
 
@@ -326,6 +342,7 @@ export class ProductBatch {
       emissiveSvg: strongest > 0 ? svg(glow, '#000000') : undefined, emissive: strongest, atlasPixels: this.#atlas,
       glass: this.#glassIndices.length > 0 ? { vertices: Float32Array.from(this.#glassVertices), indices: Uint32Array.from(this.#glassIndices) } : undefined,
       clear: this.#clearIndices.length > 0 ? { vertices: Float32Array.from(this.#clearVertices), indices: Uint32Array.from(this.#clearIndices) } : undefined,
+      wire: this.#wireIndices.length > 0 ? { vertices: Float32Array.from(this.#wireVertices), indices: Uint32Array.from(this.#wireIndices) } : undefined,
       haze: this.#hazeIndices.length > 0 ? { vertices: Float32Array.from(this.#hazeVertices), indices: Uint32Array.from(this.#hazeIndices) } : undefined,
     };
   }
@@ -431,6 +448,15 @@ export function mergedHazeMaterial(name: string, path: string, pixels: readonly 
     baseColorTexture: { texture: `${path}.haze`, encoding: 'svg', size: pixels, srgb: true, filter: 'anisotropic', scale: [1, 1], offset: [0, 0] },
     transparency: { type: 'blend', alpha: 1 },
   };
+}
+
+/** 细线的网格（ProductBatch.wire）的管子半径按这个算（顶点着色器从表面退回中心线用；吊杆 4～6 毫米、喷淋管的下垂段 1 厘米）。 */
+export const WIRE_RADIUS = 0.005;
+
+/** 合成的那批里细线的材质：同图集的材质（纯色格），加 wire（远处加粗、抖动着画），不要矢量版（纯色）。 */
+export function mergedWireMaterial(name: string, path: string, pixels: number, emissive = 0): MaterialFile {
+  const { vector: _vector, ...material } = mergedMaterial(name, path, pixels, emissive);
+  return { ...material, name: `${name} wire`, wire: WIRE_RADIUS };
 }
 
 /** 合成的那批里玻璃的材质（冷柜的门、冰柜的盖）：同材质库的透明玻璃，带一点冷色。 */

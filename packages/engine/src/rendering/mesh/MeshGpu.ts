@@ -42,7 +42,7 @@ export const VIEW_STRIDE = 1536;
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28，原点 4，风 4，
  * 局部风源 4 · 4 和它们的强度 4，辐照度体 16。
  */
-const VIEW_FLOATS = 328;
+const VIEW_FLOATS = 332;
 /** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
 const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
@@ -776,6 +776,7 @@ export class MeshGpu {
         data[o + 308 + i] = local.strength;
       });
       data.set(irradiance, o + 312);
+      data.set([view.width, view.height, 1 / Math.max(view.width, 1), 1 / Math.max(view.height, 1)], o + 328);
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
@@ -1018,7 +1019,8 @@ export class MeshGpu {
       const transmission = material.transmission;
       floats.set(transmission ? [transmission.factor, transmission.ior, transmission.thickness, 0] : [0, 1.5, 0, 0], 72 + CEL_RAMP_STOPS * 8);
       floats.set(transmission ? [...transmission.attenuationColor.map((c) => -Math.log(Math.max(c, 1e-4)) / transmission.attenuationDistance), 0] : [0, 0, 0, 0], 76 + CEL_RAMP_STOPS * 8);
-      floats.set(material.wind ? [material.wind.bend, material.wind.flutter, material.wind.mode === 'grass' ? 1 : 0, 0] : [0, 0, 0, 0], 80 + CEL_RAMP_STOPS * 8);
+      // w 是细线的半径（Material.wire；顶点着色器加粗、片元着色器抖动）
+      floats.set([material.wind?.bend ?? 0, material.wind?.flutter ?? 0, material.wind?.mode === 'grass' ? 1 : 0, material.wire ?? 0], 80 + CEL_RAMP_STOPS * 8);
       const interior = material.interior;
       floats.set(interior ? [...interior.room, interior.lit, interior.brightness, 0, 0, 0] : [0, 0, 0, 0, 0, 0, 0, 0], 84 + CEL_RAMP_STOPS * 8);
       const parallax = material.normalMap?.parallax;

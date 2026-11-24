@@ -419,6 +419,11 @@
       "additionalProperties": false,
       "description": "vegetation wind: the mesh sways and its leaves flutter in the global wind (WindZone, weather)"
     },
+    "wire": {
+      "type": "number",
+      "minimum": 0,
+      "description": "thin tubes (hangers, cables, railings): their radius; far away they are widened to 1.5 pixels and dithered by their real width instead of flickering; unit: m"
+    },
     "interior": {
       "type": "object",
       "properties": {

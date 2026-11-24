@@ -71,6 +71,8 @@ struct View {
   giSpacing: vec4f,
   giCounts: vec4f,
   giScroll: vec4f,
+  // 这个视图的画面宽、高（像素）和倒数（细线按一个像素多宽加粗）
+  pixel: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
 // 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts

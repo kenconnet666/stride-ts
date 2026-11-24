@@ -46,7 +46,8 @@ struct Material {
   // 透射（Material.transmission）：比例（0 是没有）、折射率、厚度（0 是薄的面）；吸收系数（每米，-ln(颜色) / 距离）
   transmission: vec4f,
   absorption: vec4f,
-  // 植被的风（Material.wind）：x 是弯，y 是叶子抖，都是 10 米每秒的风里的米数，都是 0 是没有；z 是 1 时是草的模式
+  // 植被的风（Material.wind）：x 是弯，y 是叶子抖，都是 10 米每秒的风里的米数，都是 0 是没有；z 是 1 时是草的模式；
+  // w 是细线的半径（Material.wire，0 是不是细线）
   wind: vec4f,
   // 室内映射（Material.interior）：房间的宽、高、深（米，宽是 0 是没有），亮灯的比例；x 是亮灯的房间的亮度
   interior: vec4f,

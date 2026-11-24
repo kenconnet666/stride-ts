@@ -282,6 +282,8 @@ export interface MaterialFile {
   readonly sheen?: { readonly color: Vec3Tuple; readonly roughness: number };
   /** 植被的风（Stride 没有）：在风里摆、叶子抖。意思同 rendering/mesh/Material.ts 的 MaterialWind。 */
   readonly wind?: { readonly bend: number; readonly flutter?: number; readonly mode?: 'tree' | 'grass' };
+  /** 细线的半径（米）。意思同 rendering/mesh/Material.ts 的 MaterialDesc.wire。 */
+  readonly wire?: number;
   /**
    * 矢量贴图（Stride 没有）：内容路径，文件是 `<路径>.vector`（rendering/mesh/vectorAtlas.ts）。基础色贴图的矢量版：近处按曲线
    * 逐像素算颜色（走多近都清楚），远处照旧用 baseColorTexture。合并的货架、堆放的图集材质由烘焙写上。

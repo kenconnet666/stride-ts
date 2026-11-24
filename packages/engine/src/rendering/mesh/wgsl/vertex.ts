@@ -53,6 +53,8 @@ struct Varyings {
   @location(7) @interpolate(flat) slot: u32,
   // 1 是蒙皮的网格（角色、动物：一直在动，身上不积雪）
   @location(8) @interpolate(flat) skinned: u32,
+  // 细线（Material.wire）加粗了多少：片元着色器按它抖动着丢像素（0 是没加粗，越大越细）
+  @location(9) wireFade: f32,
 };
 
 const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -117,6 +119,31 @@ fn windSway(p: vec3f, world: mat4x4f, localNormal: vec3f, uv: vec2f) -> vec3f {
   return p + offset;
 }
 
+/** 细线最少画多宽（像素）。 */
+const WIRE_MIN_PIXELS = 1.5;
+
+/**
+ * 细线（Material.wire，phone-wire AA）：p 是细管子表面上的点，n 是它的法线（从管子的中心线指出来），radius 是管子的半径。
+ * 在中心线处量一个像素多宽（垂直于视线挪 1 厘米投到画面上），管子不到 WIRE_MIN_PIXELS 宽时加粗到这么宽；返回新的位置和
+ * 加粗的程度（1 − 真实宽度 / 画的宽度，片元着色器按它抖动着丢像素，平均下来亮度同真实的粗细）。
+ */
+fn wireWiden(p: vec3f, n: vec3f, radius: f32) -> vec4f {
+  let center = p - n * radius;
+  let ray = normalize(center - view.eye.xyz);
+  let side = normalize(cross(ray, select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(ray.y) > 0.9)));
+  let a = view.viewProjection * vec4f(center, 1.0);
+  let b = view.viewProjection * vec4f(center + side * 0.01, 1.0);
+  if (a.w <= 0.0 || b.w <= 0.0) {
+    return vec4f(p, 0.0);
+  }
+  let pixelsPerMeter = length((b.xy / b.w - a.xy / a.w) * view.pixel.xy * 0.5) * 100.0;
+  let width = 2.0 * radius * pixelsPerMeter;
+  if (width >= WIRE_MIN_PIXELS || pixelsPerMeter <= 0.0) {
+    return vec4f(p, 0.0);
+  }
+  return vec4f(center + n * (WIRE_MIN_PIXELS / (2.0 * pixelsPerMeter)), 1.0 - width / WIRE_MIN_PIXELS);
+}
+
 fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, slot: u32, vertex: u32, skin: mat4x4f, skinned: bool) -> Varyings {
   let world = worlds[frameBase(0u, false) + slot];
   let morph = morphDelta(slot, vertex, false);
@@ -127,8 +154,13 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   // 材质的位移贴图：顶点沿模型空间的法线移动（Stride 的 MaterialSurfaceDisplacement，MaterialShader 的水波）
   let displaced = local + normalize(localNormal) * treeDisplacement(meshUv, local);
   // 植被的风；网格效果可以在投影前改世界位置（Stride 的 PreTransformPosition，SpaceEscape 的走廊往远处弯）
-  let worldPosition = vec4f(effectWorldPosition(windSway((world * vec4f(displaced, 1.0)).xyz, world, localNormal, meshUv), mesh.effect), 1.0);
+  var worldPosition = vec4f(effectWorldPosition(windSway((world * vec4f(displaced, 1.0)).xyz, world, localNormal, meshUv), mesh.effect), 1.0);
   var out: Varyings;
+  if (material.wind.w > 0.0) {
+    let wire = wireWiden(worldPosition.xyz, normalize((world * vec4f(localNormal, 0.0)).xyz), material.wind.w * length(world[0].xyz));
+    worldPosition = vec4f(wire.xyz, 1.0);
+    out.wireFade = wire.w;
+  }
   out.position = view.viewProjection * worldPosition;
   out.world = worldPosition.xyz;
   out.effect = effectVarying(out.position, worldPosition.xyz, mesh.effect);

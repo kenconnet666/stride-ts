@@ -1,0 +1,7 @@
+// 行人的衣服（占位模型 Models/Person）：每个人按种子换色相、深浅（材质实例的 variation），同一批画出来
+{
+  "name": "Clothing",
+  "baseColor": [0.45, 0.18, 0.12, 1],
+  "roughness": 0.8,
+  "variation": { "hue": 180, "saturation": 0.4, "value": 0.4, "roughness": 0.1 }
+}

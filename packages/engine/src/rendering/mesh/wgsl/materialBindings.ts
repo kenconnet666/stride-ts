@@ -57,6 +57,8 @@ struct Material {
   iridescence: vec4f,
   // 漫透射（Material.diffuseTransmission）：透过去的颜色，比例（0 是没有）
   diffuseTransmission: vec4f,
+  // 每个物体按种子的变化（Material.variation）：色相（弧度）、饱和度、明暗、粗糙度的正负范围，都是 0 是没有
+  variation: vec4f,
   // 节点图的数值参数（Material.shaderTrees.graphParams，materialGraph.ts 的 GraphParams）：代码里读 material.graph[i].x
   graph: array<vec4f, 64>,
 };

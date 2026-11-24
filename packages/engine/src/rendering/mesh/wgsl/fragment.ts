@@ -433,6 +433,36 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibil
 }
 
 /** 点选的编号缓冲：写实例的变换槽位加一（0 留给"什么都没有"）；Alpha 裁剪掉的像素点不到。 */
+/** 0 到 1 之间的随机数（PCG 散列），按种子和第几个。 */
+fn instanceRandom(seed: u32, index: u32) -> f32 {
+  let state = (seed * 747796405u + index * 2891336453u + 1442695041u);
+  let word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return f32((word >> 22u) ^ word) / 4294967295.0;
+}
+
+/**
+ * 材质实例：乘这个物体的色调（MaterialParams.tint），按种子变色相、饱和度、明暗、粗糙度（Material.variation，正负的范围）。
+ * 色相绕灰轴转（Rodrigues）；种子是 0 时按槽位。
+ */
+fn instanceSurface(slot: u32, surface: LayerSurface) -> LayerSurface {
+  var out = surface;
+  let params = instanceParams[slot];
+  let tint = unpack4x8unorm(params.x);
+  out.albedo = select(out.albedo, out.albedo * tint.rgb, tint.a > 0.5);
+  let variation = material.variation;
+  if (all(variation == vec4f(0.0))) { return out; }
+  let seed = select(params.y, slot + 1u, params.y == 0u);
+  let angle = (instanceRandom(seed, 0u) * 2.0 - 1.0) * variation.x;
+  let axis = vec3f(0.57735027);
+  let c = cos(angle);
+  let rotated = out.albedo * c + cross(axis, out.albedo) * sin(angle) + axis * dot(axis, out.albedo) * (1.0 - c);
+  let gray = dot(rotated, vec3f(0.2126, 0.7152, 0.0722));
+  let saturated = mix(vec3f(gray), rotated, max(0.0, 1.0 + (instanceRandom(seed, 1u) * 2.0 - 1.0) * variation.y));
+  out.albedo = max(saturated * (1.0 + (instanceRandom(seed, 2u) * 2.0 - 1.0) * variation.z), vec3f(0.0));
+  out.roughness = clamp(out.roughness + (instanceRandom(seed, 3u) * 2.0 - 1.0) * variation.w, 0.02, 1.0);
+  return out;
+}
+
 @fragment fn fsPick(in: Varyings) -> @location(0) u32 {
   let base = baseColor(in);
   if (base.a < material.flags.y) {
@@ -664,10 +694,12 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   // 材质层按遮罩混进各个属性（没有层时原样）
   let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x * metalnessScale, material.specularColor.rgb,
     select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
+  // 材质实例：这个物体的色调、按种子的变化（MaterialParams、Material.variation）
+  let instanced = instanceSurface(in.slot, layers);
   // 清漆把漫反射色、金属度、粗糙度换成这一遍的（没有清漆时原样）
   // 贴花盖在材质上，天气（湿、雪）再盖在贴花上
   let cluster = clusterOf(in.position, in.world);
-  let decaled = applyDecals(in.world, n, coatSurface(in, layers, coatPass), cluster);
+  let decaled = applyDecals(in.world, n, coatSurface(in, instanced, coatPass), cluster);
   n = decaled.normal;
   // 水洼的水面是平的（下雨时有涟漪）：天气也可能换法线
   let weathered = weatherSurface(in.world, n, facingNormal(normalize(in.normal), front), in.skinned != 0u, decaled.surface);

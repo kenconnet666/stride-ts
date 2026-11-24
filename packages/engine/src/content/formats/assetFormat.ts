@@ -343,6 +343,8 @@ export interface MaterialFile {
    * 或者算两遍）。默认关。
    */
   readonly emissiveLighting?: boolean;
+  /** 每个物体按种子的变化（色相的度数、饱和度、明暗、粗糙度的正负范围），见 Material 的 variation。 */
+  readonly variation?: { readonly hue?: number; readonly saturation?: number; readonly value?: number; readonly roughness?: number };
   /**
    * 化不成"贴图乘颜色"的自发光（比如有着色器类）：整棵颜色树（格式同粒子材质的，见 ParticleModuleFile），运行时编译成 WGSL；
    * 有它时不看 emissive、emissiveTexture。useAlpha：输出的 alpha 用自发光的 alpha（Stride 的 UseAlpha）。

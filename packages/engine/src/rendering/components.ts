@@ -350,6 +350,17 @@ export const Instance = component('Instance', {
 /** 模型多出来的网格所在的子实体（一个实体只能有一个 Model，ContentManager.addModel 把其余网格挂成带这个标记的子实体）。 */
 export const ModelPart = tag('ModelPart');
 
+/**
+ * 材质实例的参数（Stride 没有；同虚幻的 Custom Primitive Data、Unity 的 MaterialPropertyBlock）：同一个材质的每个物体改颜色、
+ * 换变化的种子，不复制材质、不拆批（参数按变换槽位放在一张表里，着色时按槽位取）。tint 乘在漫反射色上（sRGB，白是不变）；
+ * seed 是材质的 variation 用的种子（0 是按槽位，每个物体各不相同但不固定；要每次一样就给一个数）。模型多出来的网格（子实体）
+ * 跟着一起。
+ */
+export const MaterialParams = component('MaterialParams', {
+  tint: prop.color(),
+  seed: prop.u32().default(0),
+});
+
 export const Skinned = component('Skinned', {
   palette: prop.u32().default(0).transient(),
 });

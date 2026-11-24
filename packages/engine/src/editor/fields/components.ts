@@ -252,6 +252,14 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: {},
   },
+  materialParams: {
+    label: 'Material params',
+    type: object(fields<NonNullable<Components['materialParams']>>({
+      tint: { type: { kind: 'color', alpha: true, space: 'srgb' }, optional: true, default: [1, 1, 1, 1], description: 'multiplies the diffuse color of this object (white keeps it)' },
+      seed: { type: integer(0), optional: true, default: 0, description: 'seed of the material variation (0: by transform slot, differs per object)' },
+    })),
+    initial: {},
+  },
   simulationLod: {
     label: 'Simulation LOD',
     type: object(fields<NonNullable<Components['simulationLod']>>({

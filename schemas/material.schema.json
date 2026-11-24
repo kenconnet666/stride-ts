@@ -228,6 +228,42 @@
       "default": false
     },
     "emissiveTree": {},
+    "variation": {
+      "type": "object",
+      "properties": {
+        "hue": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180,
+          "description": "hue turns up to this many degrees either way; unit: deg",
+          "default": 0
+        },
+        "saturation": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "saturation changes up to this fraction either way",
+          "default": 0
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "brightness changes up to this fraction either way",
+          "default": 0
+        },
+        "roughness": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "roughness changes up to this much either way",
+          "default": 0
+        }
+      },
+      "required": [],
+      "additionalProperties": false,
+      "description": "per-object random variation by seed (MaterialParams.seed, or the transform slot): no two apples, cars or houses alike"
+    },
     "normalMap": {},
     "normalTree": {},
     "displacementTree": {},

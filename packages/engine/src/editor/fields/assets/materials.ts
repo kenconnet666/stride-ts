@@ -36,6 +36,15 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   emissiveTexture: { type: object(textureSlot), optional: true, group: 'emissive' },
   emissiveLighting: { type: bool, optional: true, default: false, group: 'emissive', description: 'lights nearby surfaces through ray tracing (screens, light boxes, neon; uses the average emission of the whole mesh)' },
   emissiveTree: { type: json, optional: true, group: 'advanced' },
+  variation: {
+    type: object(fields<NonNullable<MaterialFile['variation']>>({
+      hue: { type: number({ min: 0, max: 180, step: 1, unit: 'deg' }), optional: true, default: 0, description: 'hue turns up to this many degrees either way' },
+      saturation: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'saturation changes up to this fraction either way' },
+      value: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'brightness changes up to this fraction either way' },
+      roughness: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'roughness changes up to this much either way' },
+    })),
+    optional: true, group: 'surface', description: 'per-object random variation by seed (MaterialParams.seed, or the transform slot): no two apples, cars or houses alike',
+  },
   normalMap: { type: json, optional: true, group: 'advanced' },
   normalTree: { type: json, optional: true, group: 'advanced' },
   displacementTree: { type: json, optional: true, group: 'advanced' },

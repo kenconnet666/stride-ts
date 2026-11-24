@@ -118,6 +118,14 @@ export interface MaterialShaderLayer {
   readonly occlusion?: { readonly directLighting: number };
 }
 
+/** 每个物体按种子的变化：色相（度）、饱和度、明暗（比例）、粗糙度，都是正负的范围，没写是 0。 */
+export interface MaterialVariation {
+  readonly hue?: number;
+  readonly saturation?: number;
+  readonly value?: number;
+  readonly roughness?: number;
+}
+
 export interface MaterialDesc {
   /** 线性空间的颜色，默认白色。 */
   readonly baseColor?: Readonly<ColorLike> | readonly [number, number, number, number?];
@@ -153,6 +161,11 @@ export interface MaterialDesc {
    * 或者算两遍）。默认关。
    */
   readonly emissiveLighting?: boolean;
+  /**
+   * 每个物体按种子的变化（同虚幻的 PerInstanceRandom 接色相、明暗）：漫反射色的色相转多少（度）、饱和度、明暗变多少（比例），
+   * 粗糙度加减多少，都是正负的范围；种子是 MaterialParams 的 seed，没有时按变换槽位。一片果蔬、一排车、一街的楼不再一模一样。
+   */
+  readonly variation?: MaterialVariation;
   /** 编译好的颜色树（自发光、法线贴图、位移贴图）；有自发光树时不看 emissive、emissiveTexture。 */
   readonly shaderTrees?: MaterialShaderTrees;
   /** 两面都画（Stride 的 CullMode 是 None），默认只画正面。 */
@@ -323,6 +336,8 @@ export class Material {
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
   /** 自发光照亮周围（见 MaterialDesc.emissiveLighting）。 */
   readonly emissiveLighting: boolean;
+  /** 每个物体按种子的变化（见 MaterialDesc.variation）。 */
+  readonly variation: MaterialVariation | undefined;
   readonly shaderTrees: MaterialShaderTrees | undefined;
   readonly doubleSided: boolean;
   readonly ambientOcclusion: { readonly value: number; readonly texture: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a' } | undefined; readonly directLighting: number };
@@ -374,6 +389,7 @@ export class Material {
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
     this.emissiveLighting = desc.emissiveLighting ?? false;
+    this.variation = desc.variation;
     this.shaderTrees = desc.shaderTrees;
     this.doubleSided = desc.doubleSided ?? false;
     const occlusion = desc.ambientOcclusion;

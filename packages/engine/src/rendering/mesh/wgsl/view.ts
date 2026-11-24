@@ -128,6 +128,8 @@ struct Decal { toBox: mat4x4f, albedo: vec4f, normal: vec4f, color: vec4f, fade:
 ${CLUSTER_WGSL}
 // 矩形光的 LTC 查找表（lighting/ltcTable.ts，64 × 64，每格 8 个半精度数）；场景里有矩形光时才填（localLightData[0].y 是 1）
 @group(0) @binding(25) var<uniform> ltcTable: array<vec4u, 4096>;
+// 材质实例的参数（MaterialParams，MeshGpu 的 SlotParams）按变换槽位：tint（rgba8，a 是 0 时没有）、种子（0 是按槽位）、留着的两个
+@group(0) @binding(29) var<storage, read> instanceParams: array<vec4u>;
 // 平面反射图（镜像着画的场景，左右颠倒，带 mip）；这一帧没有平面反射时是 1x1 的空图
 ${LTC_WGSL}
 `;

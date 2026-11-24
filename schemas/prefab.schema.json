@@ -1131,6 +1131,35 @@
                 "required": [],
                 "additionalProperties": false
               },
+              "materialParams": {
+                "title": "Material params",
+                "type": "object",
+                "properties": {
+                  "tint": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    },
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "description": "multiplies the diffuse color of this object (white keeps it); sRGB color with alpha, 0..1",
+                    "default": [
+                      1,
+                      1,
+                      1,
+                      1
+                    ]
+                  },
+                  "seed": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "seed of the material variation (0: by transform slot, differs per object)",
+                    "default": 0
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
               "simulationLod": {
                 "title": "Simulation LOD",
                 "type": "object",

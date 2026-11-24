@@ -21,10 +21,11 @@ import { shaderTime } from '../../engine/GameTime';
 import type { EntityId } from '../../data/prop';
 import type { ColumnsOf } from '../../engine/component';
 import type { EntityManager } from '../../engine/EntityManager';
+import { Color4 } from '../../data/vectors';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
 import { Morphed } from '../../animation/morphs';
-import { Instance, Instancing, Model, Skinned } from '../components';
+import { Instance, Instancing, MaterialParams, Model, ModelPart, Skinned } from '../components';
 import { Material } from './Material';
 import type { MeshEffect } from './meshEffect';
 import { Mesh } from './Mesh';
@@ -32,7 +33,7 @@ import { HeightfieldTile, HeightPages } from './HeightPages';
 import { inRenderMask, RENDER_GROUP_BAKE, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 import { CULL_ALWAYS_VISIBLE, CULL_ON_CPU, GpuCulling, type CullBatchInput, type CullViewInput } from './GpuCulling';
-import { type CachedPipeline, type CullPass, deformOf, grow, type MaterialPass, MeshGpu, NO_PASSES, SlotTable, transparentPasses, VIEW_STRIDE } from './MeshGpu';
+import { type CachedPipeline, type CullPass, deformOf, grow, type MaterialPass, MeshGpu, NO_PASSES, SlotParams, SlotTable, transparentPasses, VIEW_STRIDE } from './MeshGpu';
 
 /** 这个材质配这个网格在这些阶段里要哪些管线（阶段、材质的遍）：预热和"都好了没有"共用。 */
 function neededPipelines(material: Material, isShadowCaster: boolean, stages: readonly RenderStage[]): [RenderStage, MaterialPass | undefined][] {
@@ -139,6 +140,35 @@ export class MeshRenderFeature extends RootRenderFeature {
   /** 变换槽位 → 蒙皮矩阵的起点（只有蒙皮的槽位有意义），改了才重新上传。 */
   readonly #paletteOf = new SlotTable();
 
+  /** 材质实例的参数（MaterialParams）按槽位；这一帧、上一帧设过的槽（实体去掉、组件拿掉时把它的槽清零）。 */
+  readonly #instanceParams = new SlotParams();
+  #paramSlots = new Set<number>();
+  #nextParamSlots = new Set<number>();
+  readonly #tint = new Color4();
+  #paramEntities: EntityManager | undefined;
+
+  readonly #extractParamsSystem = system('MeshRenderFeature.extractParams', {
+    with: { params: MaterialParams, transform: Transform },
+    update: ({ params, transform, entities: ids, count }) => {
+      const entities = this.#paramEntities!;
+      for (let i = 0; i < count; i++) {
+        const c = this.#tint.set(params.tint[i * 4]!, params.tint[i * 4 + 1]!, params.tint[i * 4 + 2]!, 1).toLinear();
+        const tint = (Math.round(Math.min(1, c.r) * 255) | (Math.round(Math.min(1, c.g) * 255) << 8) | (Math.round(Math.min(1, c.b) * 255) << 16) | (255 << 24)) >>> 0;
+        const seed = params.seed[i]!;
+        this.#setParams(transform.slot[i]!, tint, seed);
+        // 模型多出来的网格在子实体上：一起
+        for (const child of entities.entity(ids[i]!).require(Transform).children) {
+          if (child.has(ModelPart)) this.#setParams(entities.slotOf(child.id, Transform), tint, seed);
+        }
+      }
+    },
+  });
+
+  #setParams(slot: number, tint: number, seed: number): void {
+    this.#instanceParams.set(slot, tint, seed);
+    this.#nextParamSlots.add(slot);
+  }
+
   readonly #extractMorphedSystem = system('MeshRenderFeature.extractMorphed', {
     with: { transform: Transform, morphed: Morphed },
     update: ({ transform, morphed, count }) => {
@@ -201,6 +231,11 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.#game = context.game;
     context.game.entities.run(this.#extractSystem, context.time);
     context.game.entities.run(this.#extractSkinnedSystem, context.time);
+    this.#nextParamSlots.clear();
+    this.#paramEntities = context.game.entities;
+    context.game.entities.run(this.#extractParamsSystem, context.time);
+    for (const slot of this.#paramSlots) if (!this.#nextParamSlots.has(slot)) this.#instanceParams.set(slot, 0, 0);
+    [this.#paramSlots, this.#nextParamSlots] = [this.#nextParamSlots, this.#paramSlots];
     context.game.entities.run(this.#extractMorphedSystem, context.time);
     context.game.entities.run(this.#extractHeightfieldSystem, context.time);
     this.#masters.clear();
@@ -391,6 +426,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     const transforms = context.game.transforms;
     gpu.uploadWorlds(transforms.renderWorld, transforms.slotLimit, transforms.changedSlots(), context.game.updateTime.frameCount);
     gpu.uploadSkinning(this.#paletteOf, context.game.animation);
+    gpu.uploadInstanceParams(this.#instanceParams);
     gpu.uploadMorphs(this.#morphOf, context.game.animation);
     gpu.uploadHeights(this.heightPages);
     const passes = this.#cullPasses.slice(0, this.#cullPassCount);

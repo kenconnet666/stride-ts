@@ -48,7 +48,7 @@ const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
 const ORIGIN_PATTERN_PERIOD = 65536;
 /** 材质 uniform：Material 结构（按 materialBindings.ts 的字段顺序），按 16 字节对齐。 */
-const MATERIAL_BYTES = 1696;
+const MATERIAL_BYTES = 1712;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 const DISTRIBUTION_CODES = { ggx: 0, beckmann: 1, blinnPhong: 2 } as const;
@@ -131,6 +131,27 @@ export class SlotTable {
   }
 }
 
+/**
+ * 按变换槽位存的材质实例参数（MaterialParams）：每个槽 4 个 u32——tint 打包成 rgba8（线性，a 是 255 时有 tint、0 时没有）、
+ * 种子（0 是按槽位），后两个留给以后的状态层。没挂 MaterialParams 的槽是 0。
+ */
+export class SlotParams {
+  values = new Uint32Array(1024);
+  dirty = true;
+
+  set(slot: number, tint: number, seed: number): void {
+    const o = slot * 4;
+    if (o + 4 > this.values.length) {
+      this.values = grow(this.values, Math.max(o + 4, this.values.length * 2));
+      this.dirty = true;
+    }
+    if (this.values[o] === tint && this.values[o + 1] === seed) return;
+    this.values[o] = tint;
+    this.values[o + 1] = seed;
+    this.dirty = true;
+  }
+}
+
 export function grow(array: Uint32Array, capacity: number): Uint32Array<ArrayBuffer> {
   const grown = new Uint32Array(capacity);
   grown.set(array);
@@ -193,6 +214,8 @@ export class MeshGpu {
   #worlds: GPUBuffer | undefined;
   #instances: GPUBuffer | undefined;
   #paletteOf: GPUBuffer | undefined;
+  /** 材质实例的参数（SlotParams），片元着色器按槽位读。 */
+  #instanceParams: GPUBuffer | undefined;
   #palettes: GPUBuffer | undefined;
   #morphOf: GPUBuffer | undefined;
   /** 地形块的高度页（HeightPages 的 GPU 那份）。 */
@@ -278,6 +301,7 @@ export class MeshGpu {
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         ...(planar.supported ? [26, 27, 28].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, texture: {} })) : []),
+        { binding: 29, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -542,6 +566,19 @@ export class MeshGpu {
    * 蒙皮：变换槽位到蒙皮矩阵起点的表（改了才传），和所有蒙皮矩阵（每帧传，直接从 wasm 内存）。没有蒙皮网格时也建一个
    * 小缓冲：绑定组里的存储缓冲不能缺。
    */
+  /** 材质实例的参数改了才整张传（缓冲换大了，视图绑定组作废）。 */
+  uploadInstanceParams(params: SlotParams): void {
+    if (!params.dirty && this.#instanceParams) return;
+    params.dirty = false;
+    const bytes = params.values.byteLength;
+    if (!this.#instanceParams || this.#instanceParams.size < bytes) {
+      this.#instanceParams?.destroy();
+      this.#instanceParams = this.#createStorage('MeshRenderFeature instance params', capacityFor(bytes));
+      this.#clearViewBindGroups();
+    }
+    this.device.queue.writeBuffer(this.#instanceParams, 0, params.values);
+  }
+
   uploadSkinning(paletteOf: SlotTable, animation: AnimationSystem): void {
     const tableBytes = paletteOf.values.byteLength;
     if (!this.#paletteOf || this.#halves.paletteOf * 4 < tableBytes) {
@@ -804,6 +841,7 @@ export class MeshGpu {
             { binding: 27, resource: this.#weather.irradianceVolumes.atlas.createView() },
             { binding: 28, resource: emissiveLight.createView() },
           ] : []),
+          { binding: 29, resource: { buffer: this.#instanceParams ??= this.#createStorage('MeshRenderFeature instance params', 16) } },
         ],
       });
       this.#viewBindGroups.set(key, group);
@@ -980,8 +1018,10 @@ export class MeshGpu {
       const { iridescence, diffuseTransmission } = material;
       floats.set(iridescence ? [iridescence.factor, iridescence.ior, iridescence.thickness, 0] : [0, 1.3, 400, 0], 96 + CEL_RAMP_STOPS * 8);
       floats.set(diffuseTransmission ? [...diffuseTransmission.color, diffuseTransmission.factor] : [1, 1, 1, 0], 100 + CEL_RAMP_STOPS * 8);
+      const variation = material.variation;
+      floats.set([((variation?.hue ?? 0) * Math.PI) / 180, variation?.saturation ?? 0, variation?.value ?? 0, variation?.roughness ?? 0], 104 + CEL_RAMP_STOPS * 8);
       // 节点图的数值参数（缓冲是共用的，上一个材质的留着，先清掉）
-      const graphAt = 104 + CEL_RAMP_STOPS * 8;
+      const graphAt = 108 + CEL_RAMP_STOPS * 8;
       floats.fill(0, graphAt, graphAt + GraphParams.SLOTS);
       if (material.shaderTrees?.graphParams) floats.set(material.shaderTrees.graphParams, graphAt);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
@@ -1019,7 +1059,7 @@ export class MeshGpu {
   }
 
   destroy(): void {
-    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#morphOf, this.#morphWeights, this.#heights, this.#noMorph]) buffer?.destroy();
+    for (const buffer of [this.#worlds, this.#instances, this.#instanceParams, this.#views, this.#paletteOf, this.#palettes, this.#morphOf, this.#morphWeights, this.#heights, this.#noMorph]) buffer?.destroy();
     for (const { params, vertices, indices, edges } of this.#meshes.values()) {
       params.destroy();
       vertices.destroy();

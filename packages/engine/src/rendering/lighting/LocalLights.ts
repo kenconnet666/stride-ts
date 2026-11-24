@@ -43,6 +43,16 @@ fn localLight(index: u32) -> LocalLight {
   return LocalLight(localLightData[o], localLightData[o + 1u], localLightData[o + 2u], localLightData[o + 3u]);
 }
 
+/**
+ * 第 index 盏光照不照得到 world（只读第一个 vec4：位置和 1 / 半径²）：在射程（面光源是到中心的距离）以外的衰减窗口是 0，
+ * 着色时不用把整盏光读出来。簇是按包围球分的，比较保守，一簇里常有够不着的光。
+ */
+fn localLightReaches(index: u32, world: vec3f) -> bool {
+  let head = localLightData[1u + index * ${LIGHT_VEC4S}u];
+  let toLight = head.xyz - world;
+  return dot(toLight, toLight) * head.w < 1.0;
+}
+
 /** 第 index 个阴影从第几个 vec4 开始。 */
 fn localShadowStart(index: u32) -> u32 {
   return u32(localLightData[0].x) + index * ${SHADOW_VEC4S}u;

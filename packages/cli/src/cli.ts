@@ -49,7 +49,9 @@ Game
                                                     contrast, white balance, saturation, fine detail (render / photo), a 4x4
                                                     grid of both, SSIM, notes; writes photo | render | 50% blend. A phone's
                                                     main camera (~26 mm equivalent) has ~67 deg across its long side
-  perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass
+  perf [--seconds 3] [--no-gpu] [--summary [--limit 12]]   frame times, CPU per system/phase, native timings, GPU per pass
+                                                    --summary: only the GPU frame total, CPU frame time and the most
+                                                    expensive GPU passes
   native [--reset]                                  native counters (physics bodies, ...), timings, wasm memory
   draws                                             draw calls of the last frame per GPU render pass
   metrics [--over]                                  statistics and budgets: entities, draw calls, GPU and native memory, frame times
@@ -151,6 +153,7 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     game: { type: 'string' },
     file: { type: 'string' },
     'no-gpu': { type: 'boolean' },
+    summary: { type: 'boolean' },
     scale: { type: 'string' },
     fixed: { type: 'string' },
     total: { type: 'string' },
@@ -460,9 +463,10 @@ const commands: Record<string, () => Promise<unknown>> = {
     const { image: _, ...summary } = diff;
     return { file, ...info, diff: { reference: options.diff, image: diffFile, ...summary } };
   },
-  perf() {
+  async perf() {
     const seconds = Number(options.seconds ?? 3);
-    return call('perf', { seconds, gpu: !options['no-gpu'] }, seconds * 1000);
+    const result = await call('perf', { seconds, gpu: !options['no-gpu'] }, seconds * 1000);
+    return options.summary ? perfSummary(result, Number(options.limit ?? 12)) : result;
   },
   native: () => call('native', options.reset ? { reset: true } : {}),
   async 'gpu-calls'() {
@@ -722,4 +726,23 @@ function switchArgs(word: string | undefined): { on?: boolean | 'toggle' } {
   if (word === 'toggle') return { on: 'toggle' };
   if (word !== 'on' && word !== 'off') throw new Error(`expected on, off or toggle, got '${word}'`);
   return { on: word === 'on' };
+}
+
+/** stride perf --summary：只留 GPU 每帧合计、CPU 每帧的时间和最贵的 count 个 GPU 通道（毫秒，平均）。 */
+function perfSummary(result: unknown, count: number): object {
+  const find = (value: unknown, key: string, depth = 0): unknown => {
+    if (!value || typeof value !== 'object' || depth > 6) return undefined;
+    if (key in value) return (value as Record<string, unknown>)[key];
+    for (const child of Object.values(value)) {
+      const found = find(child, key, depth + 1);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  const passes = (find(result, 'passes') ?? {}) as Record<string, number>;
+  return {
+    gpuFrameMs: find(result, 'frameTotalMs'),
+    cpuFrameMs: find(result, 'frameMs'),
+    passes: Object.entries(passes).sort((a, b) => b[1] - a[1]).slice(0, count).map(([name, ms]) => `${name.padEnd(40)} ${ms.toFixed(3)}`),
+  };
 }

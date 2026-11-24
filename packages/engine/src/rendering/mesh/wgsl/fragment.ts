@@ -173,7 +173,7 @@ fn coatSurfaceOf(s: Surface) -> Surface {
  * 离发光面中心超过它半径的这么多倍时漫反射当小光源算（形状因子的误差约 (1 / AREA_FAR)²，6% 以内，平滑变化）。以前是 8（1.5%）：
  * 4K 超市不透明着色多 1.3 毫秒，画面平均差 0.56/255（docs/realtime.md 第 7 步）。
  */
-const AREA_FAR = 4.0;
+const AREA_FAR = 3.0;
 
 /**
  * 矩形光（LTC，Heitz 2016；同 three.js 的 RectAreaLight、虚幻的 Rect Light）：漫反射是余弦分布在矩形上的积分，镜面反射是
@@ -264,7 +264,7 @@ fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, 
   // 镜面按小光源：灯的张角 ε = extent / d 不到分布变化尺度 max(α, φ) 的四分之一（φ² ≈ 2 (1 − cos φ)），且灯离得够远（立体角的
   // 公式成立）——LTC 的分布在灯上几乎不变，取中心的值乘立体角
   let scale2 = max(s.alphaR * s.alphaR, 2.0 * (1.0 - dot(shading.reflection, l)));
-  let pointSpecular = !s.hasSpecular || (distance2 > 16.0 * extent * extent && scale2 * distance2 > 16.0 * extent * extent);
+  let pointSpecular = !s.hasSpecular || (distance2 > 9.0 * extent * extent && scale2 * distance2 > 9.0 * extent * extent);
   // 矩形要积分时（漫反射近、或者镜面要积分）四个角只建一次
   var corners = RectCorners(vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0));
   if (kind == 2u && (!far || !pointSpecular)) {
@@ -906,7 +906,12 @@ fn shade(raw: Varyings, front: bool, coatPass: bool) -> Shaded {
   var brightLight = localLight(0u);
   var secondLight = brightLight;
   for (var k = 0u; k < localCount; k++) {
-    let light = localLight(select(k, clusters[firstLight + k], clustered));
+    let index = select(k, clusters[firstLight + k], clustered);
+    // 够不着的先跳过（只读一个 vec4）
+    if (!localLightReaches(index, in.world)) {
+      continue;
+    }
+    let light = localLight(index);
     let lit = localLightLit(light, surface, area, coatArea, in.world, directOcclusion);
     let weight = litWeight(lit);
     if (!shadows || light.direction.w < 0.0 || weight <= 0.0) {

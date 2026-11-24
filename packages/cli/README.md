@@ -30,7 +30,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `cpu-profile [--seconds 5] [--out p.json] [--callers <正则>]` | 录一段 CPU 采样（Tracing 的 v8.cpu_profiler，0.1 ms），按类别、函数给每帧的自身和包含时间；`--callers` 列某些函数的调用链。同上，经调试桥扩展或 stride open 的 Chrome |
 | `shot out.png --photo ref.jpg [--photo-out f.png]` | 和一张参考照片比"像不像"（路线图 R 组的照片比对；同样的机位，照片由页面里的浏览器解码、按截图的大小铺满居中裁）：曝光差几档（中位数、亮处、暗处）、反差、白平衡、饱和度、细节（亮度梯度，渲染 / 照片：小于 1 是太干净、太简单）、4 × 4 格子各自的曝光和细节、缩小后的 SSIM、一句句的结论（`notes`），写一张照片 \| 渲染 \| 各一半叠在一起的拼图（对机位用）。照片和画面的宽高比要一样（`stride open --size` 照着照片定，竖拍的手机照片用竖的窗口）；手机主摄约等效 26 毫米，长边方向的视角约 67° |
 | `shot out.png [--diff ref.png] [--region x,y,w,h]` | 截下一帧的后备缓冲（不含页面上的文字）；和参考图逐像素比较，写放大 16 倍的差异图。结果里 `meanChannel` 是平均每通道差，`mean` 是每个像素取差最大的通道再平均；`--region` 只比那一块（比如去掉两边画法不同的 UI） |
-| `perf [--seconds 3]` | 帧时间分布、每个系统和阶段的 CPU 时间、每个渲染通道的 GPU 时间、渲染统计 |
+| `perf [--seconds 3] [--summary [--limit 12]]` | 帧时间分布、每个系统和阶段的 CPU 时间、每个渲染通道的 GPU 时间、渲染统计；`--summary` 只留 GPU、CPU 每帧的时间和最贵的几个 GPU 通道（量开销、开关比对时用） |
 | `blur [on\|off] [--shutter s] [--maxPixels n]` | 运动模糊：开关、快门（一帧的比例）、最长几个像素 |
 | `contact [on\|off] [--length m] [--steps n] [--thickness t]` | 接触阴影（投阴影的方向光，屏幕空间）：开关、参数 |
 | `sss [on\|off] [--entity e] [--width m] [--translucency t]` | 次表面散射：开关模糊；`--entity` 给这个实体和子实体的模型材质加上皮肤散射（`off` 时去掉），宽度、透光度可改 |
